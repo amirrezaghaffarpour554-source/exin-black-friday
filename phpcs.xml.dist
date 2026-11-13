@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<ruleset name="EXIN Black Friday">
+  <description>WordPress coding standards; PSR-4 class filenames are intentional.</description>
+  <file>exin-black-friday.php</file>
+  <file>autoload.php</file>
+  <file>uninstall.php</file>
+  <file>src</file>
+  <arg name="extensions" value="php"/>
+  <arg name="colors"/>
+  <config name="text_domain" value="exin-black-friday"/>
+  <rule ref="WordPress">
+    <exclude name="WordPress.Files.FileName"/>
+  </rule>
+  <rule ref="WordPress.WP.Capabilities">
+    <properties>
+      <property name="custom_capabilities" type="array">
+        <element value="manage_woocommerce"/>
+      </property>
+    </properties>
+  </rule>
+</ruleset>

@@ -1,0 +1,6 @@
+{
+  "name": "exin-black-friday-dev",
+  "private": true,
+  "scripts": {"test:browser": "node tests/browser/admin.cjs"},
+  "devDependencies": {"playwright": "1.62.1"}
+}
