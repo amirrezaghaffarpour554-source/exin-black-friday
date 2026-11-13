@@ -1,0 +1,49 @@
+{
+  "wordpress": "6.9.4",
+  "woocommerce": "10.3.0",
+  "php": "8.3.31",
+  "database": "11.4.13",
+  "object_cache": "WordPress request memory",
+  "cases": [
+    {
+      "products": 100,
+      "fixture_seconds": 3.8227,
+      "fixture_queries": 17651,
+      "apply_seconds": 2.1196,
+      "batches": 4,
+      "batch_size": 25,
+      "max_batch_seconds": 0.5418,
+      "mean_batch_seconds": 0.5296,
+      "apply_queries": 11075,
+      "first_page_seconds": 0.0048,
+      "first_page_queries": 4,
+      "shortcode_render_seconds": 0.015,
+      "shortcode_render_queries": 4,
+      "http_page_seconds": 0.1624,
+      "http_status": 200,
+      "http_response_bytes": 129076,
+      "peak_memory_bytes": 136118272,
+      "verified": true
+    },
+    {
+      "products": 1000,
+      "fixture_seconds": 41.2614,
+      "fixture_queries": 176255,
+      "apply_seconds": 25.2756,
+      "batches": 40,
+      "batch_size": 25,
+      "max_batch_seconds": 1.3844,
+      "mean_batch_seconds": 0.6315,
+      "apply_queries": 110741,
+      "first_page_seconds": 0.0472,
+      "first_page_queries": 4,
+      "shortcode_render_seconds": 0.0164,
+      "shortcode_render_queries": 5,
+      "http_page_seconds": 0.3219,
+      "http_status": 200,
+      "http_response_bytes": 129079,
+      "peak_memory_bytes": 148701184,
+      "verified": true
+    }
+  ]
+}
