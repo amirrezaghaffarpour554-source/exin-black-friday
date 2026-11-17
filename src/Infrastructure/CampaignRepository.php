@@ -7,10 +7,122 @@
 
 namespace Exin\BlackFriday\Infrastructure;
 
+use Exin\BlackFriday\Domain\CurrencyDisplay;
+
 // phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned financial state must be read fresh; not Woo entities.
 
 /** All SQL is restricted to EXIN-owned tables; WooCommerce entities use CRUD. */
 final class CampaignRepository {
+	/**
+	 * Whether this repository currently owns a database transaction.
+	 *
+	 * @var bool
+	 */
+	private bool $in_transaction = false;
+
+	/**
+	 * Campaigns whose public selection caches must be invalidated after commit.
+	 *
+	 * @var array<int,bool>
+	 */
+	private array $pending_item_changes = array();
+
+	/**
+	 * Atomically replace a draft plan using only transactional plugin tables.
+	 *
+	 * @param callable $callback Operation performed inside the owned transaction.
+	 * @return mixed Callback result.
+	 * @throws \RuntimeException When transactional storage or commit is unavailable.
+	 * Callback failures propagate after all owned writes are rolled back.
+	 */
+	public function transaction( callable $callback ): mixed {
+		global $wpdb;
+		if ( $this->in_transaction ) {
+			return $callback();
+		}
+		// A replacement driver may implement its own reconnect/replay policy.
+		if ( \wpdb::class !== get_class( $wpdb ) ) {
+			throw new \RuntimeException( 'draft_transaction_driver_unsupported' );
+		}
+		foreach ( array( 'campaigns', 'items', 'audit' ) as $suffix ) {
+			$status = $wpdb->get_row( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $wpdb->esc_like( $this->table( $suffix ) ) ), ARRAY_A );
+			if ( ! $status || 'INNODB' !== strtoupper( (string) $status['Engine'] ) ) {
+				throw new \RuntimeException( 'transactional_storage_required' );
+			}
+		}
+		$retries = $wpdb->reconnect_retries;
+		if ( ! is_int( $retries ) || $retries < 0 ) {
+			throw new \RuntimeException( 'draft_transaction_driver_unsupported' );
+		}
+		$reporting = error_reporting(); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.prevent_path_disclosure_error_reporting, WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_error_reporting -- Read the existing mask; do not enable additional diagnostics.
+		$started   = false;
+		try {
+			// wpdb::query() otherwise replays a failed statement on a new,
+			// autocommitting connection. The documented compatibility accessors
+			// expose this core setting without reflection or replacing wpdb.
+			$wpdb->reconnect_retries = 0;
+			if ( 0 !== $wpdb->reconnect_retries ) {
+				throw new \RuntimeException( 'draft_transaction_driver_unsupported' );
+			}
+			$connection = (string) $wpdb->get_var( 'SELECT CONNECTION_ID()' );
+			if ( '' === $connection ) {
+				throw new \RuntimeException( 'draft_transaction_connection_lost' );
+			}
+			if ( false === $wpdb->query( 'START TRANSACTION' ) ) {
+				throw new \RuntimeException( 'draft_transaction_failed' );
+			}
+			$started                    = true;
+			$this->in_transaction       = true;
+			$this->pending_item_changes = array();
+			$result                     = $callback();
+			if ( $connection !== (string) $wpdb->get_var( 'SELECT CONNECTION_ID()' ) ) {
+				throw new \RuntimeException( 'draft_transaction_connection_lost' );
+			}
+			if ( false === $wpdb->query( 'COMMIT' ) ) {
+				throw new \RuntimeException( 'draft_commit_failed' );
+			}
+			if ( $connection !== (string) $wpdb->get_var( 'SELECT CONNECTION_ID()' ) ) {
+				throw new \RuntimeException( 'draft_transaction_connection_lost' );
+			}
+		} catch ( \Throwable $error ) {
+			try {
+				// A disconnected server already rolled back its old transaction.
+				// Never reconnect merely to issue ROLLBACK on a different session.
+				if ( $started && $wpdb->check_connection( false ) ) {
+					$wpdb->query( 'ROLLBACK' );
+				}
+			} catch ( \Throwable $rollback_error ) {
+				$this->pending_item_changes = array();
+			}
+			$this->pending_item_changes = array();
+			throw $error;
+		} finally {
+			$this->in_transaction    = false;
+			$wpdb->reconnect_retries = $retries;
+			// Core's unsuccessful zero-retry connection probe masks E_WARNING.
+			error_reporting( $reporting ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.prevent_path_disclosure_error_reporting, WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_error_reporting -- Restore the exact previous mask after core's failed connection probe.
+		}
+		foreach ( array_keys( $this->pending_item_changes ) as $campaign_id ) {
+			do_action( 'exin_bf_item_changed', $campaign_id, 0 );
+		}
+		$this->pending_item_changes = array();
+		return $result;
+	}
+
+	/**
+	 * Defer listing-cache invalidation until an owned transaction is committed.
+	 *
+	 * @param int $campaign_id Campaign identifier.
+	 * @param int $product_id Changed product identifier, or zero for a batch.
+	 * @return void
+	 */
+	private function item_changed( int $campaign_id, int $product_id ): void {
+		if ( $this->in_transaction ) {
+			$this->pending_item_changes[ $campaign_id ] = true;
+			return;
+		}
+		do_action( 'exin_bf_item_changed', $campaign_id, $product_id );
+	}
 	/**
 	 * Build the name of a plugin-owned database table.
 	 *
@@ -33,8 +145,8 @@ final class CampaignRepository {
 	 */
 	public function create( array $data ): int {
 		global $wpdb;
-		$now      = gmdate( 'Y-m-d H:i:s' );
-		$defaults = array(
+		$now                = gmdate( 'Y-m-d H:i:s' );
+		$defaults           = array(
 			'title'      => __( 'بلک فرایدی اکسین', 'exin-black-friday' ),
 			'start_utc'  => '2026-11-26 20:30:00',
 			'end_utc'    => '2026-12-03 20:30:00',
@@ -46,20 +158,23 @@ final class CampaignRepository {
 			'status'     => 'draft',
 			'version'    => 1,
 			'settings'   => array(
-				'free_shipping'      => false,
-				'shipping_threshold' => '0',
-				'shipping_instances' => array(),
-				'show_out_of_stock'  => false,
-				'inactive_output'    => 'message',
-				'order_statuses'     => array( 'processing', 'completed' ),
-				'target_orders'      => 500,
-				'retention_days'     => 90,
+				'free_shipping'        => false,
+				'shipping_threshold'   => '0',
+				'shipping_subsidy_cap' => CurrencyDisplay::default_subsidy_cap( get_woocommerce_currency(), wc_get_price_decimals() ),
+				'shipping_instances'   => array(),
+				'inactive_output'      => 'message',
+				'order_statuses'       => array( 'processing', 'completed' ),
+				'retention_days'       => 90,
+				'currency'             => get_woocommerce_currency(),
+				'precision'            => wc_get_price_decimals(),
 			),
 			'created_at' => $now,
 			'updated_at' => $now,
 			'last_error' => '',
 		);
-		$row      = $this->campaign_data( array_replace( $defaults, $data ) );
+		$record             = array_replace( $defaults, $data );
+		$record['settings'] = array_replace( $defaults['settings'], (array) ( $data['settings'] ?? array() ) );
+		$row                = $this->campaign_data( $record );
 		if ( false === $wpdb->insert( $this->table( 'campaigns' ), $row ) ) {
 			throw new \RuntimeException( 'campaign_create_failed' );
 		}
@@ -142,7 +257,7 @@ final class CampaignRepository {
 	 */
 	public function items( int $campaign_id, int $limit = 50, int $offset = 0 ): array {
 		global $wpdb;
-		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM %i WHERE campaign_id=%d AND status<>%s ORDER BY priority ASC, product_id ASC LIMIT %d OFFSET %d', $this->table( 'items' ), $campaign_id, 'removed', min( 1000, max( 1, $limit ) ), max( 0, $offset ) ), ARRAY_A );
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM %i WHERE campaign_id=%d AND status<>%s ORDER BY featured DESC, priority ASC, product_id ASC LIMIT %d OFFSET %d', $this->table( 'items' ), $campaign_id, 'removed', min( 1000, max( 1, $limit ) ), max( 0, $offset ) ), ARRAY_A );
 		return array_map( array( $this, 'decode_item' ), $rows );
 	}
 
@@ -252,6 +367,16 @@ final class CampaignRepository {
 		if ( false === $ok ) {
 			throw new \RuntimeException( 'item_save_failed' );
 		}
+		$changed = ! $old;
+		foreach ( array( 'featured', 'priority', 'status', 'base_price', 'floor_price', 'schedule' ) as $field ) {
+			if ( array_key_exists( $field, $data ) && ( ! $old || $old[ $field ] !== $data[ $field ] ) ) {
+				$changed = true;
+			}
+		}
+		if ( $changed ) {
+			/** Selected catalog data changed; financial retry-only writes do not invalidate listing caches. */
+			$this->item_changed( $campaign_id, $product_id );
+		}
 	}
 
 	/**
@@ -274,6 +399,7 @@ final class CampaignRepository {
 		) ) {
 			throw new \RuntimeException( 'item_delete_failed' );
 		}
+		$this->item_changed( $campaign_id, $product_id );
 	}
 
 	/**
@@ -289,6 +415,26 @@ final class CampaignRepository {
 	}
 
 	/**
+	 * Annotate a bounded picker page without loading every campaign item.
+	 *
+	 * @param int   $campaign_id Campaign whose existing selections are requested.
+	 * @param int[] $candidate_ids At most one bounded set of catalog identifiers.
+	 * @return int[] Candidates already enrolled and not removed.
+	 */
+	public function member_product_ids( int $campaign_id, array $candidate_ids ): array {
+		global $wpdb;
+		$ids = array_slice( array_values( array_unique( array_filter( array_map( 'absint', $candidate_ids ) ) ) ), 0, 1000 );
+		if ( ! $ids || $campaign_id < 1 ) {
+			return array();
+		}
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		$sql          = 'SELECT product_id FROM %i WHERE campaign_id=%d AND status<>%s AND product_id IN (' . $placeholders . ')';
+		$values       = array_merge( array( $this->table( 'items' ), $campaign_id, 'removed' ), $ids );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Only generated integer placeholders are appended; table and every value are prepared.
+		return array_map( 'intval', $wpdb->get_col( $wpdb->prepare( $sql, $values ) ) );
+	}
+
+	/**
 	 * Allowlist and encode campaign fields for persistence.
 	 *
 	 * @param array $data Allowlisted record fields.
@@ -299,6 +445,7 @@ final class CampaignRepository {
 		$allowed = array( 'title', 'start_utc', 'end_utc', 'timezone', 'days', 'strategy', 'power', 'rounding', 'status', 'version', 'settings', 'created_at', 'updated_at', 'last_success', 'last_error' );
 		$data    = array_intersect_key( $data, array_flip( $allowed ) );
 		if ( isset( $data['settings'] ) ) {
+			unset( $data['settings']['target_orders'], $data['settings']['show_out_of_stock'] );
 			$data['settings'] = wp_json_encode( $data['settings'], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR );
 		}
 		return $data;

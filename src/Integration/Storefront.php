@@ -7,6 +7,7 @@
 
 namespace Exin\BlackFriday\Integration;
 
+use Exin\BlackFriday\Domain\PricingEngine;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
 
 /**
@@ -35,6 +36,7 @@ final class Storefront {
 	 * @return void
 	 */
 	public function register(): void {
+		( new CatalogCache() )->register();
 		add_shortcode( 'exin_bf_products', fn( $atts ) => $this->render( 'products', (array) $atts ) );
 		add_shortcode( 'exin_bf_featured', fn( $atts ) => $this->render( 'featured', (array) $atts ) );
 		add_shortcode( 'exin_bf_countdown', fn( $atts ) => $this->render( 'countdown', (array) $atts ) );
@@ -173,19 +175,23 @@ final class Storefront {
 	private function products( array $campaign, array $attributes, bool $featured ): string {
 		$atts     = shortcode_atts(
 			array(
-				'columns'           => 4,
-				'tablet_columns'    => 2,
-				'mobile_columns'    => 1,
-				'limit'             => 12,
-				'orderby'           => 'priority',
-				'category'          => 0,
-				'show_out_of_stock' => ! empty( $campaign['settings']['show_out_of_stock'] ),
-				'pagination'        => 'yes',
+				'columns'        => 4,
+				'tablet_columns' => 2,
+				'mobile_columns' => 1,
+				'limit'          => 12,
+				'orderby'        => 'campaign_priority',
+				'category'       => 0,
+				'featured'       => false,
+				'pagination'     => 'yes',
 			),
 			$attributes
 		);
 		$page     = isset( $_GET['exin_bf_page'] ) ? absint( wp_unslash( $_GET['exin_bf_page'] ) ) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only pagination.
-		$category = ! empty( $atts['category'] ) ? absint( $atts['category'] ) : ( isset( $_GET['exin_bf_category'] ) ? absint( wp_unslash( $_GET['exin_bf_category'] ) ) : 0 ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$category = $atts['category'];
+		if ( empty( $category ) && isset( $_GET['exin_bf_category'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only category navigation.
+			$category = is_scalar( $_GET['exin_bf_category'] ) ? sanitize_text_field( wp_unslash( $_GET['exin_bf_category'] ) ) : '-invalid-category-'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		}
+		$featured = $featured || filter_var( $atts['featured'], FILTER_VALIDATE_BOOLEAN );
 		$result   = $this->query->query(
 			$campaign,
 			array_merge(
@@ -205,6 +211,8 @@ final class Storefront {
 		$mobile      = max( 1, min( 2, (int) $atts['mobile_columns'] ) );
 		$old_product = $GLOBALS['product'] ?? null;
 		$old_post    = $GLOBALS['post'] ?? null;
+		$had_loop    = array_key_exists( 'woocommerce_loop', $GLOBALS );
+		$old_loop    = $GLOBALS['woocommerce_loop'] ?? null;
 		$badge_hook  = function () {
 			global $product;
 			if ( $product instanceof \WC_Product ) {
@@ -222,7 +230,22 @@ final class Storefront {
 		$buffer_level = ob_get_level();
 		ob_start();
 		try {
-			echo '<div class="exin-bf-products woocommerce" style="--exin-bf-columns:' . esc_attr( (string) $cols ) . ';--exin-bf-tablet:' . esc_attr( (string) $tablet ) . ';--exin-bf-mobile:' . esc_attr( (string) $mobile ) . '"><ul class="products exin-bf-grid">';
+			wc_setup_loop(
+				array(
+					'name'         => 'exin-bf-products',
+					'loop'         => 0,
+					'columns'      => $cols,
+					'is_shortcode' => true,
+					'is_paginated' => 'no' !== $atts['pagination'] && $result['pages'] > 1,
+					'total'        => $result['total'],
+					'total_pages'  => $result['pages'],
+					'per_page'     => max( 1, min( 48, (int) $atts['limit'] ) ),
+					'current_page' => $result['page'],
+				)
+			);
+			$loop = $this->loop_start( (string) woocommerce_product_loop_start( false ) );
+			echo '<div class="exin-bf-products woocommerce" style="--exin-bf-columns:' . esc_attr( (string) $cols ) . ';--exin-bf-tablet:' . esc_attr( (string) $tablet ) . ';--exin-bf-mobile:' . esc_attr( (string) $mobile ) . '">';
+			echo $loop['html']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Trusted WooCommerce loop template; active theme structure must be preserved.
 			foreach ( $result['products'] as $product ) {
 				$GLOBALS['product'] = $product;
 				$GLOBALS['post']    = get_post( $product->get_id() ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Woo template loop context; restored in finally below.
@@ -230,10 +253,10 @@ final class Storefront {
 				if ( $product->is_type( 'simple' ) ) {
 					wc_get_template_part( 'content', 'product' );
 				} else {
-					$this->variation_card( $product );
+					$this->variation_card( $product, $loop['item_tag'] );
 				}
 			}
-			echo '</ul>';
+			woocommerce_product_loop_end();
 			if ( 'no' !== $atts['pagination'] && $result['pages'] > 1 ) {
 				echo '<nav class="exin-bf-pagination" aria-label="' . esc_attr__( 'صفحات محصولات کمپین', 'exin-black-friday' ) . '">';
 				echo wp_kses_post(
@@ -261,17 +284,54 @@ final class Storefront {
 			wp_reset_postdata();
 			$GLOBALS['product'] = $old_product;
 			$GLOBALS['post']    = $old_post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the caller's original template context.
+			if ( $old_post instanceof \WP_Post ) {
+				setup_postdata( $old_post );
+			}
+			if ( $had_loop ) {
+				$GLOBALS['woocommerce_loop'] = $old_loop; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the caller's complete WooCommerce loop context.
+			} else {
+				unset( $GLOBALS['woocommerce_loop'] );
+			}
 		}
+	}
+
+	/**
+	 * Add scoped layout styling without replacing the active loop-start template.
+	 *
+	 * Standard list loops require list items; div-based theme loops require div
+	 * variation cards. The normal simple-product template remains theme-owned.
+	 *
+	 * @param string $html Trusted output from the WooCommerce loop-start template.
+	 * @return array{html:string,item_tag:string} Updated markup and valid item tag.
+	 * @throws \UnexpectedValueException When a theme returns no loop container.
+	 */
+	private function loop_start( string $html ): array {
+		$processor = new \WP_HTML_Tag_Processor( $html );
+		if ( ! $processor->next_tag( array( 'class_name' => 'products' ) ) ) {
+			$processor = new \WP_HTML_Tag_Processor( $html );
+			if ( ! $processor->next_tag() ) {
+				throw new \UnexpectedValueException( 'invalid_product_loop_template' );
+			}
+		}
+		$item_tag = in_array( $processor->get_tag(), array( 'UL', 'OL' ), true ) ? 'li' : 'div';
+		$processor->add_class( 'exin-bf-grid' );
+		return array(
+			'html'     => $processor->get_updated_html(),
+			'item_tag' => $item_tag,
+		);
 	}
 
 	/**
 	 * Render one selected variation with WooCommerce pricing and stock.
 	 *
 	 * @param \WC_Product $product Optional WooCommerce product object.
+	 * @param string      $item_tag List-item or div container selected from loop markup.
 	 * @return void
 	 */
-	private function variation_card( \WC_Product $product ): void {
-		echo '<li class="product exin-bf-variation"><a href="' . esc_url( $product->get_permalink() ) . '" class="woocommerce-LoopProduct-link woocommerce-loop-product__link">';
+	private function variation_card( \WC_Product $product, string $item_tag = 'li' ): void {
+		echo 'li' === $item_tag ? '<li ' : '<div ';
+		wc_product_class( 'exin-bf-variation', $product->get_id() );
+		echo '><a href="' . esc_url( $product->get_permalink() ) . '" class="woocommerce-LoopProduct-link woocommerce-loop-product__link">';
 		echo $this->product_badge( $product ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo wp_kses_post( $product->get_image( 'woocommerce_thumbnail', array( 'loading' => 'lazy' ) ) );
 		echo '<h2 class="woocommerce-loop-product__title">' . esc_html( $product->get_name() ) . '</h2><span class="price">' . wp_kses_post( $product->get_price_html() ) . '</span></a>';
@@ -279,7 +339,7 @@ final class Storefront {
 		if ( $product->is_purchasable() && $product->is_in_stock() ) {
 			echo '<a class="button" href="' . esc_url( $product->add_to_cart_url() ) . '" aria-label="' . esc_attr( $product->add_to_cart_description() ) . '">' . esc_html( $product->add_to_cart_text() ) . '</a>';
 		}
-		echo '</li>';
+		echo 'li' === $item_tag ? '</li>' : '</div>';
 	}
 
 	/**
@@ -338,7 +398,7 @@ final class Storefront {
 			return '';
 		}
 		$product = wc_get_product( $product_id );
-		if ( ! $product ) {
+		if ( ! $product || ! CampaignContext::purchasable_product( $product ) ) {
 			return '';
 		}
 		return $this->product_badge( $product );
@@ -354,9 +414,14 @@ final class Storefront {
 		$label   = __( 'بلک فرایدی EXIN', 'exin-black-friday' );
 		$regular = $product->get_regular_price();
 		$current = $product->get_price();
-		if ( '' !== $regular && '' !== $current && (float) $regular > 0 && (float) $current < (float) $regular ) {
-			// Display only; WooCommerce remains the monetary source of truth.
-			$label .= ' · ' . number_format_i18n( floor( ( 1 - (float) $current / (float) $regular ) * 100 ) ) . '%';
+		try {
+			if ( '' !== $regular && '' !== $current && $product->is_on_sale() ) {
+				$percent = ( new PricingEngine() )->discount_percent( (string) $regular, (string) $current, wc_get_price_decimals(), 0 );
+				$label  .= ' · ' . number_format_i18n( (int) $percent ) . '%';
+			}
+		} catch ( \Throwable $error ) {
+			// Invalid external display-price filters cannot create a fabricated percentage.
+			$label = __( 'بلک فرایدی EXIN', 'exin-black-friday' );
 		}
 		return '<span class="exin-bf-badge">' . esc_html( $label ) . '</span>';
 	}

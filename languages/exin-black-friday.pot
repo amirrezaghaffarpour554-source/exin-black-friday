@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: EXIN Black Friday 1.0.0\n"
+"Project-Id-Version: EXIN Black Friday 1.0.1\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/exin-black-friday\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-13T22:07:42+00:00\n"
+"POT-Creation-Date: 2026-11-17T12:21:20+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: exin-black-friday\n"
@@ -33,47 +33,54 @@ msgstr ""
 msgid "افزونه بلک فرایدی اکسین به PHP 8.1 یا بالاتر نیاز دارد."
 msgstr ""
 
-#: src/Admin/Dashboard.php:46
-#: src/Admin/Dashboard.php:85
-#: src/Infrastructure/CampaignRepository.php:38
+#: src/Admin/Dashboard.php:47
+#: src/Admin/Dashboard.php:92
+#: src/Infrastructure/CampaignRepository.php:121
+#: assets/admin.js:110
 msgid "بلک فرایدی اکسین"
 msgstr ""
 
-#: src/Admin/Dashboard.php:86
-#: src/Admin/Dashboard.php:98
-#: assets/admin.js:156
+#: src/Admin/Dashboard.php:67
+msgid "تومان"
+msgstr ""
+
+#: src/Admin/Dashboard.php:93
+#: src/Admin/Dashboard.php:106
 msgid "افزودن محصول"
 msgstr ""
 
-#: src/Admin/Dashboard.php:88
+#: src/Admin/Dashboard.php:96
 msgid "بخش‌های مدیریت کمپین"
 msgstr ""
 
-#: src/Admin/Dashboard.php:89
+#: src/Admin/Dashboard.php:97
 msgid "نمای کلی"
 msgstr ""
 
-#: src/Admin/Dashboard.php:90
+#: src/Admin/Dashboard.php:98
+#: assets/admin.js:22
 msgid "محصولات"
 msgstr ""
 
-#: src/Admin/Dashboard.php:91
+#: src/Admin/Dashboard.php:99
 msgid "تنظیمات و راه‌اندازی"
 msgstr ""
 
-#: src/Admin/Dashboard.php:92
+#: src/Admin/Dashboard.php:100
+#: assets/admin.js:314
 msgid "گزارش و عیب‌یابی"
 msgstr ""
 
-#: src/Admin/Dashboard.php:95
+#: src/Admin/Dashboard.php:103
 msgid "در حال دریافت وضعیت کمپین…"
 msgstr ""
 
-#: src/Admin/Dashboard.php:96
+#: src/Admin/Dashboard.php:104
 msgid "کف قیمت مربوط به موتور کمپین است. کوپن‌ها و تخفیف‌های بیرونی ممکن است مبلغ پرداختی را کاهش دهند."
 msgstr ""
 
-#: src/Admin/Dashboard.php:98
+#: src/Admin/Dashboard.php:106
+#: assets/admin.js:28
 msgid "بستن"
 msgstr ""
 
@@ -118,31 +125,35 @@ msgid "ترتیب"
 msgstr ""
 
 #: src/Integration/Elementor/CampaignWidget.php:139
-msgid "اولویت کمپین"
+msgid "ترتیب هوشمند جشنواره"
 msgstr ""
 
 #: src/Integration/Elementor/CampaignWidget.php:140
-msgid "نام"
+msgid "اولویت کمپین (سازگاری قبلی)"
 msgstr ""
 
 #: src/Integration/Elementor/CampaignWidget.php:141
-msgid "جدیدترین"
+msgid "نام"
 msgstr ""
 
 #: src/Integration/Elementor/CampaignWidget.php:142
-msgid "قیمت صعودی"
+msgid "جدیدترین"
 msgstr ""
 
 #: src/Integration/Elementor/CampaignWidget.php:143
+msgid "قیمت صعودی"
+msgstr ""
+
+#: src/Integration/Elementor/CampaignWidget.php:144
 msgid "قیمت نزولی"
 msgstr ""
 
-#: src/Integration/Elementor/CampaignWidget.php:150
-msgid "شناسه دسته‌بندی (اختیاری)"
+#: src/Integration/Elementor/CampaignWidget.php:151
+msgid "نامک یا شناسه دسته‌بندی (اختیاری)"
 msgstr ""
 
 #: src/Integration/Elementor/CampaignWidget.php:158
-msgid "نمایش ناموجود"
+msgid "فقط محصولات ویژه"
 msgstr ""
 
 #: src/Integration/Elementor/CampaignWidget.php:167
@@ -161,74 +172,94 @@ msgstr ""
 msgid "رنگ تأکید"
 msgstr ""
 
-#: src/Integration/Storefront.php:127
-#: src/Integration/Storefront.php:320
+#: src/Integration/Shipping.php:210
+msgid "یارانه ارسال اعمال نمی‌شود: سقف، حدنصاب، واحد پول یا روش مجاز را در تنظیمات بررسی کنید. برای ارزهای غیر ریال/تومان، سقف باید صریحاً در واحد فروشگاه ثبت شود."
+msgstr ""
+
+#: src/Integration/Shipping.php:211
+msgid "یک روش ارسال انتخاب‌شده حذف، غیرفعال یا ناسازگار است. یارانه فقط روی روش نرخ ثابت مجاز اعمال می‌شود؛ سایر نرخ‌ها بدون تغییر می‌مانند."
+msgstr ""
+
+#: src/Integration/Shipping.php:212
+msgid "هزینه پایه یا مالیات یک نرخ ارسال با دقت معتبر قابل محاسبه نبود؛ آن نرخ بدون تغییر باقی ماند. فرمول روش و افزونه‌های تغییر نرخ یا مالیات را بررسی کنید."
+msgstr ""
+
+#: src/Integration/Shipping.php:213
+msgid "یک بسته ارسال خارج از مسیر استاندارد بسته‌بندی ووکامرس محاسبه شد؛ برای جلوگیری از عبور از سقف کل سبد، یارانه آن بسته اعمال نشد."
+msgstr ""
+
+#: src/Integration/Storefront.php:129
+#: src/Integration/Storefront.php:380
 msgid "کمپین در حال حاضر فعال نیست."
 msgstr ""
 
-#: src/Integration/Storefront.php:130
+#: src/Integration/Storefront.php:132
 msgid "زمان باقی‌مانده کمپین"
 msgstr ""
 
-#: src/Integration/Storefront.php:130
+#: src/Integration/Storefront.php:132
 msgid "در حال دریافت زمان سرور…"
 msgstr ""
 
-#: src/Integration/Storefront.php:155
-#: src/Integration/Storefront.php:319
+#: src/Integration/Storefront.php:157
+#: src/Integration/Storefront.php:379
 msgid "کمپین پایان یافته است."
 msgstr ""
 
-#: src/Integration/Storefront.php:156
+#: src/Integration/Storefront.php:158
 msgid "زمان سرور در دسترس نیست."
 msgstr ""
 
-#: src/Integration/Storefront.php:157
-#: assets/admin.js:273
+#: src/Integration/Storefront.php:159
+#: assets/admin.js:398
 msgid "روز"
 msgstr ""
 
-#: src/Integration/Storefront.php:201
+#: src/Integration/Storefront.php:207
 msgid "محصولی برای نمایش وجود ندارد."
 msgstr ""
 
-#: src/Integration/Storefront.php:238
+#: src/Integration/Storefront.php:261
 msgid "صفحات محصولات کمپین"
 msgstr ""
 
-#: src/Integration/Storefront.php:246
+#: src/Integration/Storefront.php:269
+#: assets/admin.js:26
 msgid "قبلی"
 msgstr ""
 
-#: src/Integration/Storefront.php:247
+#: src/Integration/Storefront.php:270
+#: assets/admin.js:27
 msgid "بعدی"
 msgstr ""
 
-#: src/Integration/Storefront.php:292
+#: src/Integration/Storefront.php:352
 msgid "دسته‌بندی محصولات کمپین"
 msgstr ""
 
-#: src/Integration/Storefront.php:293
+#: src/Integration/Storefront.php:353
+#: assets/admin.js:29
 msgid "همه"
 msgstr ""
 
-#: src/Integration/Storefront.php:315
+#: src/Integration/Storefront.php:375
 msgid "کمپین در حال آماده‌سازی است."
 msgstr ""
 
-#: src/Integration/Storefront.php:316
+#: src/Integration/Storefront.php:376
 msgid "کمپین به‌زودی آغاز می‌شود."
 msgstr ""
 
-#: src/Integration/Storefront.php:317
+#: src/Integration/Storefront.php:377
 msgid "کمپین فعال است."
 msgstr ""
 
-#: src/Integration/Storefront.php:318
+#: src/Integration/Storefront.php:378
 msgid "تغییر قیمت‌ها متوقف شده است."
 msgstr ""
 
-#: src/Integration/Storefront.php:354
+#: src/Integration/Storefront.php:414
+#: src/Integration/Storefront.php:424
 msgid "بلک فرایدی EXIN"
 msgstr ""
 
@@ -236,1011 +267,1110 @@ msgstr ""
 msgid "بازیابی صف کمپین ناموفق بود؛ صفحه عیب‌یابی را بررسی کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:106
+#: src/Rest/AdminController.php:112
 msgid "عملیات انجام نشد. جزئیات ایمن را در عیب‌یابی بررسی کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:124
+#: src/Rest/AdminController.php:130
 msgid "دسترسی مدیریت ووکامرس لازم است."
 msgstr ""
 
-#: src/Rest/AdminController.php:128
+#: src/Rest/AdminController.php:134
 msgid "نشست معتبر نیست؛ صفحه را دوباره بارگذاری کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:187
-msgid "حداقل ۲ و حداکثر ۱۰۰ نویسه وارد کنید."
+#: src/Rest/AdminController.php:193
+msgid "جست‌وجو را خالی بگذارید یا بین ۲ و ۱۰۰ نویسه وارد کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:227
+#: src/Rest/AdminController.php:237
+msgid "فیلترهای محصول بیش از حد طولانی‌اند."
+msgstr ""
+
+#: src/Rest/AdminController.php:242
+msgid "ساختار فیلترهای محصول معتبر نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:246
+msgid "حداکثر پنج فیلتر برند یا ویژگی مجاز است."
+msgstr ""
+
+#: src/Rest/AdminController.php:253
+msgid "برند یا ویژگی انتخابی ثبت نشده است."
+msgstr ""
+
+#: src/Rest/AdminController.php:257
+msgid "مقدار فیلتر محصول معتبر نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:301
 msgid "تنظیمات کمپین شروع‌شده قابل تغییر نیست. برای کمپین بعدی پیش‌نویس بسازید."
 msgstr ""
 
-#: src/Rest/AdminController.php:232
+#: src/Rest/AdminController.php:306
 msgid "ابتدا کمپین جاری را پایان دهید و بازیابی قیمت‌ها را بررسی کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:235
+#: src/Rest/AdminController.php:309
 msgid "یک پیش‌نویس موجود است؛ همان را ویرایش کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:244
+#: src/Rest/AdminController.php:318
 msgid "بازیابی کمپین قبلی کامل نیست. ابتدا مالکیت قیمت‌ها و تعارض‌ها را بررسی کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:256
+#: src/Rest/AdminController.php:331
 msgid "واحد پول یا دقت فروشگاه تغییر کرده است؛ پیش از ادامه آن را بررسی کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:265
-msgid "برای تغییر برنامه مالی، ابتدا محصولات پیش‌نویس را حذف کنید و پس از ذخیره دوباره اضافه کنید."
+#: src/Rest/AdminController.php:370
+msgid "فعال‌سازی فقط پس از بررسی نهایی و تأیید صریح مدیر مجاز است."
 msgstr ""
 
-#: src/Rest/AdminController.php:291
+#: src/Rest/AdminController.php:375
 msgid "بازیابی قیمت‌ها به تأیید صریح نیاز دارد."
 msgstr ""
 
-#: src/Rest/AdminController.php:358
+#: src/Rest/AdminController.php:442
 msgid "محصول عضو این کمپین نیست."
 msgstr ""
 
-#: src/Rest/AdminController.php:364
+#: src/Rest/AdminController.php:448
 msgid "حذف و بازیابی قیمت محصول را تأیید کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:371
+#: src/Rest/AdminController.php:455
 msgid "حفظ قیمت بیرونی و واگذاری کنترل را تأیید کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:374
+#: src/Rest/AdminController.php:458
 msgid "برای بررسی تعارض، بازیابی ایمن کمپین را اجرا کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:390
+#: src/Rest/AdminController.php:474
 msgid "تغییری انتخاب نشده است."
 msgstr ""
 
-#: src/Rest/AdminController.php:422
+#: src/Rest/AdminController.php:506
 msgid "هر نوبت بین ۱ تا ۲۵ محصول مجاز است."
 msgstr ""
 
-#: src/Rest/AdminController.php:427
+#: src/Rest/AdminController.php:511
 msgid "حذف گروهی و بازیابی قیمت را تأیید کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:434
+#: src/Rest/AdminController.php:518
 msgid "ساختار محصول معتبر نیست."
 msgstr ""
 
-#: src/Rest/AdminController.php:441
+#: src/Rest/AdminController.php:525
 msgid "محصول عضو کمپین نیست."
 msgstr ""
 
-#: src/Rest/AdminController.php:453
+#: src/Rest/AdminController.php:537
 msgid "عملیات محصول انجام نشد؛ قیمت و وضعیت تعارض را بررسی کنید."
 msgstr ""
 
-#: src/Rest/AdminController.php:470
-msgid "عنوان کمپین معتبر نیست."
+#: src/Rest/AdminController.php:588
+msgid "هر نوبت ترتیب حداکثر ۱۰۰ محصول قابل ذخیره است."
 msgstr ""
 
-#: src/Rest/AdminController.php:474
-msgid "منطقه زمانی معتبر نیست."
+#: src/Rest/AdminController.php:593
+msgid "ساختار ترتیب محصولات معتبر نیست."
 msgstr ""
 
-#: src/Rest/AdminController.php:481
-msgid "زمان شروع معتبر نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:486
-msgid "تنظیمات معتبر نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:490
-msgid "روش ارسال معتبر نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:496
-msgid "برای ارسال رایگان، حدنصاب مثبت و حداقل یک روش نرخ ثابت لازم است."
-msgstr ""
-
-#: src/Rest/AdminController.php:501
-msgid "روش ارسال انتخابی نرخ ثابت فعال نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:506
-msgid "حداقل یک وضعیت مجاز گزارش لازم است."
-msgstr ""
-
-#: src/Rest/AdminController.php:511
-msgid "سفارش پرداخت‌نشده، ناموفق یا لغوشده در آمار فروش مجاز نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:571
-msgid "سایر مناطق"
-msgstr ""
-
-#: src/Rest/AdminController.php:597
-msgid "کمپین پیدا نشد."
-msgstr ""
-
-#: src/Rest/AdminController.php:612
-msgid "تغییر قیمت مبنا و کف پس از شروع کمپین مجاز نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:626
-msgid "مبلغ را با رقم و نقطهٔ اعشار وارد کنید؛ نماد علمی یا جداکنندهٔ هزارگان مجاز نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:627
-msgid "تعداد رقم اعشار مبلغ از دقت مجاز ارز فروشگاه بیشتر است."
-msgstr ""
-
-#: src/Rest/AdminController.php:628
-msgid "مبلغ از محدودهٔ امن محاسبات بیشتر است؛ مقدار کوچک‌تری وارد کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:629
-msgid "دقت ارز فروشگاه باید بین صفر تا هشت رقم اعشار باشد."
-msgstr ""
-
-#: src/Rest/AdminController.php:630
-msgid "قیمت پایه و کف باید مثبت باشند و کف نباید از قیمت پایه بیشتر باشد."
-msgstr ""
-
-#: src/Rest/AdminController.php:631
-msgid "مدت کمپین باید بین یک تا ۳۶۶ روز باشد."
-msgstr ""
-
-#: src/Rest/AdminController.php:632
-msgid "الگوی قیمت‌گذاری معتبر نیست؛ خطی یا تصاعدی را انتخاب کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:633
-msgid "توان الگوی تصاعدی باید عدد صحیح یک تا هشت باشد."
-msgstr ""
-
-#: src/Rest/AdminController.php:634
-msgid "روش گردکردن معتبر نیست؛ یکی از روش‌های مجاز را انتخاب کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:635
-msgid "کمپین پیدا نشد؛ صفحه را تازه کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:636
-msgid "کمپین در وضعیت قابل ویرایش نیست؛ تنظیمات مالی فقط در پیش‌نویس قابل تغییرند."
-msgstr ""
-
-#: src/Rest/AdminController.php:637
-msgid "زمان‌بندی در وضعیت فعلی کمپین مجاز نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:638
-msgid "شروع در وضعیت فعلی کمپین مجاز نیست."
+#: src/Rest/AdminController.php:598
+msgid "محصول تکراری یا خارج از کمپین در ترتیب وجود دارد."
 msgstr ""
 
 #: src/Rest/AdminController.php:639
-msgid "زمان شروع کمپین هنوز نرسیده است؛ آن را زمان‌بندی کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:640
-msgid "بازهٔ زمانی کمپین پایان یافته است؛ نتیجهٔ بازیابی را بررسی کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:641
-msgid "فقط کمپین فعال یا زمان‌بندی‌شده را می‌توان متوقف کرد."
-msgstr ""
-
-#: src/Rest/AdminController.php:642
-msgid "ادامه در وضعیت فعلی کمپین مجاز نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:643
-msgid "تغییر وضعیت درخواست‌شده برای کمپین مجاز نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:644
-msgid "محصول عضو این کمپین نیست یا حذف شده است."
+msgid "برنامه یا مالکیت یک محصول کامل نیست؛ پیش از فعال‌سازی تعارض‌ها را بررسی کنید."
 msgstr ""
 
 #: src/Rest/AdminController.php:645
-msgid "محصول تعارض ثبت‌شده‌ای برای حل‌کردن ندارد؛ وضعیت را تازه کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:646
-msgid "تغییر وضعیت درخواست‌شده برای محصول مجاز نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:647
-msgid "روش انتخاب‌شده برای حل تعارض مجاز نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:648
-msgid "محصول تخفیف فعال یا زمان‌بندی‌شده دارد؛ ابتدا تداخل را خارج از کمپین بررسی کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:649
-msgid "قیمت پویا شناسایی شد؛ کنترل قیمت این محصول با کمپین سازگار نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:650
-msgid "قیمت جاری با قیمت اصلی معتبر یکسان نیست؛ محصول وارد کمپین نشد."
-msgstr ""
-
-#: src/Rest/AdminController.php:651
-msgid "این محصول قبلاً به کمپین اضافه شده است."
-msgstr ""
-
-#: src/Rest/AdminController.php:652
-msgid "قیمت این محصول هنوز تحت کنترل کمپین دیگری است."
-msgstr ""
-
-#: src/Rest/AdminController.php:653
-msgid "واحد پول یا دقت قیمت فروشگاه تغییر کرده است."
-msgstr ""
-
-#: src/Rest/AdminController.php:654
-msgid "محصول پیدا نشد یا نوع آن پشتیبانی نمی‌شود؛ یک محصول ساده یا تنوع انتخاب کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:655
-msgid "محصول و والد تنوع باید منتشر شده باشند."
-msgstr ""
-
-#: src/Rest/AdminController.php:656
-msgid "پس از شروع کمپین، تغییر شرایط مالی مجاز نیست."
-msgstr ""
-
-#: src/Rest/AdminController.php:657
-msgid "قیمت بیرونی تغییر کرده است؛ پیش از حذف، تعارض را بررسی کنید."
+msgid "برای فعال‌سازی، حداقل یک محصول با کف معتبر انتخاب کنید."
 msgstr ""
 
 #: src/Rest/AdminController.php:658
-msgid "قیمت تحت کنترلی برای بازیابی وجود ندارد."
+msgid "حداقل یک وضعیت مجاز گزارش لازم است."
 msgstr ""
 
-#: src/Rest/AdminController.php:659
-msgid "بازیابی در حال اجراست؛ نتیجه را در عیب‌یابی بررسی کنید."
+#: src/Rest/AdminController.php:663
+msgid "سفارش پرداخت‌نشده، لغوشده یا کاملاً مستردشده در آمار فروش مجاز نیست."
 msgstr ""
 
-#: src/Rest/AdminController.php:660
-msgid "ابتدا حداقل یک محصول به کمپین اضافه کنید."
-msgstr ""
-
-#: src/Rest/AdminController.php:669
-msgid "ورودی یا وضعیت عملیات معتبر نیست؛ کف قیمت، زمان‌بندی و تعارض محصول را بررسی کنید."
+#: src/Rest/AdminController.php:678
+msgid "عنوان کمپین معتبر نیست."
 msgstr ""
 
 #: src/Rest/AdminController.php:682
+msgid "منطقه زمانی معتبر نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:694
+msgid "تاریخ شمسی یا ساعت ۲۴ساعتهٔ شروع معتبر نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:699
+msgid "تنظیمات معتبر نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:703
+msgid "روش ارسال معتبر نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:713
+msgid "برای ارسال جشنواره، سقف یارانه و حداقل یک روش نرخ ثابت معتبر را تعیین کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:718
+msgid "روش ارسال انتخابی نرخ ثابت فعال نیست؛ روش ناسازگار تغییر نمی‌کند."
+msgstr ""
+
+#: src/Rest/AdminController.php:778
+msgid "سایر مناطق"
+msgstr ""
+
+#: src/Rest/AdminController.php:804
+msgid "کمپین پیدا نشد."
+msgstr ""
+
+#: src/Rest/AdminController.php:819
+msgid "تغییر قیمت مبنا و کف پس از شروع کمپین مجاز نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:833
+msgid "مبلغ معتبر با ارقام فارسی یا انگلیسی وارد کنید؛ گروه‌بندی هزارگان باید صحیح باشد."
+msgstr ""
+
+#: src/Rest/AdminController.php:834
+msgid "طول مبلغ یا دقت ورودی معتبر نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:835
+msgid "تعداد رقم اعشار مبلغ از دقت مجاز بیشتر است."
+msgstr ""
+
+#: src/Rest/AdminController.php:836
+msgid "مبلغ از محدودهٔ امن محاسبات بیشتر است."
+msgstr ""
+
+#: src/Rest/AdminController.php:837
+msgid "واحد مبلغ قابل تبدیل نیست؛ مبلغ را در واحد پشتیبانی‌شدهٔ فروشگاه وارد کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:838
+msgid "تنظیمات مالی فقط در پیش‌نویس قابل تغییرند."
+msgstr ""
+
+#: src/Rest/AdminController.php:839
+msgid "این پیش‌نویس مالکیت قیمت باز دارد؛ پیش از ویرایش، بازیابی یا تعارض را بررسی کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:840
+msgid "ذخیرهٔ اتمیک تنظیمات به جدول‌های InnoDB نیاز دارد؛ وضعیت دیتابیس را بررسی کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:841
+msgid "مبلغ را با رقم و نقطهٔ اعشار وارد کنید؛ نماد علمی یا جداکنندهٔ هزارگان مجاز نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:842
+msgid "تعداد رقم اعشار مبلغ از دقت مجاز ارز فروشگاه بیشتر است."
+msgstr ""
+
+#: src/Rest/AdminController.php:843
+msgid "مبلغ از محدودهٔ امن محاسبات بیشتر است؛ مقدار کوچک‌تری وارد کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:844
+msgid "دقت ارز فروشگاه باید بین صفر تا هشت رقم اعشار باشد."
+msgstr ""
+
+#: src/Rest/AdminController.php:845
+msgid "قیمت پایه و کف باید مثبت باشند و کف نباید از قیمت پایه بیشتر باشد."
+msgstr ""
+
+#: src/Rest/AdminController.php:846
+msgid "مدت کمپین باید بین یک تا ۳۶۶ روز باشد."
+msgstr ""
+
+#: src/Rest/AdminController.php:847
+msgid "الگوی قیمت‌گذاری معتبر نیست؛ خطی یا تصاعدی را انتخاب کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:848
+msgid "توان الگوی تصاعدی باید عدد صحیح یک تا هشت باشد."
+msgstr ""
+
+#: src/Rest/AdminController.php:849
+msgid "روش گردکردن معتبر نیست؛ یکی از روش‌های مجاز را انتخاب کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:850
+msgid "کمپین پیدا نشد؛ صفحه را تازه کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:851
+msgid "کمپین در وضعیت قابل ویرایش نیست؛ تنظیمات مالی فقط در پیش‌نویس قابل تغییرند."
+msgstr ""
+
+#: src/Rest/AdminController.php:852
+msgid "زمان‌بندی در وضعیت فعلی کمپین مجاز نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:853
+msgid "شروع در وضعیت فعلی کمپین مجاز نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:854
+msgid "زمان شروع کمپین هنوز نرسیده است؛ آن را زمان‌بندی کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:855
+msgid "بازهٔ زمانی کمپین پایان یافته است؛ نتیجهٔ بازیابی را بررسی کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:856
+msgid "فقط کمپین فعال یا زمان‌بندی‌شده را می‌توان متوقف کرد."
+msgstr ""
+
+#: src/Rest/AdminController.php:857
+msgid "ادامه در وضعیت فعلی کمپین مجاز نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:858
+msgid "تغییر وضعیت درخواست‌شده برای کمپین مجاز نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:859
+msgid "محصول عضو این کمپین نیست یا حذف شده است."
+msgstr ""
+
+#: src/Rest/AdminController.php:860
+msgid "محصول تعارض ثبت‌شده‌ای برای حل‌کردن ندارد؛ وضعیت را تازه کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:861
+msgid "تغییر وضعیت درخواست‌شده برای محصول مجاز نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:862
+msgid "روش انتخاب‌شده برای حل تعارض مجاز نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:863
+msgid "محصول تخفیف فعال یا زمان‌بندی‌شده دارد؛ ابتدا تداخل را خارج از کمپین بررسی کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:864
+msgid "قیمت پویا شناسایی شد؛ کنترل قیمت این محصول با کمپین سازگار نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:865
+msgid "قیمت جاری با قیمت اصلی معتبر یکسان نیست؛ محصول وارد کمپین نشد."
+msgstr ""
+
+#: src/Rest/AdminController.php:866
+msgid "این محصول قبلاً به کمپین اضافه شده است."
+msgstr ""
+
+#: src/Rest/AdminController.php:867
+msgid "قیمت این محصول هنوز تحت کنترل کمپین دیگری است."
+msgstr ""
+
+#: src/Rest/AdminController.php:868
+msgid "واحد پول یا دقت قیمت فروشگاه تغییر کرده است."
+msgstr ""
+
+#: src/Rest/AdminController.php:869
+msgid "محصول پیدا نشد یا نوع آن پشتیبانی نمی‌شود؛ یک محصول ساده یا تنوع انتخاب کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:870
+msgid "محصول و والد تنوع باید منتشر شده باشند."
+msgstr ""
+
+#: src/Rest/AdminController.php:871
+msgid "پس از شروع کمپین، تغییر شرایط مالی مجاز نیست."
+msgstr ""
+
+#: src/Rest/AdminController.php:872
+msgid "قیمت بیرونی تغییر کرده است؛ پیش از حذف، تعارض را بررسی کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:873
+msgid "قیمت تحت کنترلی برای بازیابی وجود ندارد."
+msgstr ""
+
+#: src/Rest/AdminController.php:874
+msgid "بازیابی در حال اجراست؛ نتیجه را در عیب‌یابی بررسی کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:875
+msgid "ابتدا حداقل یک محصول به کمپین اضافه کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:884
+msgid "ورودی یا وضعیت عملیات معتبر نیست؛ کف قیمت، زمان‌بندی و تعارض محصول را بررسی کنید."
+msgstr ""
+
+#: src/Rest/AdminController.php:897
 msgid "درخواست JSON معتبر لازم است."
 msgstr ""
 
-#: src/Rest/AdminController.php:707
+#: src/Rest/AdminController.php:932
 msgid "مقدار ورودی معتبر نیست."
 msgstr ""
 
-#: src/Rest/AdminController.php:723
+#: src/Rest/AdminController.php:948
 msgid "عدد صحیح معتبر لازم است."
 msgstr ""
 
-#: src/Rest/AdminController.php:727
+#: src/Rest/AdminController.php:952
 msgid "عدد خارج از بازه مجاز است."
 msgstr ""
 
-#: src/Rest/AdminController.php:741
+#: src/Rest/AdminController.php:966
 msgid "گزینه باید روشن یا خاموش باشد."
 msgstr ""
 
-#: src/Rest/AdminController.php:757
+#: src/Rest/AdminController.php:982
 msgid "گزینه انتخابی معتبر نیست."
 msgstr ""
 
-#: assets/admin.js:22
-msgid "پیش‌نویس"
+#: assets/admin-helpers.js:202
+msgid "انتخاب از تقویم شمسی"
 msgstr ""
 
-#: assets/admin.js:22
-msgid "زمان‌بندی‌شده"
+#: assets/admin-helpers.js:210
+msgid "تقویم شمسی"
 msgstr ""
 
-#: assets/admin.js:22
-#: assets/admin.js:214
-msgid "فعال"
+#: assets/admin-helpers.js:242
+msgid "ماه قبل"
 msgstr ""
 
-#: assets/admin.js:22
-msgid "متوقف"
+#: assets/admin-helpers.js:251
+msgid "ماه بعد"
 msgstr ""
 
-#: assets/admin.js:23
-msgid "پایان‌یافته"
+#: assets/admin-helpers.js:305
+msgid "بستن تقویم"
 msgstr ""
 
-#: assets/admin.js:23
-msgid "ناموفق"
-msgstr ""
-
-#: assets/admin.js:23
-msgid "انتخاب‌شده"
-msgstr ""
-
-#: assets/admin.js:23
-msgid "در صف"
-msgstr ""
-
-#: assets/admin.js:24
-#: assets/admin.js:167
-msgid "ناموجود"
-msgstr ""
-
-#: assets/admin.js:24
-msgid "تعارض"
-msgstr ""
-
-#: assets/admin.js:24
-msgid "حذف‌شده"
-msgstr ""
-
-#: assets/admin.js:59
-msgid "پاسخ سرور معتبر نیست؛ اتصال را بررسی کنید."
-msgstr ""
-
-#: assets/admin.js:60
-msgid "عملیات انجام نشد."
-msgstr ""
-
-#: assets/admin.js:88
-msgid "شروع سریع · ۵ مرحله"
-msgstr ""
-
-#: assets/admin.js:88
-msgid "کمپین بعدی را آماده کنید"
-msgstr ""
-
-#: assets/admin.js:88
-msgid "زمان کمپین را تعیین کنید، الگوی کاهش قیمت و ارسال را انتخاب کنید، محصولات را اضافه کنید و پس از بررسی، زمان‌بندی را فعال کنید. هیچ صفحه یا تنظیم فروشگاه به‌طور خودکار تغییر نمی‌کند."
-msgstr ""
-
-#: assets/admin.js:88
-msgid "ساخت پیش‌نویس کمپین"
-msgstr ""
-
-#: assets/admin.js:97
-msgid "شروع کمپین"
-msgstr ""
-
-#: assets/admin.js:98
-msgid "فعال‌کردن زمان‌بندی"
-msgstr ""
-
-#: assets/admin.js:100
-msgid "بررسی و شروع در زمان مقرر"
-msgstr ""
-
-#: assets/admin.js:101
-msgid "توقف بدون بازیابی"
-msgstr ""
-
-#: assets/admin.js:102
-msgid "ادامه کمپین"
-msgstr ""
-
-#: assets/admin.js:103
-msgid "توقف و بازیابی قیمت‌ها"
-msgstr ""
-
-#: assets/admin.js:114
-msgid "زمان باقی‌مانده"
-msgstr ""
-
-#: assets/admin.js:115
-msgid "محصول منتخب"
-msgstr ""
-
-#: assets/admin.js:115
-msgid "سفارش مرتبط"
-msgstr ""
-
-#: assets/admin.js:115
-msgid "درآمد اقلام کمپین"
-msgstr ""
-
-#: assets/admin.js:115
-msgid "واحد فروخته‌شده"
-msgstr ""
-
-#: assets/admin.js:116
-msgid "هدف فروش"
-msgstr ""
-
-#: assets/admin.js:116
-msgid "مبلغ کل سفارش‌های مرتبط"
-msgstr ""
-
-#: assets/admin.js:116
-msgid "درآمد اقلام از کل سفارش جدا محاسبه می‌شود؛ مرجوعی‌ها کسر می‌شوند."
-msgstr ""
-
-#: assets/admin.js:116
-msgid "گزارش در حال تکمیل است؛ اعداد فعلی موقت‌اند. برای ادامه محاسبه، «ادامه محاسبه گزارش» را بزنید."
-msgstr ""
-
-#: assets/admin.js:116
-msgid "ادامه محاسبه گزارش"
-msgstr ""
-
-#: assets/admin.js:117
-#: assets/admin.js:219
-msgid "آخرین خطا"
-msgstr ""
-
-#: assets/admin.js:117
-msgid "بررسی عیب‌یابی"
-msgstr ""
-
-#: assets/admin.js:118
-msgid "پرفروش‌ترین محصولات"
-msgstr ""
-
-#: assets/admin.js:118
-msgid "آخرین سفارش‌های مرتبط"
-msgstr ""
-
-#: assets/admin.js:119
-#: assets/admin.js:216
-msgid "آخرین اجرای موفق"
-msgstr ""
-
-#: assets/admin.js:119
-msgid "مشاهده محصولات"
-msgstr ""
-
-#: assets/admin.js:127
-msgid "هنوز داده‌ای ثبت نشده است."
-msgstr ""
-
-#: assets/admin.js:129
-#: assets/admin.js:158
-msgid "محصول"
-msgstr ""
-
-#: assets/admin.js:129
-msgid "واحد"
-msgstr ""
-
-#: assets/admin.js:132
-msgid "هنوز سفارشی ثبت نشده است."
-msgstr ""
-
-#: assets/admin.js:156
-msgid "محصولات کمپین"
-msgstr ""
-
-#: assets/admin.js:156
-msgid "هر تنوع محصول، یک ردیف مستقل دارد. قیمت‌ها در واحد پول فروشگاه هستند."
-msgstr ""
-
-#: assets/admin.js:156
-msgid "افزودن گروهی"
-msgstr ""
-
-#: assets/admin.js:156
-msgid "حذف انتخاب‌شده‌ها"
-msgstr ""
-
-#: assets/admin.js:157
-msgid "جست‌وجو در صفحه جاری"
-msgstr ""
-
-#: assets/admin.js:157
-msgid "جست‌وجوی محصولات صفحه جاری"
-msgstr ""
-
-#: assets/admin.js:157
-msgid "فیلتر وضعیت"
-msgstr ""
-
-#: assets/admin.js:157
-msgid "همه وضعیت‌ها"
-msgstr ""
-
-#: assets/admin.js:158
-msgid "انتخاب همه محصولات صفحه"
-msgstr ""
-
-#: assets/admin.js:158
-msgid "قیمت مبنا"
-msgstr ""
-
-#: assets/admin.js:158
-msgid "قیمت فعلی"
-msgstr ""
-
-#: assets/admin.js:158
-#: assets/admin.js:279
-msgid "کف قیمت"
-msgstr ""
-
-#: assets/admin.js:158
-msgid "تخفیف فعلی"
-msgstr ""
-
-#: assets/admin.js:158
-msgid "موجودی"
-msgstr ""
-
-#: assets/admin.js:158
-msgid "وضعیت"
-msgstr ""
-
-#: assets/admin.js:158
-msgid "ترتیب / ویژه"
-msgstr ""
-
-#: assets/admin.js:158
-#: assets/admin.js:221
-msgid "عملیات"
-msgstr ""
-
-#: assets/admin.js:158
-msgid "محصولی اضافه نشده است."
-msgstr ""
-
-#: assets/admin.js:159
-msgid "صفحه قبل"
-msgstr ""
-
-#: assets/admin.js:159
-msgid "صفحه بعد"
-msgstr ""
-
-#: assets/admin.js:166
-msgid "بررسی مجدد ایمن"
-msgstr ""
-
-#: assets/admin.js:166
-msgid "حفظ قیمت بیرونی"
-msgstr ""
-
-#: assets/admin.js:166
-msgid "ویرایش"
-msgstr ""
-
-#: assets/admin.js:167
-msgid "انتخاب محصول"
-msgstr ""
-
-#: assets/admin.js:167
-msgid "محصول حذف‌شده"
-msgstr ""
-
-#: assets/admin.js:167
-msgid "موجود"
-msgstr ""
-
-#: assets/admin.js:167
-msgid "پیش‌سفارش مجاز"
-msgstr ""
-
-#: assets/admin.js:167
-#: assets/admin.js:279
-msgid "اولویت نمایش"
-msgstr ""
-
-#: assets/admin.js:167
-#: assets/admin.js:279
-msgid "محصول ویژه"
-msgstr ""
-
-#: assets/admin.js:167
-msgid "ادامه"
-msgstr ""
-
-#: assets/admin.js:167
-msgid "توقف"
-msgstr ""
-
-#: assets/admin.js:167
-msgid "حذف"
-msgstr ""
-
-#: assets/admin.js:180
-msgid "راه‌اندازی کمپین"
-msgstr ""
-
-#: assets/admin.js:180
-msgid "۱. زمان · ۲. الگو · ۳. ارسال · ۴. محصولات · ۵. بررسی و فعال‌سازی"
-msgstr ""
-
-#: assets/admin.js:181
-msgid "کمپین شروع‌شده قفل است. پس از پایان و بررسی بازیابی، کمپین بعدی را ایجاد کنید."
-msgstr ""
-
-#: assets/admin.js:182
-msgid "۱ و ۲ · زمان و کاهش قیمت"
-msgstr ""
-
-#: assets/admin.js:183
-msgid "عنوان کمپین"
-msgstr ""
-
-#: assets/admin.js:183
-msgid "بلک فرایدی ۱۴۰۵ اکسین"
-msgstr ""
-
-#: assets/admin.js:184
-msgid "زمان شروع"
-msgstr ""
-
-#: assets/admin.js:184
-msgid "زمان شروع، ساعت تغییر قیمت هر روز نیز هست."
-msgstr ""
-
-#: assets/admin.js:185
-msgid "منطقه زمانی"
-msgstr ""
-
-#: assets/admin.js:185
-msgid "مانند Asia/Tehran یا UTC"
-msgstr ""
-
-#: assets/admin.js:186
-msgid "تعداد روزها"
-msgstr ""
-
-#: assets/admin.js:186
-msgid "روز اول قیمت مبنا؛ ابتدای روز آخر کف قیمت. کمپین یک‌روزه از کف شروع می‌شود."
-msgstr ""
-
-#: assets/admin.js:187
-msgid "الگوی قیمت"
-msgstr ""
-
-#: assets/admin.js:187
-msgid "خطی · کاهش تقریباً برابر"
-msgstr ""
-
-#: assets/admin.js:187
-msgid "تدریجی · کاهش بیشتر در روزهای آخر"
-msgstr ""
-
-#: assets/admin.js:188
-msgid "هدف سفارش"
-msgstr ""
-
-#: assets/admin.js:189
-msgid "۳ · ارسال رایگان اختیاری"
-msgstr ""
-
-#: assets/admin.js:189
-msgid "فعال‌کردن ارسال رایگان مشروط"
-msgstr ""
-
-#: assets/admin.js:189
-msgid "مبلغ اقلام کمپین پس از کوپن و بدون مالیات، در هر بسته ارسال محاسبه می‌شود. فقط روش‌های نرخ ثابت انتخابی رایگان می‌شوند."
-msgstr ""
-
-#: assets/admin.js:190
-msgid "حداقل مبلغ واجد شرایط"
-msgstr ""
-
-#: assets/admin.js:191
-msgid "روش‌های نرخ ثابت مجاز"
-msgstr ""
-
-#: assets/admin.js:191
-msgid "روش نرخ ثابت فعالی وجود ندارد؛ ابتدا آن را در ووکامرس بسازید."
-msgstr ""
-
-#: assets/admin.js:192
-msgid "تنظیمات پیشرفته"
-msgstr ""
-
-#: assets/admin.js:193
-msgid "توان الگوی تدریجی"
-msgstr ""
-
-#: assets/admin.js:193
-msgid "توان صحیح ۱ تا ۸؛ پیش‌فرض ۲."
-msgstr ""
-
-#: assets/admin.js:194
-msgid "گردکردن در کوچک‌ترین واحد پول"
-msgstr ""
-
-#: assets/admin.js:194
-msgid "نزدیک‌ترین؛ نیم رو به بالا"
-msgstr ""
-
-#: assets/admin.js:194
-msgid "رو به پایین"
-msgstr ""
-
-#: assets/admin.js:194
-msgid "رو به بالا"
-msgstr ""
-
-#: assets/admin.js:195
-msgid "نگهداری گزارش رخدادها (روز)"
-msgstr ""
-
-#: assets/admin.js:196
-msgid "خروجی کمپین غیرفعال"
-msgstr ""
-
-#: assets/admin.js:196
-msgid "پیام وضعیت"
-msgstr ""
-
-#: assets/admin.js:196
-msgid "خالی"
-msgstr ""
-
-#: assets/admin.js:197
-msgid "نمایش محصولات ناموجود با وضعیت واقعی"
-msgstr ""
-
-#: assets/admin.js:198
-msgid "وضعیت‌های سفارش در گزارش"
-msgstr ""
-
-#: assets/admin.js:199
+#: assets/admin.js:15
 msgid "ذخیره پیش‌نویس"
 msgstr ""
 
-#: assets/admin.js:199
-msgid "ساخت پیش‌نویس و افزودن محصول"
+#: assets/admin.js:16
+msgid "پیش‌نویس ذخیره شد؛ قیمت فروشگاه تغییر نکرد."
 msgstr ""
 
-#: assets/admin.js:212
-msgid "نسخه PHP"
+#: assets/admin.js:17
+msgid "در حال ذخیره پیش‌نویس…"
 msgstr ""
 
-#: assets/admin.js:212
-msgid "نسخه وردپرس"
+#: assets/admin.js:18
+msgid "تغییرات در انتظار ذخیره است."
 msgstr ""
 
-#: assets/admin.js:212
-msgid "نسخه ووکامرس"
+#: assets/admin.js:19
+msgid "اطلاعات ناتمام در این صفحه حفظ شده است؛ برای ذخیره، فیلدهای نامعتبر را اصلاح کنید."
 msgstr ""
 
-#: assets/admin.js:213
-msgid "Action Scheduler"
+#: assets/admin.js:20
+msgid "پاسخ سرور معتبر نیست؛ اتصال را بررسی کنید."
 msgstr ""
 
-#: assets/admin.js:213
-msgid "در دسترس"
+#: assets/admin.js:21
+msgid "عملیات انجام نشد."
 msgstr ""
 
-#: assets/admin.js:213
-msgid "نیازمند بررسی"
+#: assets/admin.js:23
+msgid "تنظیمات جشنواره"
 msgstr ""
 
-#: assets/admin.js:213
-msgid "منطقه زمانی وردپرس"
+#: assets/admin.js:24
+msgid "بررسی و فعال‌سازی"
 msgstr ""
 
-#: assets/admin.js:214
-msgid "کش شیء خارجی"
+#: assets/admin.js:25
+msgid "انتخاب محصول از ووکامرس"
 msgstr ""
 
-#: assets/admin.js:214
-msgid "غیرفعال"
+#: assets/admin.js:30
+msgid "ویژه"
 msgstr ""
 
-#: assets/admin.js:214
-msgid "Elementor"
+#: assets/admin.js:31
+msgid "موجودی"
 msgstr ""
 
-#: assets/admin.js:214
-msgid "اختیاری؛ نصب نیست"
+#: assets/admin.js:32
+msgid "کف قیمت"
 msgstr ""
 
-#: assets/admin.js:215
-msgid "WP Cron مبتنی بر بازدید"
+#: assets/admin.js:33
+msgid "پیش‌نمایش روزانه"
 msgstr ""
 
-#: assets/admin.js:215
-msgid "غیرفعال؛ Cron سرور را بررسی کنید"
+#: assets/admin.js:34
+msgid "مبلغ معتبر وارد کنید؛ کف باید مثبت و حداکثر برابر قیمت معتبر محصول باشد."
 msgstr ""
 
-#: assets/admin.js:215
-msgid "فعال؛ Cron سرور توصیه می‌شود"
+#: assets/admin.js:35
+msgid "انتخاب محصول و تغییر کف فقط در پیش‌نویس مجاز است."
 msgstr ""
 
-#: assets/admin.js:216
-msgid "نسخه تنظیمات"
-msgstr ""
-
-#: assets/admin.js:217
-msgid "سلامت اجرا و بازیابی"
-msgstr ""
-
-#: assets/admin.js:217
-msgid "آماده‌بودن Scheduler به‌تنهایی اجرای Cron سرور را تضمین نمی‌کند."
-msgstr ""
-
-#: assets/admin.js:217
-msgid "تازه‌سازی سلامت"
-msgstr ""
-
-#: assets/admin.js:217
-msgid "بازیابی صف و تلاش مجدد ایمن"
-msgstr ""
-
-#: assets/admin.js:220
-msgid "تعارض قیمت"
-msgstr ""
-
-#: assets/admin.js:220
-msgid "اگر قیمت بیرون از افزونه تغییر کند، بازنویسی متوقف می‌شود. «بررسی مجدد ایمن» همچنان مالکیت را بررسی می‌کند؛ «حفظ قیمت بیرونی» کنترل افزونه را واگذار می‌کند و قیمت را تغییر نمی‌دهد. این ابزار قیمت را اجباری بازنویسی نمی‌کند."
-msgstr ""
-
-#: assets/admin.js:220
-msgid "بررسی محصولات و تعارض‌ها"
-msgstr ""
-
-#: assets/admin.js:221
-msgid "آخرین رخدادها"
-msgstr ""
-
-#: assets/admin.js:221
-msgid "زمان"
-msgstr ""
-
-#: assets/admin.js:221
-msgid "سطح"
-msgstr ""
-
-#: assets/admin.js:221
-msgid "شناسه‌ها / نتیجه"
-msgstr ""
-
-#: assets/admin.js:221
-msgid "رخدادی ثبت نشده است."
-msgstr ""
-
-#: assets/admin.js:233
-msgid "ابتدا پیش‌نویس کمپین را بسازید."
-msgstr ""
-
-#: assets/admin.js:234
-msgid "افزودن محصول و تغییر کف قیمت فقط در پیش‌نویس مجاز است."
-msgstr ""
-
-#: assets/admin.js:240
-msgid "افزودن محصول · انتخاب و کف قیمت"
-msgstr ""
-
-#: assets/admin.js:240
-msgid "جست‌وجوی نام یا SKU"
-msgstr ""
-
-#: assets/admin.js:240
-msgid "حداقل ۲ نویسه…"
-msgstr ""
-
-#: assets/admin.js:248
-msgid "در حال جست‌وجو…"
-msgstr ""
-
-#: assets/admin.js:253
-msgid "محصول پشتیبانی‌شده‌ای پیدا نشد. تنوع محصول را با SKU دقیق جست‌وجو کنید."
-msgstr ""
-
-#: assets/admin.js:256
-msgid "نتایج قبل"
-msgstr ""
-
-#: assets/admin.js:256
-msgid "نتایج بعد"
-msgstr ""
-
-#: assets/admin.js:265
-msgid "کف قیمت فروش"
-msgstr ""
-
-#: assets/admin.js:265
-msgid "عدد مثبت، حداکثر برابر قیمت معتبر محصول."
-msgstr ""
-
-#: assets/admin.js:265
-msgid "پیش‌نمایش بدون ذخیره"
-msgstr ""
-
-#: assets/admin.js:265
-msgid "ذخیره محصول"
-msgstr ""
-
-#: assets/admin.js:279
-msgid "ویرایش محصول"
-msgstr ""
-
-#: assets/admin.js:279
-msgid "پس از شروع، کف قیمت قفل است."
-msgstr ""
-
-#: assets/admin.js:279
-msgid "ذخیره تغییرات"
-msgstr ""
-
-#: assets/admin.js:283
-msgid "افزودن گروهی · حداکثر ۲۵ محصول"
-msgstr ""
-
-#: assets/admin.js:283
-msgid "هر خط: شناسه محصول یا تنوع، کف قیمت"
-msgstr ""
-
-#: assets/admin.js:283
-msgid "قیمت و مالکیت هر محصول جداگانه اعتبارسنجی می‌شود. نتیجه ناموفق هر ردیف اعلام خواهد شد."
-msgstr ""
-
-#: assets/admin.js:283
-msgid "ثبت محصولات"
-msgstr ""
-
-#: assets/admin.js:297
+#: assets/admin.js:36
 msgid "ابتدا محصولی انتخاب کنید."
 msgstr ""
 
-#: assets/admin.js:298
-msgid "محصولات انتخاب‌شده حذف شوند؟ قیمت‌های تحت کنترل پیش از حذف، با بررسی مالکیت بازیابی می‌شوند."
+#: assets/admin.js:37
+msgid "محصولی با این فیلترها پیدا نشد."
 msgstr ""
 
-#: assets/admin.js:306
-msgid "محصول حذف و قیمت تحت کنترل با بررسی مالکیت بازیابی شود؟"
+#: assets/admin.js:38
+msgid "نام یا SKU محصول"
 msgstr ""
 
-#: assets/admin.js:310
-msgid "قیمت بیرونی حفظ و کنترل این محصول واگذار شود؟ پس از این تصمیم افزونه قیمت این محصول را بازیابی نمی‌کند."
+#: assets/admin.js:39
+msgid "در حال دریافت محصولات…"
+msgstr ""
+
+#: assets/admin.js:40
+msgid "در هر نوبت حداکثر ۲۰۰ محصول انتخاب کنید؛ پس از ذخیره می‌توانید ادامه دهید."
+msgstr ""
+
+#: assets/admin.js:41
+msgid "فعال‌سازی فقط با تأیید صریح شما انجام می‌شود."
+msgstr ""
+
+#: assets/admin.js:42
+msgid "درخواست ثبت شد؛ نتیجه را در وضعیت کمپین و عیب‌یابی بررسی کنید."
+msgstr ""
+
+#: assets/admin.js:45
+msgid "پیش‌نویس"
+msgstr ""
+
+#: assets/admin.js:45
+msgid "زمان‌بندی‌شده"
+msgstr ""
+
+#: assets/admin.js:46
+#: assets/admin.js:312
+msgid "فعال"
+msgstr ""
+
+#: assets/admin.js:46
+msgid "متوقف"
+msgstr ""
+
+#: assets/admin.js:47
+msgid "پایان‌یافته"
+msgstr ""
+
+#: assets/admin.js:47
+msgid "ناموفق"
+msgstr ""
+
+#: assets/admin.js:48
+msgid "انتخاب‌شده"
+msgstr ""
+
+#: assets/admin.js:48
+msgid "در صف"
+msgstr ""
+
+#: assets/admin.js:49
+#: assets/admin.js:290
+#: assets/admin.js:337
+msgid "ناموجود"
+msgstr ""
+
+#: assets/admin.js:49
+msgid "تعارض"
+msgstr ""
+
+#: assets/admin.js:49
+msgid "حذف‌شده"
+msgstr ""
+
+#: assets/admin.js:148
+msgid "تاریخ شمسی معتبر بین سال ۱۲۰۰ تا ۱۶۰۰ وارد کنید."
+msgstr ""
+
+#: assets/admin.js:157
+msgid "برای ارسال جشنواره، روش نرخ ثابت و سقف یارانه را تعیین کنید."
+msgstr ""
+
+#: assets/admin.js:205
+msgid "مراحل راه‌اندازی"
+msgstr ""
+
+#: assets/admin.js:223
+msgid "شروع در زمان مقرر"
+msgstr ""
+
+#: assets/admin.js:224
+msgid "توقف بدون بازیابی"
+msgstr ""
+
+#: assets/admin.js:225
+msgid "ادامه کمپین"
+msgstr ""
+
+#: assets/admin.js:226
+msgid "توقف و بازیابی قیمت‌ها"
+msgstr ""
+
+#: assets/admin.js:232
+#: assets/admin.js:283
+msgid "محصول منتخب"
+msgstr ""
+
+#: assets/admin.js:232
+msgid "سفارش مرتبط"
+msgstr ""
+
+#: assets/admin.js:232
+msgid "درآمد اقلام کمپین"
+msgstr ""
+
+#: assets/admin.js:232
+msgid "واحد فروخته‌شده"
+msgstr ""
+
+#: assets/admin.js:233
+msgid "فروش واقعی"
+msgstr ""
+
+#: assets/admin.js:233
+msgid "مبلغ کل سفارش‌های مرتبط"
+msgstr ""
+
+#: assets/admin.js:233
+msgid "درآمد اقلام کمپین از کل سفارش جداست و مرجوعی‌ها کسر می‌شوند. وضعیت‌های گزارش در عیب‌یابی تنظیم می‌شوند."
+msgstr ""
+
+#: assets/admin.js:233
+msgid "گزارش هنوز کامل نیست؛ دادهٔ فعلی موقت است."
+msgstr ""
+
+#: assets/admin.js:233
+msgid "ادامه محاسبه گزارش"
+msgstr ""
+
+#: assets/admin.js:234
+msgid "بررسی عیب‌یابی"
+msgstr ""
+
+#: assets/admin.js:235
+msgid "پرفروش‌ترین محصولات"
+msgstr ""
+
+#: assets/admin.js:235
+msgid "واحد"
+msgstr ""
+
+#: assets/admin.js:235
+msgid "آخرین سفارش‌های مرتبط"
+msgstr ""
+
+#: assets/admin.js:239
+msgid "هنوز داده‌ای ثبت نشده است."
+msgstr ""
+
+#: assets/admin.js:260
+msgid "پیش‌نویس هنگام ویرایش ذخیره می‌شود. فعال‌سازی مرحله‌ای جداست و ذخیره قیمت فروشگاه را تغییر نمی‌دهد."
+msgstr ""
+
+#: assets/admin.js:261
+msgid "تنظیمات مالی کمپین شروع‌شده قفل است؛ وضعیت‌های گزارش در عیب‌یابی قابل ویرایش‌اند."
+msgstr ""
+
+#: assets/admin.js:263
+#: assets/admin.js:283
+msgid "نام جشنواره"
+msgstr ""
+
+#: assets/admin.js:264
+msgid "تاریخ شروع شمسی"
+msgstr ""
+
+#: assets/admin.js:265
+msgid "ساعت شروع · ۲۴ساعته"
+msgstr ""
+
+#: assets/admin.js:265
+msgid "مانند ۲۳:۵۹؛ این ساعت، زمان تغییر قیمت هر روز هم هست."
+msgstr ""
+
+#: assets/admin.js:266
+msgid "مدت جشنواره (روز)"
+msgstr ""
+
+#: assets/admin.js:267
+msgid "الگوی کاهش قیمت"
+msgstr ""
+
+#: assets/admin.js:267
+#: assets/admin.js:283
+msgid "خطی"
+msgstr ""
+
+#: assets/admin.js:267
+#: assets/admin.js:283
+msgid "تدریجی"
+msgstr ""
+
+#: assets/admin.js:267
+msgid "روز اول قیمت مبنا و ابتدای روز آخر کف قیمت برقرار است."
+msgstr ""
+
+#: assets/admin.js:268
+msgid "ارسال جشنواره و تنظیمات پیشرفته"
+msgstr ""
+
+#: assets/admin.js:268
+msgid "فعال‌کردن یارانهٔ ارسال برای اقلام جشنواره"
+msgstr ""
+
+#: assets/admin.js:269
+msgid "حداقل جمع اقلام جشنواره"
+msgstr ""
+
+#: assets/admin.js:269
+msgid "صفر یعنی بدون حداقل؛ مبلغ پس از کوپن و بدون مالیات هر بسته ملاک است."
+msgstr ""
+
+#: assets/admin.js:270
+msgid "سقف یارانهٔ کل ارسال"
+msgstr ""
+
+#: assets/admin.js:271
+msgid "روش‌های نرخ ثابت مجاز"
+msgstr ""
+
+#: assets/admin.js:271
+msgid "روش نرخ ثابت فعالی وجود ندارد؛ روش‌های دیگر تغییر نمی‌کنند."
+msgstr ""
+
+#: assets/admin.js:272
+#: assets/admin.js:312
+msgid "منطقه زمانی"
+msgstr ""
+
+#: assets/admin.js:273
+msgid "توان الگوی تدریجی"
+msgstr ""
+
+#: assets/admin.js:274
+msgid "روش گردکردن"
+msgstr ""
+
+#: assets/admin.js:274
+msgid "نزدیک‌ترین؛ نیم رو به بالا"
+msgstr ""
+
+#: assets/admin.js:274
+msgid "رو به پایین"
+msgstr ""
+
+#: assets/admin.js:274
+msgid "رو به بالا"
+msgstr ""
+
+#: assets/admin.js:275
+msgid "نگهداری رخدادها (روز)"
+msgstr ""
+
+#: assets/admin.js:276
+msgid "نمایش کمپین غیرفعال"
+msgstr ""
+
+#: assets/admin.js:276
+msgid "پیام وضعیت"
+msgstr ""
+
+#: assets/admin.js:276
+msgid "خروجی خالی"
+msgstr ""
+
+#: assets/admin.js:277
+msgid "سقف، بودجهٔ کل سبد برای هزینهٔ پایهٔ ارسال بدون مالیات است؛ بین بسته‌های واجد شرایط تقسیم می‌شود. مشتری فقط مابه‌التفاوت را می‌پردازد."
+msgstr ""
+
+#: assets/admin.js:277
+msgid "تبدیل ارزی انجام نمی‌شود؛ مبلغ‌ها در ارز فروشگاه‌اند و سقف باید صریح تعیین شود."
+msgstr ""
+
+#: assets/admin.js:278
+msgid "ذخیره و انتخاب محصولات"
+msgstr ""
+
+#: assets/admin.js:283
+msgid "بازهٔ ایران / منطقهٔ کمپین"
+msgstr ""
+
+#: assets/admin.js:283
+msgid "الگوی قیمت"
+msgstr ""
+
+#: assets/admin.js:284
+msgid "قیمت‌های آینده فقط در پیش‌نمایش مدیریت دیده می‌شوند. محصولات ناموجود یا غیرقابل خرید در جشنواره نمایش داده نمی‌شوند."
+msgstr ""
+
+#: assets/admin.js:285
+msgid "تأیید نهایی مدیر"
+msgstr ""
+
+#: assets/admin.js:285
+msgid "تنظیمات، کف قیمت‌ها و زمان شروع را بررسی کردم و فعال‌سازی این کمپین را تأیید می‌کنم."
+msgstr ""
+
+#: assets/admin.js:285
+msgid "تأیید و فعال‌سازی کمپین"
+msgstr ""
+
+#: assets/admin.js:285
+msgid "ابتدا حداقل یک محصول با کف معتبر انتخاب کنید."
+msgstr ""
+
+#: assets/admin.js:290
+#: assets/admin.js:337
+msgid "موجود"
+msgstr ""
+
+#: assets/admin.js:290
+msgid "پیش‌سفارش؛ در نمایش جشنواره پنهان است"
+msgstr ""
+
+#: assets/admin.js:293
+msgid "تنوع‌ها مستقل‌اند. ردیف‌های ویژه را بکشید یا اولویت عددی بدهید؛ ترتیب عادی بر اساس تخفیف روز، فروش و تازگی است."
+msgstr ""
+
+#: assets/admin.js:293
+msgid "حذف انتخاب‌شده‌ها"
+msgstr ""
+
+#: assets/admin.js:294
+msgid "جست‌وجو در صفحه جاری"
+msgstr ""
+
+#: assets/admin.js:294
+msgid "فیلتر وضعیت"
+msgstr ""
+
+#: assets/admin.js:295
+msgid "انتخاب ردیف‌های صفحه"
+msgstr ""
+
+#: assets/admin.js:295
+msgid "محصول"
+msgstr ""
+
+#: assets/admin.js:295
+msgid "قیمت مبنا"
+msgstr ""
+
+#: assets/admin.js:295
+msgid "قیمت فعلی"
+msgstr ""
+
+#: assets/admin.js:295
+msgid "تخفیف فعلی"
+msgstr ""
+
+#: assets/admin.js:295
+msgid "وضعیت"
+msgstr ""
+
+#: assets/admin.js:295
+msgid "ویژه و ترتیب"
+msgstr ""
+
+#: assets/admin.js:295
+#: assets/admin.js:317
+msgid "عملیات"
+msgstr ""
+
+#: assets/admin.js:295
+msgid "محصولی اضافه نشده است."
+msgstr ""
+
+#: assets/admin.js:296
+msgid "ابزار پیشرفته: ورود با شناسه"
+msgstr ""
+
+#: assets/admin.js:296
+msgid "روش اصلی، انتخاب‌گر ووکامرس است؛ این ابزار برای اپراتور باتجربه باقی مانده است."
+msgstr ""
+
+#: assets/admin.js:296
+msgid "ورود گروهی با شناسه"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "انتخاب محصول"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "محصول حذف‌شده"
+msgstr ""
+
+#: assets/admin.js:308
+#: assets/admin.js:438
+msgid "اولویت عددی"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "جابه‌جایی به بالا"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "جابه‌جایی به پایین"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "بررسی مجدد ایمن"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "حفظ قیمت بیرونی"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "ویرایش"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "ادامه محصول"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "توقف محصول"
+msgstr ""
+
+#: assets/admin.js:308
+msgid "حذف"
+msgstr ""
+
+#: assets/admin.js:312
+msgid "نسخه PHP"
+msgstr ""
+
+#: assets/admin.js:312
+msgid "وردپرس"
+msgstr ""
+
+#: assets/admin.js:312
+msgid "ووکامرس"
+msgstr ""
+
+#: assets/admin.js:312
+msgid "در دسترس"
+msgstr ""
+
+#: assets/admin.js:312
+msgid "نیازمند بررسی"
+msgstr ""
+
+#: assets/admin.js:312
+msgid "کش شیء خارجی"
+msgstr ""
+
+#: assets/admin.js:312
+msgid "غیرفعال"
+msgstr ""
+
+#: assets/admin.js:312
+msgid "آخرین اجرای موفق"
 msgstr ""
 
 #: assets/admin.js:314
-msgid "عملیات محصول ثبت شد."
+msgid "تازه‌سازی"
 msgstr ""
 
-#: assets/admin.js:319
-msgid "تغییرات آینده متوقف و بازیابی قیمت همه محصولات آغاز شود؟ تغییرات بیرونی بازنویسی نمی‌شوند و به‌صورت تعارض گزارش می‌شوند."
+#: assets/admin.js:314
+msgid "بررسی و بازیابی صف"
 msgstr ""
 
-#: assets/admin.js:322
-msgid "فقط تغییرات آینده متوقف شوند؟ قیمت‌های فعلی بدون بازیابی باقی می‌مانند."
+#: assets/admin.js:316
+msgid "وضعیت‌های سفارش در آمار"
 msgstr ""
 
-#: assets/admin.js:324
-msgid "درخواست ثبت شد. نتیجه اجرا را در وضعیت کمپین و عیب‌یابی بررسی کنید."
+#: assets/admin.js:316
+msgid "وضعیت‌های ثبت‌شدهٔ سفارشی نیز قابل انتخاب‌اند. سفارش لغوشده، ناموفق و کاملاً مستردشده در فروش محاسبه نمی‌شود."
 msgstr ""
 
-#: assets/admin.js:329
-msgid "همه محصولات با موفقیت پردازش شدند."
+#: assets/admin.js:316
+msgid "ذخیره تنظیمات گزارش"
 msgstr ""
 
-#: assets/admin.js:330
-msgid "این محصولات پردازش نشدند"
+#: assets/admin.js:317
+msgid "آخرین رخدادها"
 msgstr ""
 
-#: assets/admin.js:330
-msgid "قیمت و تعارض را در فهرست بررسی کنید."
+#: assets/admin.js:317
+msgid "زمان"
 msgstr ""
 
-#: assets/admin.js:392
-msgid "پیش‌نویس ذخیره شد. محصول را اضافه و سپس زمان‌بندی را فعال کنید."
+#: assets/admin.js:317
+msgid "سطح"
 msgstr ""
 
-#: assets/admin.js:395
-msgid "محصول اضافه شد."
+#: assets/admin.js:317
+#: assets/admin.js:368
+msgid "نتیجه"
 msgstr ""
 
-#: assets/admin.js:400
-msgid "تغییرات ذخیره شد."
+#: assets/admin.js:337
+msgid "دسته‌بندی"
 msgstr ""
 
-#: assets/admin.js:403
-msgid "هر نوبت ۱ تا ۲۵ ردیف وارد کنید."
+#: assets/admin.js:337
+msgid "نوع محصول"
 msgstr ""
 
-#: assets/admin.js:406
-msgid "قالب هر خط باید شناسه،کف‌قیمت باشد."
+#: assets/admin.js:337
+msgid "ساده"
+msgstr ""
+
+#: assets/admin.js:337
+msgid "متغیر"
+msgstr ""
+
+#: assets/admin.js:337
+msgid "تنوع"
+msgstr ""
+
+#: assets/admin.js:337
+msgid "انتخاب محصولات این صفحه"
+msgstr ""
+
+#: assets/admin.js:337
+msgid "انتخاب نتایج فیلترشده · حداکثر ۲۰۰"
+msgstr ""
+
+#: assets/admin.js:337
+msgid "بازگشت به همه محصولات"
+msgstr ""
+
+#: assets/admin.js:337
+msgid "کف مستقل محصولات انتخاب‌شده"
+msgstr ""
+
+#: assets/admin.js:337
+msgid "کف مشترک اختیاری"
+msgstr ""
+
+#: assets/admin.js:337
+msgid "اعمال به انتخاب‌شده‌ها"
+msgstr ""
+
+#: assets/admin.js:337
+msgid "ذخیره محصولات منتخب"
+msgstr ""
+
+#: assets/admin.js:343
+msgid "فهرست به ۱۰۰ مقدار محدود شده است."
+msgstr ""
+
+#: assets/admin.js:355
+msgid "حداقل دو نویسه وارد کنید یا جست‌وجو را خالی بگذارید."
+msgstr ""
+
+#: assets/admin.js:367
+msgid "عضو کمپین است"
+msgstr ""
+
+#: assets/admin.js:367
+msgid "انتخاب تنوع‌ها"
+msgstr ""
+
+#: assets/admin.js:373
+msgid "حذف از انتخاب"
+msgstr ""
+
+#: assets/admin.js:431
+msgid "برخی محصولات ذخیره نشدند؛ انتخاب و کف آنها حفظ شده است. تعارض یا قیمت جاری را بررسی کنید."
+msgstr ""
+
+#: assets/admin.js:432
+msgid "محصولات انتخاب‌شده ذخیره شدند؛ قیمت فروشگاه تغییر نکرد."
+msgstr ""
+
+#: assets/admin.js:438
+msgid "ویرایش محصول"
+msgstr ""
+
+#: assets/admin.js:438
+msgid "ذخیره تغییرات"
+msgstr ""
+
+#: assets/admin.js:443
+msgid "ترتیب محصولات ویژه ذخیره شد."
+msgstr ""
+
+#: assets/admin.js:447
+msgid "ابزار پیشرفتهٔ ورود شناسه"
+msgstr ""
+
+#: assets/admin.js:447
+msgid "هر خط: شناسه؛ کف قیمت"
+msgstr ""
+
+#: assets/admin.js:447
+msgid "بین شناسه و مبلغ از نقطه‌ویرگول استفاده کنید؛ مبلغ می‌تواند جداکنندهٔ هزارگان داشته باشد."
+msgstr ""
+
+#: assets/admin.js:475
+msgid "محصولات انتخاب‌شده حذف و قیمت‌های تحت کنترل پس از بررسی مالکیت بازیابی شوند؟"
+msgstr ""
+
+#: assets/admin.js:481
+msgid "برخی محصولات به علت تعارض حذف نشدند؛ وضعیت را بررسی کنید."
+msgstr ""
+
+#: assets/admin.js:485
+msgid "حذف و بازیابی امن قیمت این محصول تأیید می‌شود؟"
+msgstr ""
+
+#: assets/admin.js:486
+msgid "قیمت بیرونی حفظ و کنترل افزونه واگذار شود؟"
+msgstr ""
+
+#: assets/admin.js:498
+msgid "شروع یا زمان‌بندی این کمپین و برنامهٔ قیمت بررسی و تأیید می‌شود؟"
+msgstr ""
+
+#: assets/admin.js:499
+msgid "فقط تغییرات آینده متوقف شوند؟ قیمت جاری بدون بازیابی باقی می‌ماند."
+msgstr ""
+
+#: assets/admin.js:500
+msgid "اجرای قیمت صحیح زمان جاری از سر گرفته شود؟"
+msgstr ""
+
+#: assets/admin.js:501
+msgid "کمپین متوقف و بازیابی قیمت‌های تحت کنترل آغاز شود؟ تغییرات بیرونی بازنویسی نمی‌شوند."
+msgstr ""
+
+#: assets/admin.js:542
+msgid "حداکثر پنج فیلتر برند یا ویژگی را هم‌زمان انتخاب کنید."
+msgstr ""
+
+#: assets/admin.js:594
+msgid "هر نوبت بین یک تا ۲۵ ردیف مجاز است."
+msgstr ""
+
+#: assets/admin.js:595
+msgid "قالب هر خط باید شناسه؛کف‌قیمت باشد."
+msgstr ""
+
+#: assets/admin.js:597
+msgid "برخی ردیف‌ها ذخیره نشدند؛ قیمت و تعارض را بررسی کنید."
 msgstr ""

@@ -38,6 +38,7 @@ final class Orders {
 		add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'classic_item' ), 20, 4 );
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'blocks_order' ), 20, 1 );
 		add_action( 'woocommerce_update_order', array( $this, 'invalidate' ) );
+		add_action( 'woocommerce_checkout_order_processed', array( $this, 'invalidate' ) );
 		add_action( 'woocommerce_order_status_changed', array( $this, 'invalidate' ) );
 		add_action( 'woocommerce_order_refunded', array( $this, 'invalidate' ) );
 		add_action( 'woocommerce_before_delete_order', array( $this, 'invalidate' ) );
@@ -115,14 +116,33 @@ final class Orders {
 		if ( ! $order ) {
 			return;
 		}
+		$campaigns = array();
 		foreach ( $order->get_items( 'line_item' ) as $item ) {
 			$campaign_id = absint( $item->get_meta( '_exin_bf_campaign_id', true ) );
 			if ( $campaign_id ) {
-				wp_cache_delete( 'analytics:' . $campaign_id, 'exin_bf' );
-				delete_transient( 'exin_bf_analytics_' . $campaign_id );
-				update_option( 'exin_bf_report_generation_' . $campaign_id, wp_generate_uuid4(), false );
+				$campaigns[ $campaign_id ] = true;
 			}
 		}
+		foreach ( array_keys( $campaigns ) as $campaign_id ) {
+			$this->invalidate_campaign( $campaign_id );
+		}
+	}
+
+	/**
+	 * Invalidate reports after order changes or an authorized reporting-settings edit.
+	 *
+	 * @param int $campaign_id Campaign whose private reporting state changed.
+	 * @return void
+	 */
+	public function invalidate_campaign( int $campaign_id ): void {
+		if ( $campaign_id < 1 ) {
+			return;
+		}
+		wp_cache_delete( 'analytics:' . $campaign_id, 'exin_bf' );
+		wp_cache_delete( 'analytics:v101:' . $campaign_id, 'exin_bf' );
+		delete_transient( 'exin_bf_analytics_' . $campaign_id );
+		delete_transient( 'exin_bf_analytics_v101_' . $campaign_id );
+		update_option( 'exin_bf_report_generation_' . $campaign_id, wp_generate_uuid4(), false );
 	}
 
 	/**
@@ -142,7 +162,7 @@ final class Orders {
 			return array();
 		}
 		$generation = get_option( 'exin_bf_report_generation_' . $campaign_id, '1' );
-		$cache_key  = 'analytics:' . $campaign_id;
+		$cache_key  = 'analytics:v101:' . $campaign_id;
 		$cached     = wp_cache_get( $cache_key, 'exin_bf' );
 		if ( is_array( $cached ) && ! empty( $cached['complete'] ) && ( $cached['generation'] ?? null ) === $generation && ( $cached['campaign_version'] ?? null ) === (int) $campaign['version'] ) {
 			return $cached;
@@ -150,11 +170,11 @@ final class Orders {
 		$precision        = wc_get_price_decimals();
 		$allowed_statuses = array_keys( wc_get_order_statuses() );
 		$statuses         = array_map( static fn( $status ) => 'wc-' . preg_replace( '/^wc-/', '', (string) $status ), (array) ( $campaign['settings']['order_statuses'] ?? array( 'processing', 'completed' ) ) );
-		$statuses         = array_values( array_intersect( $statuses, $allowed_statuses ) );
+		$statuses         = array_values( array_diff( array_intersect( $statuses, $allowed_statuses ), array( 'wc-pending', 'wc-failed', 'wc-cancelled', 'wc-checkout-draft', 'wc-refunded' ) ) );
 		if ( ! $statuses ) {
 			$statuses = array( 'wc-processing', 'wc-completed' );
 		}
-		$checkpoint_key = 'exin_bf_analytics_' . $campaign_id;
+		$checkpoint_key = 'exin_bf_analytics_v101_' . $campaign_id;
 		$signature      = hash( 'sha256', wp_json_encode( array( $campaign['version'], $statuses, get_woocommerce_currency(), $precision, $generation ) ) );
 		$checkpoint     = get_transient( $checkpoint_key );
 		if ( ! is_array( $checkpoint ) || ( $checkpoint['signature'] ?? '' ) !== $signature ) {
@@ -178,7 +198,7 @@ final class Orders {
 					'limit'      => 100,
 					'page'       => $cursor,
 					'paginate'   => true,
-					'orderby'    => 'date',
+					'orderby'    => 'ID',
 					'order'      => 'DESC',
 					// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Necessary HPOS-compatible CRUD attribution query; each batch is capped at 100 orders.
 					'meta_key'   => '_exin_bf_campaign_' . $campaign_id,
@@ -191,6 +211,11 @@ final class Orders {
 				$currency                = $order->get_currency();
 				$currencies[ $currency ] = true;
 				if ( get_woocommerce_currency() !== $currency ) {
+					continue;
+				}
+				$total_minor    = $this->minor( $order->get_total(), $precision );
+				$refunded_minor = $this->minor( $order->get_total_refunded(), $precision );
+				if ( $total_minor > 0 && $refunded_minor >= $total_minor ) {
 					continue;
 				}
 				$net        = 0;
@@ -217,13 +242,13 @@ final class Orders {
 					$products[ $product_id ]['units']        += $line_units;
 					$products[ $product_id ]['revenue_minor'] = $this->add( $products[ $product_id ]['revenue_minor'], $line_net );
 				}
-				if ( ! $attributed ) {
+				if ( ! $attributed || ( 0 === $quantity && 0 === $net ) ) {
 					continue;
 				}
 				++$order_count;
 				$units        += $quantity;
 				$item_revenue  = $this->add( $item_revenue, $net );
-				$order_net     = max( 0, $this->minor( $order->get_total(), $precision ) - $this->minor( $order->get_total_refunded(), $precision ) );
+				$order_net     = max( 0, $total_minor - $refunded_minor );
 				$order_revenue = $this->add( $order_revenue, $order_net );
 				if ( count( $recent ) < 10 ) {
 					$recent[] = array(
@@ -268,7 +293,6 @@ final class Orders {
 			unset( $product['revenue_minor'] );
 		}
 		unset( $product );
-		$target    = max( 1, (int) ( $campaign['settings']['target_orders'] ?? 500 ) );
 		$inventory = $this->inventory( $campaign );
 		$data      = array(
 			'campaign_id'              => $campaign_id,
@@ -279,8 +303,6 @@ final class Orders {
 			'units'                    => $units,
 			'item_revenue'             => Money::format( $item_revenue, $precision ),
 			'order_revenue'            => Money::format( $order_revenue, $precision ),
-			'target_orders'            => $target,
-			'progress'                 => min( 100, round( $order_count * 100 / $target, 1 ) ),
 			'top_products'             => $top,
 			'recent_orders'            => $recent,
 			'currency'                 => get_woocommerce_currency(),

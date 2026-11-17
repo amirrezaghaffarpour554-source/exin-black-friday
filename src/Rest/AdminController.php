@@ -11,7 +11,10 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Exin\BlackFriday\Application\ProductSelectionService;
 use Exin\BlackFriday\Application\Scheduler;
-use Exin\BlackFriday\Domain\Money;
+use Exin\BlackFriday\Application\DraftCampaignService;
+use Exin\BlackFriday\Domain\CurrencyDisplay;
+use Exin\BlackFriday\Domain\Jalali;
+use Exin\BlackFriday\Domain\PricingEngine;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
 use Exin\BlackFriday\Infrastructure\Logger;
 use Exin\BlackFriday\Infrastructure\LockManager;
@@ -77,11 +80,14 @@ final class AdminController {
 				$routes = array(
 					'/state'                        => array( 'GET', 'state' ),
 					'/products'                     => array( 'GET', 'products' ),
+					'/product-filters'              => array( 'GET', 'product_filters' ),
 					'/campaign'                     => array( 'POST', 'campaign' ),
 					'/campaign/(?P<id>\d+)/action'  => array( 'POST', 'action' ),
 					'/campaign/(?P<id>\d+)/preview' => array( 'POST', 'preview' ),
 					'/campaign/(?P<id>\d+)/items'   => array( 'POST', 'items' ),
 					'/campaign/(?P<id>\d+)/bulk'    => array( 'POST', 'bulk' ),
+					'/campaign/(?P<id>\d+)/report-settings' => array( 'POST', 'report_settings' ),
+					'/campaign/(?P<id>\d+)/reorder' => array( 'POST', 'reorder' ),
 					'/campaign/(?P<id>\d+)/item/(?P<product>\d+)' => array( 'POST', 'item' ),
 				);
 				foreach ( $routes as $route => $definition ) {
@@ -183,10 +189,78 @@ final class AdminController {
 	 */
 	public function products( WP_REST_Request $request ): array {
 		$term = sanitize_text_field( $this->text( $request->get_param( 'search' ) ?? '' ) );
-		if ( strlen( $term ) < 2 || strlen( $term ) > 100 ) {
-			throw new InvalidArgumentException( esc_html__( 'حداقل ۲ و حداکثر ۱۰۰ نویسه وارد کنید.', 'exin-black-friday' ) );
+		if ( strlen( $term ) > 100 || ( '' !== $term && strlen( $term ) < 2 ) ) {
+			throw new InvalidArgumentException( esc_html__( 'جست‌وجو را خالی بگذارید یا بین ۲ و ۱۰۰ نویسه وارد کنید.', 'exin-black-friday' ) );
 		}
-		return $this->selection->search( $term, $this->integer( $request->get_param( 'page' ) ?? 1, 1, 10000 ) );
+		$filters     = array(
+			'category'    => sanitize_text_field( $this->text( $request->get_param( 'category' ) ?? '' ) ),
+			'stock'       => $this->choice( $request->get_param( 'stock' ) ?? 'all', array( 'all', 'instock', 'outofstock' ) ),
+			'type'        => $this->choice( $request->get_param( 'type' ) ?? 'all', array( 'all', 'simple', 'variable', 'variation' ) ),
+			'taxonomy'    => sanitize_key( $this->text( $request->get_param( 'taxonomy' ) ?? '' ) ),
+			'term'        => sanitize_text_field( $this->text( $request->get_param( 'term' ) ?? '' ) ),
+			'parent_id'   => $this->integer( $request->get_param( 'parent_id' ) ?? 0, 0, PHP_INT_MAX ),
+			'tax_filters' => $this->catalog_tax_filters( $request->get_param( 'tax_filters' ) ?? array() ),
+		);
+		$result      = $this->selection->search( $term, $this->integer( $request->get_param( 'page' ) ?? 1, 1, 10000 ), $filters );
+		$campaign_id = $this->integer( $request->get_param( 'campaign_id' ) ?? 0, 0, PHP_INT_MAX );
+		if ( $campaign_id ) {
+			$this->required_campaign( $campaign_id );
+			$ids     = array_map( 'intval', array_column( $result['products'], 'id' ) );
+			$members = $this->repository->member_product_ids( $campaign_id, $ids );
+			foreach ( $result['products'] as &$product ) {
+				$product['included'] = in_array( (int) $product['id'], $members, true );
+			}
+			unset( $product );
+		}
+		return $result;
+	}
+
+	/**
+	 * Provides bounded registered WooCommerce taxonomy choices for the picker.
+	 *
+	 * @return array Categories, brands and product attributes.
+	 */
+	public function product_filters(): array {
+		return $this->selection->filters();
+	}
+
+	/**
+	 * Validate up to five combined registered brand and attribute filters.
+	 *
+	 * @param mixed $value Associative filter map or its JSON representation.
+	 * @return array Sanitized taxonomy-to-term selections.
+	 * @throws InvalidArgumentException When filter shape or registration is invalid.
+	 */
+	private function catalog_tax_filters( $value ): array {
+		if ( is_string( $value ) ) {
+			if ( strlen( $value ) > 2000 ) {
+				throw new InvalidArgumentException( esc_html__( 'فیلترهای محصول بیش از حد طولانی‌اند.', 'exin-black-friday' ) );
+			}
+			try {
+				$value = json_decode( $value, true, 8, JSON_THROW_ON_ERROR );
+			} catch ( \JsonException $error ) {
+				throw new InvalidArgumentException( esc_html__( 'ساختار فیلترهای محصول معتبر نیست.', 'exin-black-friday' ) );
+			}
+		}
+		if ( ! is_array( $value ) || count( $value ) > 5 || ( $value && array_is_list( $value ) ) ) {
+			throw new InvalidArgumentException( esc_html__( 'حداکثر پنج فیلتر برند یا ویژگی مجاز است.', 'exin-black-friday' ) );
+		}
+		$filters = array();
+		foreach ( $value as $name => $term ) {
+			$taxonomy = is_string( $name ) ? get_taxonomy( sanitize_key( $name ) ) : false;
+			if ( ! $taxonomy || ! in_array( 'product', $taxonomy->object_type, true )
+				|| ( ! str_starts_with( $taxonomy->name, 'pa_' ) && ! preg_match( '/brand|manufacturer|برند/i', $taxonomy->name . ' ' . $taxonomy->labels->singular_name ) ) ) {
+				throw new InvalidArgumentException( esc_html__( 'برند یا ویژگی انتخابی ثبت نشده است.', 'exin-black-friday' ) );
+			}
+			$term = sanitize_text_field( $this->text( $term ) );
+			if ( strlen( $term ) > 100 ) {
+				throw new InvalidArgumentException( esc_html__( 'مقدار فیلتر محصول معتبر نیست.', 'exin-black-friday' ) );
+			}
+			if ( '' !== $term ) {
+				$filters[ $taxonomy->name ] = $term;
+			}
+		}
+		return $filters;
 	}
 
 	/**
@@ -250,23 +324,15 @@ final class AdminController {
 		}
 		$valid = $this->validate_campaign( $data );
 		if ( $existing ) {
-			$valid['settings']['currency']  = $existing['settings']['currency'] ?? get_woocommerce_currency();
-			$valid['settings']['precision'] = $existing['settings']['precision'] ?? wc_get_price_decimals();
+			$valid['settings']['order_statuses'] = $existing['settings']['order_statuses'] ?? array( 'processing', 'completed' );
+			$valid['settings']['currency']       = $existing['settings']['currency'] ?? get_woocommerce_currency();
+			$valid['settings']['precision']      = $existing['settings']['precision'] ?? wc_get_price_decimals();
 			if ( get_woocommerce_currency() !== $valid['settings']['currency'] || wc_get_price_decimals() !== (int) $valid['settings']['precision'] ) {
 				throw new InvalidArgumentException( esc_html__( 'واحد پول یا دقت فروشگاه تغییر کرده است؛ پیش از ادامه آن را بررسی کنید.', 'exin-black-friday' ) );
 			}
-			$valid['version'] = (int) $existing['version'] + 1;
 		}
 		if ( $id ) {
-			// Existing product schedules must remain consistent with immutable snapshots.
-			if ( $this->repository->count_items( $id ) > 0 ) {
-				foreach ( array( 'start_utc', 'days', 'timezone', 'strategy', 'power', 'rounding' ) as $field ) {
-					if ( (string) $valid[ $field ] !== (string) $existing[ $field ] ) {
-						throw new InvalidArgumentException( esc_html__( 'برای تغییر برنامه مالی، ابتدا محصولات پیش‌نویس را حذف کنید و پس از ذخیره دوباره اضافه کنید.', 'exin-black-friday' ) );
-					}
-				}
-			}
-			$this->repository->save( $id, $valid );
+			( new DraftCampaignService( $this->repository, $this->logger ) )->save( $id, $valid );
 		} else {
 			$id = $this->repository->create( $valid );
 		}
@@ -284,9 +350,27 @@ final class AdminController {
 	 */
 	public function action( WP_REST_Request $request ): array {
 		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		return ( new LockManager() )->run( 'campaign:' . $id, fn(): array => $this->campaign_action( $request ) );
+	}
+
+	/**
+	 * Validates readiness and changes lifecycle while holding the campaign lock.
+	 *
+	 * @param WP_REST_Request $request Campaign ID and explicitly confirmed action.
+	 * @return array Updated campaign state.
+	 * @throws InvalidArgumentException When readiness or confirmation is missing.
+	 */
+	private function campaign_action( WP_REST_Request $request ): array {
+		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
 		$this->required_campaign( $id );
 		$data   = $this->body( $request );
 		$action = $this->choice( $data['action'] ?? '', array( 'schedule', 'start', 'pause', 'resume', 'restore', 'recover' ) );
+		if ( in_array( $action, array( 'start', 'schedule' ), true ) ) {
+			if ( true !== ( $data['confirm_activate'] ?? false ) ) {
+				throw new InvalidArgumentException( esc_html__( 'فعال‌سازی فقط پس از بررسی نهایی و تأیید صریح مدیر مجاز است.', 'exin-black-friday' ) );
+			}
+			$this->assert_ready( $this->required_campaign( $id ) );
+		}
 		if ( 'restore' === $action && true !== ( $data['confirm_restore'] ?? false ) ) {
 			throw new InvalidArgumentException( esc_html__( 'بازیابی قیمت‌ها به تأیید صریح نیاز دارد.', 'exin-black-friday' ) );
 		}
@@ -308,7 +392,7 @@ final class AdminController {
 		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
 		$this->required_campaign( $id );
 		$data = $this->body( $request );
-		return $this->selection->preview( $id, $this->integer( $data['product_id'] ?? 0, 1, PHP_INT_MAX ), $this->decimal( $data['floor_price'] ?? '' ) );
+		return $this->selection->preview( $id, $this->integer( $data['product_id'] ?? 0, 1, PHP_INT_MAX ), $this->decimal( $data['floor_price'] ?? '', $this->amount_unit( $data ) ) );
 	}
 
 	/**
@@ -335,7 +419,7 @@ final class AdminController {
 		return $this->selection->add(
 			$id,
 			$this->integer( $data['product_id'] ?? 0, 1, PHP_INT_MAX ),
-			$this->decimal( $data['floor_price'] ?? '' ),
+			$this->decimal( $data['floor_price'] ?? '', $this->amount_unit( $data ) ),
 			array(
 				'priority' => $this->integer( $data['priority'] ?? 0, 0, 999999 ),
 				'featured' => $this->boolean( $data['featured'] ?? false ),
@@ -378,7 +462,7 @@ final class AdminController {
 			$changes = array();
 			if ( isset( $data['floor_price'] ) ) {
 				$this->editable_campaign( $id );
-				$changes['floor_price'] = $this->decimal( $data['floor_price'] );
+				$changes['floor_price'] = $this->decimal( $data['floor_price'], $this->amount_unit( $data ) );
 			}
 			if ( isset( $data['priority'] ) ) {
 				$changes['priority'] = $this->integer( $data['priority'], 0, 999999 );
@@ -435,7 +519,7 @@ final class AdminController {
 				}
 				$product = $this->integer( $row['product_id'] ?? 0, 1, PHP_INT_MAX );
 				if ( 'add' === $action ) {
-					$this->selection->add( $id, $product, $this->decimal( $row['floor_price'] ?? '' ) );
+					$this->selection->add( $id, $product, $this->decimal( $row['floor_price'] ?? '', $this->amount_unit( $data ) ) );
 				} else {
 					if ( ! $this->repository->item( $id, $product ) ) {
 						throw new InvalidArgumentException( esc_html__( 'محصول عضو کمپین نیست.', 'exin-black-friday' ) );
@@ -458,6 +542,130 @@ final class AdminController {
 	}
 
 	/**
+	 * Saves reporting policy separately without altering active financial settings.
+	 *
+	 * @param WP_REST_Request $request Campaign ID and registered order statuses.
+	 * @return array Saved reporting settings.
+	 */
+	public function report_settings( WP_REST_Request $request ): array {
+		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		return ( new LockManager() )->run(
+			'campaign:' . $id,
+			function () use ( $request, $id ): array {
+				$campaign                   = $this->required_campaign( $id );
+				$data                       = $this->body( $request );
+				$statuses                   = $this->report_statuses( $data['order_statuses'] ?? array() );
+				$settings                   = $campaign['settings'];
+				$settings['order_statuses'] = $statuses;
+				$this->repository->transaction(
+					function () use ( $id, $settings ): void {
+						$this->repository->save( $id, array( 'settings' => $settings ) );
+						$this->logger->log( 'info', 'report_settings_saved', array( 'campaign_id' => $id ) );
+					}
+				);
+				( new \Exin\BlackFriday\Integration\Orders( $this->repository ) )->invalidate_campaign( $id );
+				return array( 'order_statuses' => $statuses );
+			}
+		);
+	}
+
+	/**
+	 * Applies a bounded explicit manual order without touching product prices.
+	 *
+	 * @param WP_REST_Request $request Campaign ID and ordered enrollment rows.
+	 * @return array Updated order acknowledgements.
+	 * @throws InvalidArgumentException When rows or membership are invalid.
+	 */
+	public function reorder( WP_REST_Request $request ): array {
+		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		return ( new LockManager() )->run(
+			'campaign:' . $id,
+			function () use ( $request, $id ): array {
+				$this->required_campaign( $id );
+				$data = $this->body( $request );
+				$rows = $data['items'] ?? null;
+				if ( ! is_array( $rows ) || ! $rows || count( $rows ) > 100 ) {
+					throw new InvalidArgumentException( esc_html__( 'هر نوبت ترتیب حداکثر ۱۰۰ محصول قابل ذخیره است.', 'exin-black-friday' ) );
+				}
+				$valid = array();
+				foreach ( $rows as $row ) {
+					if ( ! is_array( $row ) ) {
+						throw new InvalidArgumentException( esc_html__( 'ساختار ترتیب محصولات معتبر نیست.', 'exin-black-friday' ) );
+					}
+					$product = $this->integer( $row['product_id'] ?? 0, 1, PHP_INT_MAX );
+					$item    = $this->repository->item( $id, $product );
+					if ( ! $item || 'removed' === $item['status'] || isset( $valid[ $product ] ) ) {
+						throw new InvalidArgumentException( esc_html__( 'محصول تکراری یا خارج از کمپین در ترتیب وجود دارد.', 'exin-black-friday' ) );
+					}
+					$valid[ $product ] = array( 'priority' => $this->integer( $row['priority'] ?? 0, 0, 999999 ) );
+					if ( isset( $row['featured'] ) ) {
+						$valid[ $product ]['featured'] = $this->boolean( $row['featured'] );
+					}
+				}
+				$this->repository->transaction(
+					function () use ( $valid, $id ): void {
+						foreach ( $valid as $product => $changes ) {
+							$this->selection->update( $id, $product, $changes );
+						}
+					}
+				);
+				return array( 'updated' => count( $valid ) );
+			}
+		);
+	}
+
+	/**
+	 * Checks every selected financial schedule before explicit activation.
+	 *
+	 * @param array $campaign Server-loaded draft configuration.
+	 * @return void
+	 * @throws InvalidArgumentException When enrollment data is incomplete or conflicted.
+	 */
+	private function assert_ready( array $campaign ): void {
+		$after = 0;
+		$count = 0;
+		do {
+			$rows = $this->repository->batch( (int) $campaign['id'], $after, 100 );
+			foreach ( $rows as $item ) {
+				$after = (int) $item['product_id'];
+				if ( 'removed' === $item['status'] ) {
+					continue;
+				}
+				++$count;
+				$expected = ( new PricingEngine() )->schedule( $item['base_price'], $item['floor_price'], (int) $campaign['days'], $campaign['strategy'], wc_get_price_decimals(), (int) $campaign['power'], $campaign['rounding'] );
+				if ( 'conflict' === $item['status'] || $item['intent'] || $item['expected'] || $expected !== $item['schedule']
+					|| ( $item['snapshot']['currency'] ?? '' ) !== get_woocommerce_currency()
+					|| (int) ( $item['snapshot']['precision'] ?? -1 ) !== wc_get_price_decimals() ) {
+					throw new InvalidArgumentException( esc_html__( 'برنامه یا مالکیت یک محصول کامل نیست؛ پیش از فعال‌سازی تعارض‌ها را بررسی کنید.', 'exin-black-friday' ) );
+				}
+			}
+			$row_count = count( $rows );
+		} while ( 100 === $row_count );
+		if ( 0 === $count ) {
+			throw new InvalidArgumentException( esc_html__( 'برای فعال‌سازی، حداقل یک محصول با کف معتبر انتخاب کنید.', 'exin-black-friday' ) );
+		}
+	}
+
+	/**
+	 * Accepts only registered paid-order status choices for analytics.
+	 *
+	 * @param mixed $value Requested status list.
+	 * @return array Registered safe status slugs.
+	 * @throws InvalidArgumentException When no valid reporting policy is supplied.
+	 */
+	private function report_statuses( $value ): array {
+		if ( ! is_array( $value ) || ! $value || count( $value ) > 100 ) {
+			throw new InvalidArgumentException( esc_html__( 'حداقل یک وضعیت مجاز گزارش لازم است.', 'exin-black-friday' ) );
+		}
+		$allowed  = array_map( static fn( $status ) => preg_replace( '/^wc-/', '', $status ), array_keys( wc_get_order_statuses() ) );
+		$statuses = array_values( array_unique( array_map( fn( $status ) => $this->choice( preg_replace( '/^wc-/', '', $this->text( $status ) ), $allowed ), $value ) ) );
+		if ( array_intersect( $statuses, array( 'pending', 'failed', 'cancelled', 'checkout-draft', 'refunded' ) ) ) {
+			throw new InvalidArgumentException( esc_html__( 'سفارش پرداخت‌نشده، لغوشده یا کاملاً مستردشده در آمار فروش مجاز نیست.', 'exin-black-friday' ) );
+		}
+		return $statuses;
+	}
+
+	/**
 	 * Validates and allowlists campaign settings, dates and shipping instances.
 	 *
 	 * @param array $data Submitted JSON object.
@@ -473,12 +681,17 @@ final class AdminController {
 		if ( ! in_array( $timezone, DateTimeZone::listIdentifiers(), true ) && 'UTC' !== $timezone ) {
 			throw new InvalidArgumentException( esc_html__( 'منطقه زمانی معتبر نیست.', 'exin-black-friday' ) );
 		}
-		$local  = $this->text( $data['start_local'] ?? '' );
+		if ( isset( $data['start_jalali'] ) ) {
+			$converted = Jalali::to_local( $this->text( $data['start_jalali'] ), $this->text( $data['start_time'] ?? '00:00' ) );
+			$local     = str_replace( ' ', 'T', substr( $converted, 0, 16 ) );
+		} else {
+			$local = $this->text( $data['start_local'] ?? '' );
+		}
 		$zone   = new DateTimeZone( $timezone );
 		$start  = DateTimeImmutable::createFromFormat( '!Y-m-d\TH:i', $local, $zone );
 		$errors = DateTimeImmutable::getLastErrors();
 		if ( ! $start || ( $errors && ( $errors['warning_count'] || $errors['error_count'] ) ) || $start->format( 'Y-m-d\TH:i' ) !== $local ) {
-			throw new InvalidArgumentException( esc_html__( 'زمان شروع معتبر نیست.', 'exin-black-friday' ) );
+			throw new InvalidArgumentException( esc_html__( 'تاریخ شمسی یا ساعت ۲۴ساعتهٔ شروع معتبر نیست.', 'exin-black-friday' ) );
 		}
 		$days     = $this->integer( $data['days'] ?? 7, 1, 366 );
 		$settings = $data['settings'] ?? array();
@@ -490,25 +703,20 @@ final class AdminController {
 			throw new InvalidArgumentException( esc_html__( 'روش ارسال معتبر نیست.', 'exin-black-friday' ) );
 		}
 		$instances = array_values( array_unique( array_map( fn( $value ) => $this->integer( $value, 1, PHP_INT_MAX ), $instances ) ) );
-		$threshold = $this->decimal( $settings['shipping_threshold'] ?? '0' );
+		$unit      = $this->amount_unit( $data );
+		$threshold = $this->decimal( $settings['shipping_threshold'] ?? '0', $unit );
+		$cap       = isset( $settings['shipping_subsidy_cap'] ) && '' !== $settings['shipping_subsidy_cap']
+			? $this->decimal( $settings['shipping_subsidy_cap'], $unit )
+			: CurrencyDisplay::default_subsidy_cap( get_woocommerce_currency(), wc_get_price_decimals() );
 		$free      = $this->boolean( $settings['free_shipping'] ?? false );
-		if ( $free && ( ! $instances || Money::parse( $threshold, wc_get_price_decimals() ) < 1 ) ) {
-			throw new InvalidArgumentException( esc_html__( 'برای ارسال رایگان، حدنصاب مثبت و حداقل یک روش نرخ ثابت لازم است.', 'exin-black-friday' ) );
+		if ( $free && ( ! $instances || null === $cap ) ) {
+			throw new InvalidArgumentException( esc_html__( 'برای ارسال جشنواره، سقف یارانه و حداقل یک روش نرخ ثابت معتبر را تعیین کنید.', 'exin-black-friday' ) );
 		}
 		$allowed_instances = array_column( $this->shipping_methods(), 'id' );
 		foreach ( $instances as $instance ) {
 			if ( ! in_array( $instance, $allowed_instances, true ) ) {
-				throw new InvalidArgumentException( esc_html__( 'روش ارسال انتخابی نرخ ثابت فعال نیست.', 'exin-black-friday' ) );
+				throw new InvalidArgumentException( esc_html__( 'روش ارسال انتخابی نرخ ثابت فعال نیست؛ روش ناسازگار تغییر نمی‌کند.', 'exin-black-friday' ) );
 			}
-		}
-		$statuses = $settings['order_statuses'] ?? array( 'processing', 'completed' );
-		if ( ! is_array( $statuses ) || ! $statuses ) {
-			throw new InvalidArgumentException( esc_html__( 'حداقل یک وضعیت مجاز گزارش لازم است.', 'exin-black-friday' ) );
-		}
-		$allowed_statuses = array_map( fn( $value ) => str_replace( 'wc-', '', $value ), array_keys( wc_get_order_statuses() ) );
-		$statuses         = array_values( array_unique( array_map( fn( $value ) => $this->choice( $value, $allowed_statuses ), $statuses ) ) );
-		if ( array_intersect( $statuses, array( 'failed', 'cancelled', 'checkout-draft', 'pending' ) ) ) {
-			throw new InvalidArgumentException( esc_html__( 'سفارش پرداخت‌نشده، ناموفق یا لغوشده در آمار فروش مجاز نیست.', 'exin-black-friday' ) );
 		}
 		return array(
 			'title'     => $title,
@@ -520,16 +728,14 @@ final class AdminController {
 			'power'     => $this->integer( $data['power'] ?? 2, 1, 8 ),
 			'rounding'  => $this->choice( $data['rounding'] ?? 'half_up', array( 'half_up', 'floor', 'ceil' ) ),
 			'settings'  => array(
-				'currency'           => get_woocommerce_currency(),
-				'precision'          => wc_get_price_decimals(),
-				'free_shipping'      => $free,
-				'shipping_threshold' => $threshold,
-				'shipping_instances' => $instances,
-				'show_out_of_stock'  => $this->boolean( $settings['show_out_of_stock'] ?? true ),
-				'inactive_output'    => $this->choice( $settings['inactive_output'] ?? 'message', array( 'message', 'empty' ) ),
-				'order_statuses'     => $statuses,
-				'target_orders'      => $this->integer( $settings['target_orders'] ?? 500, 1, 10000000 ),
-				'retention_days'     => $this->integer( $settings['retention_days'] ?? 90, 7, 365 ),
+				'currency'             => get_woocommerce_currency(),
+				'precision'            => wc_get_price_decimals(),
+				'free_shipping'        => $free,
+				'shipping_threshold'   => $threshold,
+				'shipping_subsidy_cap' => $cap,
+				'shipping_instances'   => $instances,
+				'inactive_output'      => $this->choice( $settings['inactive_output'] ?? 'message', array( 'message', 'empty' ) ),
+				'retention_days'       => $this->integer( $settings['retention_days'] ?? 90, 7, 365 ),
 			),
 		);
 	}
@@ -541,17 +747,18 @@ final class AdminController {
 	 */
 	private function health(): array {
 		return array(
-			'php'              => PHP_VERSION,
-			'wordpress'        => get_bloginfo( 'version' ),
-			'woocommerce'      => defined( 'WC_VERSION' ) ? WC_VERSION : '',
-			'action_scheduler' => function_exists( 'as_schedule_single_action' ) && function_exists( 'as_has_scheduled_action' ),
-			'cron_disabled'    => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
-			'object_cache'     => wp_using_ext_object_cache(),
-			'timezone'         => wp_timezone_string(),
-			'elementor'        => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : '',
-			'next_watchdog'    => function_exists( 'as_next_scheduled_action' ) ? as_next_scheduled_action( 'exin_bf_tick', array(), 'exin-black-friday' ) : null,
-			'shipping_methods' => $this->shipping_methods(),
-			'order_statuses'   => wc_get_order_statuses(),
+			'php'               => PHP_VERSION,
+			'wordpress'         => get_bloginfo( 'version' ),
+			'woocommerce'       => defined( 'WC_VERSION' ) ? WC_VERSION : '',
+			'action_scheduler'  => function_exists( 'as_schedule_single_action' ) && function_exists( 'as_has_scheduled_action' ),
+			'cron_disabled'     => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
+			'object_cache'      => wp_using_ext_object_cache(),
+			'timezone'          => wp_timezone_string(),
+			'elementor'         => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : '',
+			'next_watchdog'     => function_exists( 'as_next_scheduled_action' ) ? as_next_scheduled_action( 'exin_bf_tick', array(), 'exin-black-friday' ) : null,
+			'shipping_methods'  => $this->shipping_methods(),
+			'shipping_warnings' => ( new \Exin\BlackFriday\Integration\Shipping( $this->repository ) )->warnings(),
+			'order_statuses'    => wc_get_order_statuses(),
 		);
 	}
 
@@ -623,6 +830,14 @@ final class AdminController {
 	 */
 	private function domain_message( string $code ): string {
 		$messages = array(
+			'invalid_money_input'                         => __( 'مبلغ معتبر با ارقام فارسی یا انگلیسی وارد کنید؛ گروه‌بندی هزارگان باید صحیح باشد.', 'exin-black-friday' ),
+			'invalid_money_precision_or_length'           => __( 'طول مبلغ یا دقت ورودی معتبر نیست.', 'exin-black-friday' ),
+			'money_precision_exceeded'                    => __( 'تعداد رقم اعشار مبلغ از دقت مجاز بیشتر است.', 'exin-black-friday' ),
+			'money_input_overflow'                        => __( 'مبلغ از محدودهٔ امن محاسبات بیشتر است.', 'exin-black-friday' ),
+			'unsupported_amount_unit'                     => __( 'واحد مبلغ قابل تبدیل نیست؛ مبلغ را در واحد پشتیبانی‌شدهٔ فروشگاه وارد کنید.', 'exin-black-friday' ),
+			'campaign_not_draft'                          => __( 'تنظیمات مالی فقط در پیش‌نویس قابل تغییرند.', 'exin-black-friday' ),
+			'draft_contains_owned_prices'                 => __( 'این پیش‌نویس مالکیت قیمت باز دارد؛ پیش از ویرایش، بازیابی یا تعارض را بررسی کنید.', 'exin-black-friday' ),
+			'transactional_storage_required'              => __( 'ذخیرهٔ اتمیک تنظیمات به جدول‌های InnoDB نیاز دارد؛ وضعیت دیتابیس را بررسی کنید.', 'exin-black-friday' ),
 			'Amount must be a plain decimal string.'      => __( 'مبلغ را با رقم و نقطهٔ اعشار وارد کنید؛ نماد علمی یا جداکنندهٔ هزارگان مجاز نیست.', 'exin-black-friday' ),
 			'Amount exceeds currency precision.'          => __( 'تعداد رقم اعشار مبلغ از دقت مجاز ارز فروشگاه بیشتر است.', 'exin-black-friday' ),
 			'Amount exceeds the supported integer range.' => __( 'مبلغ از محدودهٔ امن محاسبات بیشتر است؛ مقدار کوچک‌تری وارد کنید.', 'exin-black-friday' ),
@@ -687,12 +902,22 @@ final class AdminController {
 	/**
 	 * Normalizes a plain decimal using the store precision and checked integer units.
 	 *
-	 * @param mixed $value Submitted monetary value.
+	 * @param mixed  $value Submitted monetary value.
+	 * @param string $unit Explicit store or toman editing unit.
 	 * @return string Canonical decimal amount.
 	 */
-	private function decimal( $value ): string {
-		$value = $this->text( $value );
-		return Money::format( Money::parse( $value, wc_get_price_decimals() ), wc_get_price_decimals() );
+	private function decimal( $value, string $unit = 'store' ): string {
+		return CurrencyDisplay::to_store( $this->text( $value ), $unit, get_woocommerce_currency(), wc_get_price_decimals() );
+	}
+
+	/**
+	 * Validate the explicitly declared editing unit without inferring foreign exchange.
+	 *
+	 * @param array $data Financial request body.
+	 * @return string Store or supported toman editing unit.
+	 */
+	private function amount_unit( array $data ): string {
+		return $this->choice( $data['amount_unit'] ?? 'store', array( 'store', 'toman' ) );
 	}
 
 	/**

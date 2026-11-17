@@ -134,30 +134,30 @@ abstract class CampaignWidget extends \Elementor\Widget_Base {
 				array(
 					'label'   => __( 'ترتیب', 'exin-black-friday' ),
 					'type'    => \Elementor\Controls_Manager::SELECT,
-					'default' => 'priority',
+					'default' => 'campaign_priority',
 					'options' => array(
-						'priority'   => __( 'اولویت کمپین', 'exin-black-friday' ),
-						'title'      => __( 'نام', 'exin-black-friday' ),
-						'newest'     => __( 'جدیدترین', 'exin-black-friday' ),
-						'price'      => __( 'قیمت صعودی', 'exin-black-friday' ),
-						'price-desc' => __( 'قیمت نزولی', 'exin-black-friday' ),
+						'campaign_priority' => __( 'ترتیب هوشمند جشنواره', 'exin-black-friday' ),
+						'priority'          => __( 'اولویت کمپین (سازگاری قبلی)', 'exin-black-friday' ),
+						'title'             => __( 'نام', 'exin-black-friday' ),
+						'newest'            => __( 'جدیدترین', 'exin-black-friday' ),
+						'price'             => __( 'قیمت صعودی', 'exin-black-friday' ),
+						'price-desc'        => __( 'قیمت نزولی', 'exin-black-friday' ),
 					),
 				)
 			);
 			$this->add_control(
 				'category',
 				array(
-					'label' => __( 'شناسه دسته‌بندی (اختیاری)', 'exin-black-friday' ),
-					'type'  => \Elementor\Controls_Manager::NUMBER,
-					'min'   => 0,
+					'label' => __( 'نامک یا شناسه دسته‌بندی (اختیاری)', 'exin-black-friday' ),
+					'type'  => \Elementor\Controls_Manager::TEXT,
 				)
 			);
 			$this->add_control(
-				'show_out_of_stock',
+				'featured',
 				array(
-					'label'        => __( 'نمایش ناموجود', 'exin-black-friday' ),
+					'label'        => __( 'فقط محصولات ویژه', 'exin-black-friday' ),
 					'type'         => \Elementor\Controls_Manager::SWITCHER,
-					'return_value' => '1',
+					'return_value' => 'yes',
 					'default'      => '',
 				)
 			);

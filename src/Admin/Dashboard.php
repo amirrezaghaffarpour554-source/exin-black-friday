@@ -11,6 +11,7 @@ use Exin\BlackFriday\Application\ProductSelectionService;
 use Exin\BlackFriday\Application\Scheduler;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
 use Exin\BlackFriday\Infrastructure\Logger;
+use Exin\BlackFriday\Domain\CurrencyDisplay;
 
 /** Renders the management shell and loads assets only for its own admin page. */
 final class Dashboard {
@@ -53,19 +54,25 @@ final class Dashboard {
 					return;
 				}
 				$base = plugins_url( '../../assets/', __FILE__ );
-				wp_enqueue_style( 'exin-bf-admin', $base . 'admin.css', array(), '1.0.0' );
-				wp_enqueue_script( 'exin-bf-admin', $base . 'admin.js', array( 'wp-i18n' ), '1.0.0', true );
+				wp_enqueue_style( 'exin-bf-admin-helpers', $base . 'admin-helpers.css', array(), EXIN_BF_VERSION );
+				wp_enqueue_style( 'exin-bf-admin', $base . 'admin.css', array( 'exin-bf-admin-helpers' ), EXIN_BF_VERSION );
+				wp_enqueue_script( 'exin-bf-admin-helpers', $base . 'admin-helpers.js', array( 'wp-i18n' ), EXIN_BF_VERSION, true );
+				wp_enqueue_script( 'exin-bf-admin', $base . 'admin.js', array( 'wp-i18n', 'exin-bf-admin-helpers' ), EXIN_BF_VERSION, true );
 				wp_localize_script(
 					'exin-bf-admin',
 					'exinBFAdmin',
 					array(
-						'root'      => esc_url_raw( rest_url( 'exin-bf/v1/admin/' ) ),
-						'nonce'     => wp_create_nonce( 'wp_rest' ),
-						'currency'  => html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' ),
-						'precision' => wc_get_price_decimals(),
+						'root'                => esc_url_raw( rest_url( 'exin-bf/v1/admin/' ) ),
+						'nonce'               => wp_create_nonce( 'wp_rest' ),
+						'currency'            => CurrencyDisplay::is_toman( get_woocommerce_currency() ) ? __( 'تومان', 'exin-black-friday' ) : html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' ),
+						'currency_code'       => get_woocommerce_currency(),
+						'display_unit'        => CurrencyDisplay::unit( get_woocommerce_currency() ),
+						'default_subsidy_cap' => CurrencyDisplay::default_subsidy_cap( get_woocommerce_currency(), wc_get_price_decimals() ),
+						'precision'           => wc_get_price_decimals(),
 					)
 				);
 				wp_set_script_translations( 'exin-bf-admin', 'exin-black-friday' );
+				wp_set_script_translations( 'exin-bf-admin-helpers', 'exin-black-friday' );
 			}
 		);
 	}
@@ -85,6 +92,7 @@ final class Dashboard {
 				<div class="exin-bf-brand"><span class="exin-bf-monogram" aria-hidden="true">EX</span><div><span class="exin-bf-kicker">EXIN · BLACK FRIDAY</span><h1><?php esc_html_e( 'بلک فرایدی اکسین', 'exin-black-friday' ); ?></h1></div></div>
 				<button type="button" class="exin-bf-button exin-bf-primary" data-command="add"><?php esc_html_e( 'افزودن محصول', 'exin-black-friday' ); ?> <span aria-hidden="true">＋</span></button>
 			</header>
+			<div id="exin-bf-draft-status" class="exin-bf-draft-status" role="status" aria-live="polite"></div>
 			<nav class="exin-bf-nav" aria-label="<?php esc_attr_e( 'بخش‌های مدیریت کمپین', 'exin-black-friday' ); ?>">
 				<button type="button" data-view="dashboard" aria-current="page"><?php esc_html_e( 'نمای کلی', 'exin-black-friday' ); ?></button>
 				<button type="button" data-view="products"><?php esc_html_e( 'محصولات', 'exin-black-friday' ); ?></button>

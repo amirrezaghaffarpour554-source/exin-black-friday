@@ -39,108 +39,27 @@ final class PublicProductQuery {
 		if ( ! CampaignContext::is_live( $campaign ) ) {
 			return $empty;
 		}
-		$ids = $this->selected_ids( $campaign, ! empty( $args['featured'] ) );
-		if ( ! $ids ) {
-			return $empty;
+		$index = new CampaignProductIndex();
+		$ids   = $index->ids( $campaign, filter_var( $args['featured'] ?? false, FILTER_VALIDATE_BOOLEAN ), sanitize_key( $args['orderby'] ?? 'campaign_priority' ) );
+		if ( ! empty( $args['category'] ) ) {
+			$ids = $index->category( $ids, $args['category'] );
 		}
-		$category = absint( $args['category'] ?? 0 );
-		if ( $category ) {
-			// Scope category matching to selected products and their parents, never the whole catalog.
-			$variation_parents = get_posts(
-				array(
-					'post_type'      => 'product_variation',
-					'post_status'    => 'publish',
-					'post__in'       => $ids,
-					'posts_per_page' => -1,
-					'fields'         => 'id=>parent',
-				)
-			);
-			$candidates        = array_values( array_unique( array_merge( $ids, array_values( $variation_parents ) ) ) );
-			$parents           = get_posts(
-				array(
-					'post_type'      => 'product',
-					'post_status'    => 'publish',
-					'post__in'       => $candidates,
-					'fields'         => 'ids',
-					'posts_per_page' => -1,
-					// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- Restricted to selected IDs and their parents; WordPress caches the term query.
-					'tax_query'      => array(
-						array(
-							'taxonomy'         => 'product_cat',
-							'field'            => 'term_id',
-							'terms'            => $category,
-							'include_children' => true,
-						),
-					),
-				)
-			);
-			$children          = array_keys( array_filter( $variation_parents, static fn( $parent_id ) => in_array( (int) $parent_id, array_map( 'intval', $parents ), true ) ) );
-			$ids               = array_values( array_intersect( $ids, array_merge( $parents, $children ) ) );
-			if ( ! $ids ) {
-				return $empty;
-			}
-		}
-
-		$order = sanitize_key( $args['orderby'] ?? 'priority' );
-		$query = array(
-			'post_type'              => array( 'product', 'product_variation' ),
-			'post_status'            => 'publish',
-			'post__in'               => $ids,
-			'posts_per_page'         => $limit,
-			'paged'                  => $page,
-			'orderby'                => 'post__in',
-			'ignore_sticky_posts'    => true,
-			'update_post_meta_cache' => true,
-			'update_post_term_cache' => true,
-		);
-		if ( 'title' === $order ) {
-			$query['orderby'] = 'title';
-			$query['order']   = 'ASC';
-		} elseif ( 'newest' === $order ) {
-			$query['orderby'] = 'date';
-			$query['order']   = 'DESC';
-		} elseif ( in_array( $order, array( 'price', 'price-desc' ), true ) ) {
-			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Standard Woo price metadata; query is bounded by selected IDs and pagination.
-			$query['meta_key'] = '_price';
-			$query['orderby']  = 'meta_value_num';
-			$query['order']    = 'price' === $order ? 'ASC' : 'DESC';
-		}
-		$show_out = isset( $args['show_out_of_stock'] ) ? filter_var( $args['show_out_of_stock'], FILTER_VALIDATE_BOOLEAN ) : ! empty( $campaign['settings']['show_out_of_stock'] );
-		if ( ! $show_out ) {
-			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Stock visibility is scoped to selected IDs; WordPress caches the query.
-			$query['meta_query'] = array(
-				array(
-					'key'     => '_stock_status',
-					'value'   => 'outofstock',
-					'compare' => '!=',
-				),
-			);
-		}
-		$posts      = new \WP_Query( $query );
-		$parent_ids = array_filter( array_map( static fn( $post ) => (int) $post->post_parent, $posts->posts ) );
-		if ( $parent_ids ) {
-			_prime_post_caches( array_values( array_unique( $parent_ids ) ), true, true );
+		$total    = count( $ids );
+		$page_ids = array_slice( $ids, ( $page - 1 ) * $limit, $limit );
+		if ( $page_ids ) {
+			_prime_post_caches( $page_ids, true, true );
 		}
 		$products = array();
-		foreach ( $posts->posts as $post ) {
-			$product = wc_get_product( $post->ID );
-			if ( ! $product || ! $product->is_type( array( 'simple', 'variation' ) ) ) {
-				continue;
+		foreach ( $page_ids as $id ) {
+			$product = wc_get_product( $id );
+			if ( $product && CampaignContext::purchasable_product( $product ) ) {
+				$products[] = $product;
 			}
-			if ( $product->is_type( 'variation' ) ) {
-				$parent = wc_get_product( $product->get_parent_id() );
-				if ( ! $parent || 'publish' !== $parent->get_status() || ! $parent->is_visible() ) {
-					continue;
-				}
-			} elseif ( ! $product->is_visible() ) {
-				continue;
-			}
-			$products[] = $product;
 		}
 		return array(
 			'products' => $products,
-			'total'    => (int) $posts->found_posts,
-			'pages'    => (int) $posts->max_num_pages,
+			'total'    => $total,
+			'pages'    => (int) ceil( $total / $limit ),
 			'page'     => $page,
 		);
 	}
@@ -154,7 +73,7 @@ final class PublicProductQuery {
 	 */
 	public function selected_ids( array $campaign, bool $featured = false ): array {
 		global $wpdb;
-		$key    = 'selected:' . (int) $campaign['id'] . ':' . (int) $campaign['version'] . ':' . get_option( 'exin_bf_cache_version', '1' ) . ':' . (int) $featured;
+		$key    = 'selected:' . (int) $campaign['id'] . ':' . (int) $campaign['version'] . ':' . get_option( 'exin_bf_cache_version', '1' ) . ':' . get_option( 'exin_bf_catalog_generation', '1' ) . ':' . (int) $featured;
 		$cached = wp_cache_get( $key, 'exin_bf' );
 		if ( is_array( $cached ) ) {
 			return $cached;
@@ -178,7 +97,7 @@ final class PublicProductQuery {
 	 * @return array Requested records or presentation data.
 	 */
 	public function categories( array $campaign ): array {
-		$ids = $this->selected_ids( $campaign );
+		$ids = ( new CampaignProductIndex() )->ids( $campaign );
 		if ( ! $ids ) {
 			return array();
 		}

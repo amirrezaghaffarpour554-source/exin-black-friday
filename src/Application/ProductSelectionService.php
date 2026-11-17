@@ -26,32 +26,21 @@ final class ProductSelectionService {
 	 *
 	 * @param string $term Product name or SKU search text.
 	 * @param int    $page One-based result page.
+	 * @param array  $filters Optional registered catalog filters.
 	 *
 	 * @return array Operation result.
 	 */
-	public function search( string $term, int $page = 1 ): array {
-		$page = min( 50, max( 1, $page ) );
-		$term = sanitize_text_field( $term );
-		if ( strlen( $term ) < 2 ) {
-			return array(
-				'products' => array(),
-				'has_more' => false,
-			);
-		}
-		$store    = \WC_Data_Store::load( 'product' );
-		$ids      = $store->search_products( $term, '', true, false, $page * 20 + 1 );
-		$products = array();
-		foreach ( array_slice( $ids, ( $page - 1 ) * 20, 20 ) as $id ) {
-			$product = wc_get_product( $id );
-			if ( ! $product || ! in_array( $product->get_type(), array( 'simple', 'variation' ), true ) ) {
-				continue;
-			}
-			$products[] = $this->presentation( $product );
-		}
-		return array(
-			'products' => $products,
-			'has_more' => count( $ids ) > $page * 20,
-		);
+	public function search( string $term, int $page = 1, array $filters = array() ): array {
+		return ( new CatalogProductQuery() )->search( $term, $page, $filters );
+	}
+
+	/**
+	 * Return bounded category, brand and global attribute filter choices.
+	 *
+	 * @return array Registered catalog filters for the administrator product picker.
+	 */
+	public function filters(): array {
+		return ( new CatalogProductQuery() )->filters();
 	}
 
 	/**
@@ -411,22 +400,6 @@ final class ProductSelectionService {
 	 * @return array Operation result.
 	 */
 	private function presentation( \WC_Product $product ): array {
-		$image = wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' );
-		return array(
-			'id'             => $product->get_id(),
-			'product_id'     => $product->get_id(),
-			'name'           => $product->get_name(),
-			'sku'            => $product->get_sku(),
-			'type'           => $product->get_type(),
-			'price'          => $product->get_price( 'edit' ),
-			'stock_status'   => $product->get_stock_status(),
-			'stock_quantity' => $product->get_stock_quantity(),
-			'in_stock'       => $product->is_in_stock(),
-			'backorders'     => $product->backorders_allowed(),
-			'image'          => $image ? $image : '',
-			'categories'     => $product->get_category_ids(),
-			'status'         => $product->get_status(),
-			'parent_id'      => $product->get_parent_id(),
-		);
+		return CatalogProductQuery::presentation( $product );
 	}
 }

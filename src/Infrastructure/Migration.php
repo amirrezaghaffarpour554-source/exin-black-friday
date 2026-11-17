@@ -7,11 +7,13 @@
 
 namespace Exin\BlackFriday\Infrastructure;
 
+use Exin\BlackFriday\Domain\CurrencyDisplay;
+
 // phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned financial state must be read fresh; not Woo entities.
 
 /** Creates and upgrades durable campaign database tables. */
 final class Migration {
-	public const VERSION = '2';
+	public const VERSION = '3';
 
 	/**
 	 * Create the current schema and record its independent migration version.
@@ -104,6 +106,42 @@ final class Migration {
 		if ( 'retry_state' !== $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', $prefix . 'items', 'retry_state' ) ) ) {
 			throw new \RuntimeException( 'schema_retry_state_missing' );
 		}
+		self::upgrade_settings( $prefix . 'campaigns' );
 		update_option( 'exin_bf_schema_version', self::VERSION, false );
+	}
+
+	/**
+	 * Remove retired presentation settings while preserving all financial state.
+	 *
+	 * @param string $table Plugin-owned campaign table.
+	 * @return void
+	 * @throws \RuntimeException When a stored settings document cannot be migrated.
+	 */
+	private static function upgrade_settings( string $table ): void {
+		global $wpdb;
+		$after = 0;
+		do {
+			$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT id, settings FROM %i WHERE id>%d ORDER BY id ASC LIMIT 100', $table, $after ), ARRAY_A );
+			if ( ! is_array( $rows ) || '' !== $wpdb->last_error ) {
+				throw new \RuntimeException( 'settings_upgrade_read_failed' );
+			}
+			foreach ( $rows as $row ) {
+				$after    = (int) $row['id'];
+				$settings = json_decode( $row['settings'], true, 512, JSON_THROW_ON_ERROR );
+				if ( ! is_array( $settings ) ) {
+					throw new \RuntimeException( 'invalid_legacy_campaign_settings' );
+				}
+				unset( $settings['target_orders'], $settings['show_out_of_stock'] );
+				if ( ! array_key_exists( 'shipping_subsidy_cap', $settings ) ) {
+					$currency                         = (string) ( $settings['currency'] ?? ( function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : '' ) );
+					$precision                        = (int) ( $settings['precision'] ?? ( function_exists( 'wc_get_price_decimals' ) ? wc_get_price_decimals() : 2 ) );
+					$settings['shipping_subsidy_cap'] = CurrencyDisplay::default_subsidy_cap( $currency, $precision );
+				}
+				if ( false === $wpdb->update( $table, array( 'settings' => wp_json_encode( $settings, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR ) ), array( 'id' => $after ) ) ) {
+					throw new \RuntimeException( 'settings_upgrade_failed' );
+				}
+			}
+			$count = count( $rows );
+		} while ( 100 === $count );
 	}
 }
