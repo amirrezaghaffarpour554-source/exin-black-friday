@@ -1,0 +1,31 @@
+{
+  "suite": "actual-v100-v101-upgrade",
+  "old_release": "releases/exin-black-friday-v1.0.0.zip",
+  "runtime": "native real PHP8.2 WordPress7.1.4 Woo11.3 MariaDB11.8.6 HPOS; separate exin_upgrade_ site",
+  "checks": 29,
+  "failures": 0,
+  "phases": [
+    {
+      "suite": "actual-v100-v101-upgrade",
+      "phase": "prepare",
+      "version": "1.0.0",
+      "checks": 8,
+      "failures": 0,
+      "hpos": true
+    },
+    {
+      "suite": "actual-v100-v101-upgrade",
+      "phase": "verify",
+      "version": "1.0.1",
+      "checks": 21,
+      "failures": 0,
+      "hpos": true
+    }
+  ],
+  "raw_output": "work/v101/upgrade-native.txt",
+  "notes": [
+    "Fresh PHP processes load actual old released code then current v1.0.1 source; no version stubs.",
+    "Woo prices stock complete financial row bytes and existing HPOS order survive automatic migration.",
+    "Real audit INSERT failure produced old pending intent; upgraded restore settles it and is idempotent."
+  ]
+}

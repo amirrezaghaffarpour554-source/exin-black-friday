@@ -1,0 +1,68 @@
+{
+  "tests": 14,
+  "assertions": 72,
+  "passed": 14,
+  "failed": 0,
+  "wordpress": "7.1.4",
+  "woocommerce": "11.3.0",
+  "php": "8.2.35",
+  "object_cache": null,
+  "results": [
+    {
+      "test": "Catalog picker searches SKU and supports bounded server pagination",
+      "passed": true
+    },
+    {
+      "test": "Catalog types expose variable parents as navigation and variations independently",
+      "passed": true
+    },
+    {
+      "test": "Category descendants and combined brand/attribute filters match exact variations",
+      "passed": true
+    },
+    {
+      "test": "Picker metadata lists actual registered category brand and attribute values",
+      "passed": true
+    },
+    {
+      "test": "Campaign order uses featured manual priority exact discount sales and enrollment",
+      "passed": true
+    },
+    {
+      "test": "Category slug and featured shortcode return only selected products",
+      "passed": true
+    },
+    {
+      "test": "Standard Woo loop templates preserve list markup columns and caller loop context",
+      "passed": true
+    },
+    {
+      "test": "Div-based theme loop templates retain valid variation markup and restore context after errors",
+      "passed": true
+    },
+    {
+      "test": "Stock exhaustion invalidates cached IDs before pagination and restock returns membership",
+      "passed": true
+    },
+    {
+      "test": "Backordered and unpurchasable products leave every campaign page",
+      "passed": true
+    },
+    {
+      "test": "Inherited and independent variation stock use the correct Woo stock owner",
+      "passed": true
+    },
+    {
+      "test": "Featured and numeric priority updates invalidate cached ordering",
+      "passed": true
+    },
+    {
+      "test": "Product taxonomy mutation refreshes indexes while ordinary blog tags do not",
+      "passed": true
+    },
+    {
+      "test": "A changed store currency fails closed instead of reinterpreting campaign units",
+      "passed": true
+    }
+  ]
+}

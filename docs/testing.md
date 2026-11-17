@@ -1,99 +1,81 @@
-# گزارش تست و شواهد نسخهٔ ۱٫۰٫۰
+# گزارش تست و شواهد نسخهٔ ۱٫۰٫۱
 
-این گزارش حاصل اجرای واقعی همین مأموریت برای تحویل به **Staging** است. هیچ تستی روی `digiexin.com` اجرا نشده و هیچ داده یا تنظیم Production تغییر نکرده است. مجموعه‌های نهایی زیر صفر شکست ثبت‌شده دارند؛ موارد محیط مقصد در پایان گزارش آمده‌اند.
+نتیجهٔ اجرای ایزوله در ۲۰۲۶/۱۱/۱۷ برای تحویل به بازبینی و Staging است. هیچ اتصال، کپی دیتابیس یا تغییر Production انجام نشده است. تست‌ها از دادهٔ ساختگی استفاده می‌کنند. «Passed» فقط به اجرای ثبت‌شده اشاره دارد؛ آماده‌بودن انتشار روی فروشگاه واقعی باید جدا تأیید شود.
 
-## محیط اجرا
+## محیط اجراشده
 
-| مؤلفه | نسخه و وضعیت اجراشده |
+| مؤلفه | نسخهٔ واقعی |
 | --- | --- |
-| WordPress / WooCommerce | 6.9.4 / 10.3.0 واقعی |
-| PHP یکپارچه | 8.3.31 |
-| PHP دامنه و Syntax | 8.1.34 و 8.3.36 |
-| MariaDB | 11.4.13، دیتابیس مستقل `exin_test` |
+| WordPress / WooCommerce | 7.1.4 / 11.3.0 |
+| PHP / MariaDB | 8.2.35 / 11.8.6 |
 | سفارش | HPOS فعال |
-| Elementor | 3.34.0 واقعی؛ ذخیره و بازسازی صفحه بررسی شد |
-| مرورگر | Chromium و Playwright 1.62.1؛ دسکتاپ 1440×1000 و موبایل 390×844 |
-| کش | حافظهٔ هر درخواست وردپرس؛ Redis و CDN فعال نبودند |
-| Schema | شمارهٔ `2`؛ ارتقای `1 → 2` با حفظ Snapshot بررسی شد |
+| Elementor | 3.34.0 رسمی |
+| مرورگر | Chromium / Playwright 1.62.1؛ دسکتاپ 1440×1000 و موبایل 390×844 |
+| وب و کش | HTTP محلی PHP؛ کش حافظهٔ درخواست وردپرس؛ Redis فعال نبود |
+| Schema | `3`؛ ارتقا از ZIP واقعی ۱٫۰٫۰ با Schema `2` |
 
-WooCommerce 11.3.0 در آماده‌سازی محیط نیازمند WordPress 7.0 بود؛ سازگاری آن با این محیط ادعا نمی‌شود. حداقل‌های فنی PHP 8.1، وردپرس 6.5 و ووکامرس 8.2 جایگزین ماتریس اجراشدهٔ بالا نیستند؛ تمام ترکیب‌های نسخه‌ها اجرا نشده‌اند.
+Docker daemon در این محیط در دسترس نبود؛ اجرای واقعی با باینری PHP استخراج‌شده از تصویر رسمی، سورس رسمی WordPress/WooCommerce و MariaDB مستقل در فضای RAM خصوصی انجام شد. این اجرا Nginx یا Redis را شبیه‌سازی یا تأیید نمی‌کند. [نسخه‌ها و Hash منابع](reports/v1.0.1/runtime.json) و [شرح اجرای جایگزین](https://github.com/amirrezaghaffarpour554-source/exin-black-friday/blob/codex/exin-black-friday-1.0.1/scripts/runtime/README.md) ثبت شده‌اند.
 
-## نتیجه‌های نهایی
+## Passed
 
-| مجموعه | تعداد واقعی | نتیجه و شاهد |
+| گروه | نتیجهٔ واقعی | شاهد |
 | --- | --- | --- |
-| Unit مستقل دامنه | ۱۷ سناریو و ۳٬۲۰۷ assertion در هر نسخهٔ PHP | دو اجرای موفق روی 8.1 و 8.3؛ [JSON](reports/unit-static.json) |
-| یکپارچهٔ اصلی | ۳۸ سناریو، ۱۵۰ assertion | ۳۸ موفق؛ [JSON](reports/integration.json) |
-| Retry، Upgrade، Pagination و Retention | ۲۸ بررسی | ۲۸ موفق؛ [JSON](reports/retry.json) |
-| Elementor واقعی | ۲۰ بررسی | ۲۰ موفق؛ [JSON](reports/elementor.json) |
-| چرخهٔ نصب و حذف | ۱۹ بررسی | ۲ وابستگی، ۱۰ فعال‌سازی/ارتقا/حفظ داده، ۷ حذف تمیز؛ [JSON](reports/lifecycle.json) |
-| Checkout واقعی Store API | ۱۵ بررسی | ۱۵ موفق؛ [JSON](reports/store-api.json) |
-| مرورگر مدیریت | ۱۸ بررسی | ۱۸ موفق، بدون استثنای JavaScript؛ [JSON](reports/browser.json) |
-| نصب ZIP استخراج‌شده | ۱۷ بررسی | ۱۵ نصب و عملیات + ۲ نبود وابستگی؛ [JSON](reports/package-install.json) |
-| PHP Syntax | ۴۳ فایل در هر نسخه | PHP 8.1 و 8.3 بدون خطای نحوی |
-| WPCS | ۳۰ فایل PHP اجرایی | WordPress standard، صفر خطا و صفر هشدار |
-| Syntax سایر ابزارها | ۳ JavaScript و ۴ Shell | موفق |
-| بسته‌بندی | CRC، ریشه، تطبیق سورس، حذف فایل توسعه و تکرارپذیری | `tests/test_package.py` |
+| دامنهٔ قیمت و زمان | ۱۷ سناریو، ۳٬۲۰۷ assertion | [JSON](reports/v1.0.1/unit-static.json) |
+| تاریخ شمسی و پول PHP | ۱۰ سناریو، ۳٬۴۶۰ assertion | [JSON](reports/v1.0.1/unit-static.json) |
+| تقویم/پول JavaScript | ۶ سناریو، ۳٬۴۴۲ assertion؛ ۴۸۲ بردار مستقل ICU | [JSON](reports/v1.0.1/unit-static.json) |
+| محاسبات سقف ارسال | ۱٬۵۰۷ بررسی | [JSON](reports/v1.0.1/unit-static.json) |
+| رگرسیون مالی/بازیابی/امنیت پایه | ۳۹ سناریو، ۱۵۴ assertion | [JSON](reports/v1.0.1/integration.json) |
+| Retry، Pagination، Retention و Schema | ۲۸ بررسی | [JSON](reports/v1.0.1/retry.json) |
+| پیش‌نویس اتمیک، Migration و گزارش HPOS | ۱۲ سناریو، ۸۱ assertion | [JSON](reports/v1.0.1/core.json) |
+| ارسال واقعی Woo، مالیات و کش Session | ۱۴ سناریو، ۵۲ assertion | [JSON](reports/v1.0.1/shipping.json) |
+| Picker، موجودی، رتبه‌بندی و قالب Woo | ۱۴ سناریو، ۷۲ assertion | [JSON](reports/v1.0.1/catalog.json) |
+| مرورگر مدیریت با WordPress واقعی | ۳۸ بررسی؛ بدون استثنای JavaScript | [JSON](reports/v1.0.1/admin-wordpress.json) |
+| مرورگر مدیریت با REST ساختگی | ۴۲ بررسی؛ مستقل از تست واقعی بالا | [JSON](reports/v1.0.1/admin-mocked-browser.json) |
+| تقویم و Cursor در Chromium | ۲۳ بررسی؛ اجرای ۲۰۲۶/۱۱/۱۶ | [JSON](reports/v1.0.1/helper-browser.json) |
+| Checkout از Controller واقعی Store API | ۱۹ بررسی؛ BACS آفلاین آزمایشی | [JSON](reports/v1.0.1/store-api.json) |
+| ارتقا از ZIP واقعی ۱٫۰٫۰ | ۲۹ بررسی در دو فرایند PHP مستقل | [JSON](reports/v1.0.1/upgrade.json) |
+| Elementor واقعی و صفحهٔ ذخیره‌شده | ۲۰ بررسی | [JSON](reports/v1.0.1/elementor.json) |
+| کیفیت سورس | Syntax: ۶۳ PHP، ۹ JS، ۱۱ Shell، ۷ Python؛ WPCS روی ۴۱ فایل اجرایی با صفر خطا/هشدار | [JSON](reports/v1.0.1/quality.json) |
 
-«سناریو»، «assertion» و «بررسی» با هم جمع نشده‌اند. گزارش‌های JSON فاقد اطلاعات واقعی مشتری و Credential هستند.
+سناریو، assertion و بررسی با هم جمع نشده‌اند. گزارش‌های [آرشیو ۱٫۰٫۰](reports/v1.0.0/README.md) شاهد نسخهٔ جدید نیستند. Benchmark قبلی ۱۰۰/۱۰۰۰ محصول در این انتشار تکرار نشده است.
 
-## دامنهٔ بررسی‌شده
+## دامنهٔ نتیجه‌ها
 
-محاسبات مالی شامل کف برابر پایه، ورودی نامعتبر، اعشار و مبالغ بزرگ، Overflow، سه سیاست گردکردن، خطی و تصاعدی، یک روز، روز اول و آخر، تهران و DST هستند. بردارهای مرجع با محاسبات مستقل صحیح Python مقایسه می‌شوند.
+تست مالی، کف روز آخر، گردکردن دقیق، محصول ساده/Variation، Sale قبلی، Job دیررس و تکراری، قفل اتصال، Intent نیمه‌تمام، Retry محدود و Restore پس از تغییر بیرونی را پوشش می‌دهد. خرابی Audit باعث بازگشت کامل پیش‌نویس می‌شود. قطع واقعی اتصال پیش از UPDATE دوم نیز تست شد: ردیف اول برگشت، ردیف دوم خارج از تراکنش بازاجرا نشد و نسخه/قیمت/موجودی حفظ شدند. ذخیرهٔ اتمیک به `wpdb` استاندارد و InnoDB نیاز دارد؛ [محدودیت درایور جایگزین](limitations.md) ثبت شده است.
 
-تست واقعی ووکامرس شامل Simple و Variation، Sale قبلی و زمان‌بندی‌شده، قیمت پویا، Job دیررس و تکراری، توقف و ادامه، نسخهٔ قدیمی، قفل در اتصال مستقل و از دست رفتن آن، Intent قطع‌شده، خرابی Audit، Restore و حفظ تغییر دستی است. Worker واقعی Action Scheduler برای کف روز آخر، پایان طبیعی و Retry اجرا شده است. بودجه و موعد Retry در برابر Watchdog، Callback تکراری، قطع Worker و خرابی Audit تست شده‌اند. Retention، شمارش Removed و Upgrade نیز بررسی شده‌اند.
+تست ارسال، حداقل صفر همراه با قلم واقعی کمپین، حدنصاب پس از کوپن، تغییر تعداد/حذف، یک سقف مشترک چند Package، نرخ جایگزین، روش حذف‌شده و کش واقعی Session ووکامرس را بررسی می‌کند. Fixture مالیات ابتدا وجود نرخ واقعی ۱۰٪ را تأیید می‌کند: پایهٔ ارسال ۲۰ و مالیات ۲، پس از یارانه به سهم مشتری ۵ و مالیات ۰٫۵ می‌رسد. روش/پایه/مالیات نامطمئن بدون یارانه می‌ماند.
 
-Classic checkout با `WC_Checkout::create_order` سفارش واقعی ساخته است. تغییر روزانهٔ قیمت میان محاسبهٔ سبد و ایجاد سفارش، انتساب قلم منتخب را حذف نمی‌کند و مبلغ ذخیره‌شده را بازنویسی نمی‌کند. گزارش HPOS، سفارش چندقلمی و مختلط، Failed/Cancelled، بازگشت تکراری و Refund واقعی بررسی شده‌اند.
+تست مرورگر واقعی با Cookie و nonce وردپرس، بدون Mock اجرا شد: تقویم شمسی و ساعت ۲۴ساعته، Autosave، تب‌ها، فیلتر هم‌زمان دسته/برند/ویژگی، ۲۸ محصول در دو Batch برابر ۲۵+۳، کف مستقل تومان/ریال، Variation، Drag & Drop، سیاست گزارش سفارشی، رد فعال‌سازی بدون تأیید و توقف/ادامه. مقدار Precision که WordPress به‌شکل رشته می‌فرستد نیز اصلاح شد. PHP حفظ قیمت و موجودی هر ۳۱ محصول Fixture را تأیید کرد. زمان گردش خودکار تنظیم اصلی ۴٫۱۲۶ ثانیه و ثبت گروه ۹٫۰۵۷ ثانیه بود؛ این زمان کار انسان یا Benchmark فروشگاه واقعی نیست. تصاویر دسکتاپ و موبایل بازبینی شدند؛ RTL خوانا و بدون سرریز افقی صفحه است.
 
-Store API از Controller واقعی ووکامرس و `rest_do_request` استفاده می‌کند: قیمت سبد، عدم افشای دادهٔ خصوصی، Flat Rate در حدنصاب، کوپن واقعی و حذف آن، تغییر تعداد، Checkout با **BACS آفلاین آزمایشی**، Metadata، کاهش استاندارد موجودی و شمارش یکتای سفارش تأیید شده‌اند. این اجرا شامل رابط مرورگری Blocks یا درگاه آنلاین نیست.
+Checkout شامل سفارش مختلط، قیمت ذخیره‌شدهٔ ثابت، انتساب تاریخی، Refund و HPOS است. Store API اتمام موجودی پس از ورود به سبد را با خطای واقعی Checkout رد کرد و مبلغ سفارش Pending را تغییر نداد؛ سپس با بازیابی موجودی از CRUD استاندارد، خرید BACS آزمایشی کامل شد. این اجرا رابط مرورگری Blocks یا درگاه آنلاین نیست.
 
-مرورگر مدیریت، REST در پیوند یکتای پیش‌فرض، ذخیره تنظیمات، جست‌وجوی SKU، هفت قیمت پیش‌نمایش، افزودن، ویرایش کف و Featured، شروع کمپین با زمان گذشته، توقف، ادامه، قفل مالی، عیب‌یابی و موبایل را اجرا می‌کند. ثبت محصول در گردش اسکریپت‌شده حدود **۱٫۵۴ ثانیه** طول کشید؛ این اندازه‌گیری زمان کار انسان نیست.
+ارتقا کد واقعی ZIP قبلی را بارگذاری و دادهٔ مالکیت‌دار، Intent قطع‌شده و سفارش HPOS می‌سازد؛ فرایند بعدی نسخهٔ جدید را اجرا می‌کند. Snapshot/expected/intent/retry_state، قیمت/موجودی و سفارش حفظ می‌شوند؛ Restore و تکرار آن نیز بررسی شدند. برگهٔ واقعی `21861` و تنظیمات فروشگاه تغییر نکرده‌اند.
 
-ZIP در وردپرس تازه و پیشوند دیتابیس جدا نصب شده است. Reflection مسیر کلاس را بررسی کرده تا اجرای کد از ZIP استخراج‌شده، مستقل از Mount سورس، ثابت شود. فعال‌سازی، HPOS، افزودن، اعمال قیمت، شورت‌کد، Restore تکراری، حفظ موجودی، غیرفعال‌سازی/فعال‌سازی و نبود WooCommerce/Elementor بررسی شده‌اند. تست حذف در هر اجرا پیشوند تازه می‌سازد؛ دادهٔ مالکیت‌دار قبلی پاک نمی‌شود.
+## بستهٔ نهایی
 
-## Benchmark واقعی
+ZIP نصب‌پذیر، SHA256 و Manifest در [پروندهٔ انتشار ۱٫۰٫۱](https://github.com/amirrezaghaffarpour554-source/exin-black-friday/tree/codex/exin-black-friday-1.0.1/releases/v1.0.1) قرار دارند. ساخت تکرارپذیر، CRC، ریشهٔ یکتا، تطبیق بایت‌به‌بایت با سورس و حذف فایل‌های توسعه با `tests/test_package.py` بررسی می‌شوند.
 
-| معیار | ۱۰۰ محصول | ۱٬۰۰۰ محصول |
-| --- | --- | --- |
-| ساخت Fixture | ۳٫۸۲۲۷ ثانیه | ۴۱٫۲۶۱۴ ثانیه |
-| اعمال قیمت همهٔ محصولات | ۲٫۱۱۹۶ ثانیه | ۲۵٫۲۷۵۶ ثانیه |
-| Batch با اندازهٔ ۲۵ | ۴ | ۴۰ |
-| کندترین Batch | ۰٫۵۴۱۸ ثانیه | ۱٫۳۸۴۴ ثانیه |
-| SQL اعمال قیمت | ۱۱٬۰۷۵ | ۱۱۰٬۷۴۱ |
-| Query صفحهٔ نخست / SQL | ۴٫۸ ms / ۴ | ۴۷٫۲ ms / ۴ |
-| رندر شورت‌کد و قالب / SQL | ۱۵٫۰ ms / ۴ | ۱۶٫۴ ms / ۵ |
-| پاسخ HTTP مستقل | ۱۶۲٫۴ ms، کد 200 | ۳۲۱٫۹ ms، کد 200 |
-| حجم HTML | ۱۲۹٬۰۷۶ بایت | ۱۲۹٬۰۷۹ بایت |
-| اوج حافظهٔ فرایند Fixture/Batch | ۱۳۶٬۱۱۸٬۲۷۲ بایت | ۱۴۸٬۷۰۱٬۱۸۴ بایت |
+شاهد نصب **همان ZIP نهایی** شامل Hash آرشیو، تطبیق همهٔ فایل‌های استخراج‌شده، Reflection مسیر کلاس، فعال‌سازی، Schema/HPOS و غیرفعال‌سازی/فعال‌سازی مجدد در [package-install.json](https://github.com/amirrezaghaffarpour554-source/exin-black-friday/blob/codex/exin-black-friday-1.0.1/releases/v1.0.1/package-install.json) کنار بسته ثبت می‌شود. این شاهد خارج از ZIP نگه‌داری می‌شود تا ثبت Hash، خود بسته را تغییر ندهد.
 
-[JSON کامل Benchmark](reports/benchmark.json) تأیید قیمت و نام محصول منتخب را هم ثبت می‌کند. صفحه در هر دو حالت **۱۲ کارت و Pagination** دارد. Query و رندر CLI از حافظهٔ گرم همان فرایند استفاده می‌کنند؛ HTTP درخواست مستقل با کش حافظهٔ تازه و Buffer دیتابیس گرم است. این زمان شامل Asset، LCP، هزار کارت هم‌زمان یا تأخیر اینترنت نیست. Batch شامل CRUD، قفل و ثبت پایدار است؛ هزینهٔ انتظار صف جداست. بار SQL باید روی منابع Staging ارزیابی شود.
+## Failed و Not Run
 
-## اجرای مجدد
+- **Failed در اجرای نهایی ثبت‌شده: صفر.** خطاهای کشف‌شدهٔ Precision رابط مدیریت، اتصال مجدد تراکنش و Fixture مالیات اصلاح و بررسی مرتبط اجرا شد.
+- **Not Run:** قالب/افزونهٔ واقعی Woodmart و WP Rocket، Redis، Nginx، CDN/Full Page Cache مقصد، درگاه آنلاین، رابط مرورگری خرید Blocks، Cron میزبان، کپی کامل فروشگاه و انتشار Production.
+- Benchmark تازهٔ ۱۰۰/۱۰۰۰ محصول، همهٔ ترکیب‌های نسخه‌ها و چرخهٔ کامل Uninstall نسخهٔ جدید اجرا نشده‌اند. موارد مقصد در [چک‌لیست انتشار](release-checklist.md) باز می‌مانند.
 
-تست‌های دیتابیس فقط در Runtime محلی اسکریپت‌ها و به‌ترتیب اجرا شوند؛ Suiteهای تغییر‌دهندهٔ کمپین جاری هم‌زمان اجرا نشوند. Docker و Compose، PHP 8.1+، Composer، Python 3.9+ و برای مرورگر Node/Playwright و Chromium لازم‌اند. Imageها به Digest پین شده‌اند؛ Credentialها فقط Fixture محلی هستند.
+Elementor 3.34.0 در `includes/api.php:176` یک Deprecated مربوط به تبدیل false به array روی PHP 8.2 دارد. Notice ترجمهٔ زودهنگام WooCommerce و `HTTP_HOST` در CLI نیز دیده شد. در Fixture قطع عمدی اتصال، Noticeهای مورد انتظار escaping دیتابیس ثبت شدند. این موارد با خطای افزونه در گردش عادی یکسان شمرده نشده‌اند؛ Fatal غیرمنتظرهٔ EXIN در اجراهای نهایی ثبت نشد.
+
+## اجرای مجدد ضروری
+
+تست‌های تغییر‌دهندهٔ کمپین یا لینک نسخهٔ افزونه را سریالی و فقط در محیط ساختگی اجرا کنید. مسیر معمول به Docker/Compose، Composer و Node/Chromium نیاز دارد؛ این مسیر با اجرای Native ثبت‌شده اشتباه نشود.
 
 ```sh
-composer install
-composer lint
-php tests/unit/run.php
-bash scripts/test-runtime.sh up
-bash scripts/test-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/retry-backoff.php
-bash scripts/test-runtime.sh test
-bash scripts/test-runtime.sh elementor
-bash scripts/test-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/elementor.php
-bash scripts/test-lifecycle.sh
-bash scripts/test-store-api.sh
-npm ci
-CHROMIUM_PATH=/usr/bin/chromium npm run test:browser
-bash scripts/test-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/benchmark.php
+bash scripts/test-v101-runtime.sh up
+composer test:unit
+composer test:integration
+EXIN_WP_BASE_URL=http://localhost:8891 npm run test:browser:wordpress
+bash scripts/test-v101-runtime.sh upgrade
 python3 tests/test_package.py
-bash scripts/test-package-install.sh work/dist/exin-black-friday-v1.0.0.zip
 ```
 
-در این مأموریت PHP از Docker اجرا شد. دسترسی Composer به `api.github.com` محدود بود؛ همان ابزارهای قفل‌شدهٔ `composer.lock` از Git رسمی در Reference مشخص خوانده و PHPCS واقعی اجرا شد. وابستگی توسعه در ZIP نیست. نام فایل PSR-4 عمداً از Sniff نام فایل استثنا و Capability ووکامرس به Ruleset شناسانده شده است. Ignoreهای محدود SQL فقط برای جدول‌های خود افزونه، خواندن مالی تازه و Queryهای محدود و مستند هستند.
-
-## موارد مشاهده‌شده و مرز اعتبار
-
-Elementor 3.34.0 روی PHP 8.3 یک Deprecated در `includes/api.php:176` ثبت می‌کند. در نصب تازهٔ CLI، Notice مربوط به ترجمهٔ زودهنگام WooCommerce و `HTTP_HOST` وردپرس نیز دیده شد؛ Assertionها موفق بودند. Fatal یا Deprecated منتسب به EXIN در اجرای نهایی ثبت نشد.
-
-خرید مرورگری کامل با درگاه آنلاین و بازگشت واقعی پرداخت، قالب و CSS مقصد، Woodmart، Redis، CDN، افزونه‌های تخفیف و تقسیم بستهٔ واقعی، Cron میزبان، آزمون نفوذ مستقل و تمام ترکیب‌های نسخه‌ها در مقصد اجرا نشده‌اند. [چک‌لیست انتشار](release-checklist.md) باید در Staging مشابه Production تکمیل شود. کنترل عمومی CDN و شناسایی همهٔ موتورهای قیمت پویا ارائه نمی‌شود؛ [محدودیت‌ها](limitations.md) مرز دقیق را توضیح می‌دهد.
+دستور کاربر در پایان، تمرکز بر بررسی‌های ضروری و پرهیز از گسترش تست بود؛ پس از اصلاح خطاهای واقعی، ماتریس اختیاری یا Benchmark تازه اجرا نشد. تأیید نهایی سایت واقعی و استقرار، فاز جداگانه با تأیید مدیر است.

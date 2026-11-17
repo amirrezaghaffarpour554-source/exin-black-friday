@@ -1,0 +1,75 @@
+{
+  "suite": "v101-core",
+  "wordpress": "7.1.4",
+  "woocommerce": "11.3.0",
+  "php": "8.2.35",
+  "database": "11.8.6",
+  "hpos": true,
+  "tests": 12,
+  "assertions": 81,
+  "passed": 12,
+  "failed": 0,
+  "seconds": 1.599,
+  "results": [
+    {
+      "test": "Core regressions run on the exact requested WordPress WooCommerce PHP and HPOS matrix",
+      "status": "passed",
+      "seconds": 0
+    },
+    {
+      "test": "Draft date and strategy edits atomically replan selected products without changing Woo prices or snapshots",
+      "status": "passed",
+      "seconds": 0.1741
+    },
+    {
+      "test": "Failed audit insert rolls back every draft row and its campaign version",
+      "status": "passed",
+      "seconds": 0.0603
+    },
+    {
+      "test": "Connection loss exactly at COMMIT fails closed and cannot report an unsaved draft as saved",
+      "status": "passed",
+      "seconds": 0.0813
+    },
+    {
+      "test": "Disconnect before the second item update cannot replay an autocommitted partial draft",
+      "status": "passed",
+      "seconds": 0.063
+    },
+    {
+      "test": "Active campaigns and drafts with owned prices reject financial replanning",
+      "status": "passed",
+      "seconds": 0.0906
+    },
+    {
+      "test": "Schema 2 to 3 migration removes retired settings and preserves snapshot intent retry and prices byte for byte",
+      "status": "passed",
+      "seconds": 0.0542
+    },
+    {
+      "test": "A failed legacy-settings SELECT cannot falsely advance the migration version marker",
+      "status": "passed",
+      "seconds": 0.0168
+    },
+    {
+      "test": "Reports include registered custom sales status and count a multi-item order once while excluding nonsale statuses",
+      "status": "passed",
+      "seconds": 0.5035
+    },
+    {
+      "test": "Real partial line refund reduces campaign revenue and units without removing the remaining sale",
+      "status": "passed",
+      "seconds": 0.1897
+    },
+    {
+      "test": "A fully cash-refunded order is excluded even if its status is later changed back to processing",
+      "status": "passed",
+      "seconds": 0.1837
+    },
+    {
+      "test": "Reporting-settings invalidation changes cached statistics without changing pricing version or snapshot",
+      "status": "passed",
+      "seconds": 0.1802
+    }
+  ]
+}

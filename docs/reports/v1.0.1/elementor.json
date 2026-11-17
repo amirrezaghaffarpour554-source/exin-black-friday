@@ -1,0 +1,9 @@
+{
+  "suite": "real-elementor",
+  "version": "3.34.0",
+  "checks": 20,
+  "failures": 0,
+  "raw_output": "work/v101/elementor-native.txt",
+  "scope": "Existing20 integration assertions: six real registered widgets, saved page reconstruction/render wrappers and private-field exclusion.",
+  "upstream_notice": "Elementor3.34.0 includes/api.php:176 emits PHP8.2 deprecation converting false to array at shutdown; no EXIN failure."
+}

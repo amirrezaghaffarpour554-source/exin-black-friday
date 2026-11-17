@@ -1,0 +1,209 @@
+{
+  "wordpress": "7.1.4",
+  "woocommerce": "11.3.0",
+  "php": "8.2.35",
+  "database": "11.8.6",
+  "hpos": true,
+  "tests": 39,
+  "assertions": 154,
+  "passed": 39,
+  "failed": 0,
+  "seconds": 1.7894,
+  "results": [
+    {
+      "test": "HPOS is the authoritative order store",
+      "status": "passed",
+      "seconds": 0
+    },
+    {
+      "test": "Migration is idempotent and preserves campaign rows",
+      "status": "passed",
+      "seconds": 0.0002
+    },
+    {
+      "test": "Simple selection has immutable original snapshot and seven-day schedule",
+      "status": "passed",
+      "seconds": 0.0136
+    },
+    {
+      "test": "Server rejects invalid floors and grouped products",
+      "status": "passed",
+      "seconds": 0.0706
+    },
+    {
+      "test": "Existing and scheduled sales are rejected without mutation",
+      "status": "passed",
+      "seconds": 0.0445
+    },
+    {
+      "test": "Known dynamic pricing conflicts are rejected",
+      "status": "passed",
+      "seconds": 0.0257
+    },
+    {
+      "test": "Variation is enrolled independently; variable parent is rejected",
+      "status": "passed",
+      "seconds": 0.0054
+    },
+    {
+      "test": "Delayed job applies current day directly to simple and variation",
+      "status": "passed",
+      "seconds": 0.0378
+    },
+    {
+      "test": "Duplicate job preserves price, stock and snapshot",
+      "status": "passed",
+      "seconds": 0.0032
+    },
+    {
+      "test": "Pause blocks stale jobs without restoring; resume invalidates old jobs",
+      "status": "passed",
+      "seconds": 0.0076
+    },
+    {
+      "test": "Restore is repeatable and restores only owned price",
+      "status": "passed",
+      "seconds": 0.0232
+    },
+    {
+      "test": "Manual price change causes conflict and restore preserves it",
+      "status": "passed",
+      "seconds": 0.0173
+    },
+    {
+      "test": "Crash after Woo save recovers durable intent without duplicate price reduction",
+      "status": "passed",
+      "seconds": 0.0199
+    },
+    {
+      "test": "Audit database failure retains durable intent and safe restoration recovers",
+      "status": "passed",
+      "seconds": 0.0843
+    },
+    {
+      "test": "Atomic lock excludes independent database connection and releases",
+      "status": "passed",
+      "seconds": 0.0015
+    },
+    {
+      "test": "Lost connection-scoped lock fails closed on reentrant acquire",
+      "status": "passed",
+      "seconds": 0.0003
+    },
+    {
+      "test": "Corrupted stored schedule cannot apply below floor or above base",
+      "status": "passed",
+      "seconds": 0.0684
+    },
+    {
+      "test": "Deleted product produces a recorded conflict",
+      "status": "passed",
+      "seconds": 0.0572
+    },
+    {
+      "test": "Out-of-stock and backorders follow Woo stock settings without mutation",
+      "status": "passed",
+      "seconds": 0.1284
+    },
+    {
+      "test": "Shipping excludes ordinary cart and mixed-cart ordinary totals",
+      "status": "passed",
+      "seconds": 0.0073
+    },
+    {
+      "test": "Shipping at threshold affects only allowed flat-rate instance and tax",
+      "status": "passed",
+      "seconds": 0.0021
+    },
+    {
+      "test": "Shipping uses post-coupon total, quantity/removal, and package-local threshold",
+      "status": "passed",
+      "seconds": 0.0067
+    },
+    {
+      "test": "Shipping cap leaves the exact taxable remainder and rejects missing cart context",
+      "status": "passed",
+      "seconds": 0.0062
+    },
+    {
+      "test": "Anonymous, invalid nonce and insufficient capability cannot read admin data",
+      "status": "passed",
+      "seconds": 0.0634
+    },
+    {
+      "test": "Admin nonce grants access and rejects malicious financial payload",
+      "status": "passed",
+      "seconds": 0.0111
+    },
+    {
+      "test": "Restore requires strict explicit confirmation and item requests reject IDOR/types",
+      "status": "passed",
+      "seconds": 0.0049
+    },
+    {
+      "test": "Shortcodes render only selected current products without confidential fields",
+      "status": "passed",
+      "seconds": 0.0141
+    },
+    {
+      "test": "Shortcode pagination uses request page and renders each selected product context",
+      "status": "passed",
+      "seconds": 0.0049
+    },
+    {
+      "test": "Public countdown endpoint exposes server time and only presentation fields",
+      "status": "passed",
+      "seconds": 0.0006
+    },
+    {
+      "test": "Classic checkout persists immutable campaign attribution on mixed multitem order",
+      "status": "passed",
+      "seconds": 0.2167
+    },
+    {
+      "test": "HPOS report counts multitem order once and separates campaign item revenue",
+      "status": "passed",
+      "seconds": 0.0084
+    },
+    {
+      "test": "Failed/cancelled orders excluded, repeated payment callback does not duplicate reports",
+      "status": "passed",
+      "seconds": 0.1644
+    },
+    {
+      "test": "Partial line refund reduces campaign revenue and units through real Woo refund CRUD",
+      "status": "passed",
+      "seconds": 0.0754
+    },
+    {
+      "test": "Blocks checkout lifecycle attributes real draft order and remains immutable",
+      "status": "passed",
+      "seconds": 0.0701
+    },
+    {
+      "test": "Later campaign price job never changes already saved order totals",
+      "status": "passed",
+      "seconds": 0.0024
+    },
+    {
+      "test": "Real Action Scheduler worker reaches final-day floor and natural end restores",
+      "status": "passed",
+      "seconds": 0.0864
+    },
+    {
+      "test": "Failed job schedules bounded retry and real retry worker recovers intent",
+      "status": "passed",
+      "seconds": 0.0548
+    },
+    {
+      "test": "REST returns sanitized error when operation and diagnostic audit writes both fail",
+      "status": "passed",
+      "seconds": 0.0022
+    },
+    {
+      "test": "Concurrent daily price change preserves attribution of an already calculated classic cart",
+      "status": "passed",
+      "seconds": 0.1073
+    }
+  ]
+}
