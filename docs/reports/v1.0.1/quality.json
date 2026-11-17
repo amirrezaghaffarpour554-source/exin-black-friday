@@ -1,0 +1,12 @@
+{
+  "release": "1.0.1",
+  "php": "8.2.35",
+  "php_syntax_files": 63,
+  "javascript_syntax_files": 9,
+  "shell_syntax_files": 11,
+  "python_syntax_files": 7,
+  "wpcs_runtime_files": 41,
+  "wpcs_errors": 0,
+  "wpcs_warnings": 0,
+  "status": "passed"
+}

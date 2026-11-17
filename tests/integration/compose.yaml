@@ -1,0 +1,44 @@
+name: exin-bf-tests
+services:
+  db:
+    image: mariadb:11.4@sha256:5e73baf8179b29f115101bb102763a47a017361f3e9792daccba6646c3ab1532
+    environment:
+      MARIADB_DATABASE: exin_test
+      MARIADB_USER: exin
+      MARIADB_PASSWORD: local-test-only
+      MARIADB_ROOT_PASSWORD: local-root-only
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 2s
+      retries: 40
+  wordpress:
+    image: wordpress:6.9.4-php8.3-fpm-alpine@sha256:b0062e171b9c8a24e28acdd25cb8ea67e95e60ca0b3c982f88faf93217b0e1a9
+    entrypoint: ["sh", "-c"]
+    command: ["docker-entrypoint.sh php-fpm -D && exec php -S 0.0.0.0:80 -t /var/www/html"]
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8880:80"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: exin_test
+      WORDPRESS_DB_USER: exin
+      WORDPRESS_DB_PASSWORD: local-test-only
+      WORDPRESS_DEBUG: 1
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_DEBUG_LOG', true);
+        define('WP_DEBUG_DISPLAY', false);
+        define('DISABLE_WP_CRON', true);
+        define('WP_ENVIRONMENT_TYPE', 'local');
+    volumes:
+      - wpdata:/var/www/html
+      - ${EXIN_TEST_ROOT}:/var/www/html/wp-content/plugins/exin-black-friday:ro
+      - ${EXIN_TEST_ROOT}/work/runtime/wp-cli.phar:/usr/local/bin/wp:ro
+      - ${EXIN_TEST_ROOT}/work/runtime/woocommerce.zip:/tmp/woocommerce.zip:ro
+      - /etc/ssl/certs/ca-certificates.crt:/tmp/proxy-ca.pem:ro
+volumes:
+  wpdata:

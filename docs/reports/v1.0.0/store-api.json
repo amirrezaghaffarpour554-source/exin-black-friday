@@ -1,0 +1,9 @@
+{
+  "checks": 15,
+  "passed": 15,
+  "failed": 0,
+  "woocommerce": "10.3.0",
+  "php": "8.3.31",
+  "payment": "offline BACS fixture",
+  "boundary": "Real Woo REST controllers via rest_do_request; no live payment gateway or browser Blocks UI."
+}

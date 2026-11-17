@@ -1,0 +1,15 @@
+.git
+.github
+work
+tests
+scripts
+vendor
+node_modules
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml.dist
+phpunit.xml.dist
+.gitignore
+.distignore

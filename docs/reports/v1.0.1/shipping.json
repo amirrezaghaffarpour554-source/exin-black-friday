@@ -1,0 +1,67 @@
+{
+  "tests": 14,
+  "assertions": 52,
+  "passed": 14,
+  "failed": 0,
+  "wordpress": "7.1.4",
+  "woocommerce": "11.3.0",
+  "php": "8.2.35",
+  "results": [
+    {
+      "test": "Registered WooCommerce shipping tax fixture resolves a positive ten-percent rate",
+      "passed": true
+    },
+    {
+      "test": "Ordinary and mixed carts cannot qualify using ordinary totals",
+      "passed": true
+    },
+    {
+      "test": "At and above threshold customer pays only shipping above one cap",
+      "passed": true
+    },
+    {
+      "test": "Shipping at or below cap becomes zero without negative tax",
+      "passed": true
+    },
+    {
+      "test": "Zero threshold has no minimum but still requires a campaign quantity",
+      "passed": true
+    },
+    {
+      "test": "Coupon, quantity and removal recalculate eligibility",
+      "passed": true
+    },
+    {
+      "test": "Multiple packages share a single cart cap and alternative rates do not multiply it",
+      "passed": true
+    },
+    {
+      "test": "Changing another package invalidates the first package allocation cache",
+      "passed": true
+    },
+    {
+      "test": "Repeated rate filtering is idempotent and disabling restores original rate",
+      "passed": true
+    },
+    {
+      "test": "Unknown package context, unsupported tax and unrounded base fail closed",
+      "passed": true
+    },
+    {
+      "test": "Zero cap and unknown-currency default never invent a shipping discount",
+      "passed": true
+    },
+    {
+      "test": "A changed store currency and external price edit are ineligible",
+      "passed": true
+    },
+    {
+      "test": "WooCommerce session-rate cache cannot retain a full cap after package split",
+      "passed": true
+    },
+    {
+      "test": "A deleted configured method cannot subsidize an externally retained rate",
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "release": "1.0.1",
+  "observed_date": "2026-11-17",
+  "scope": "Isolated fixtures only; no Production connection",
+  "php": "8.2.35",
+  "domain": {
+    "cases": 17,
+    "assertions": 3207,
+    "passed": 17,
+    "failed": 0
+  },
+  "date_money_php": {
+    "cases": 10,
+    "assertions": 3460,
+    "passed": 10,
+    "failed": 0
+  },
+  "date_money_node": {
+    "cases": 6,
+    "assertions": 3442,
+    "independent_icu_vectors": 482,
+    "passed": 6,
+    "failed": 0
+  },
+  "shipping_arithmetic": {
+    "checks": 1507,
+    "passed": 1507,
+    "failed": 0,
+    "php": "8.2.35"
+  }
+}

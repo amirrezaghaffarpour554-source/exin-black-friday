@@ -35,6 +35,15 @@ wp-config.php
 # htaccess
 /.htaccess
 
+# Local development and test artifacts.
+/work/
+/vendor/
+/node_modules/
+/dist/
+.env
+__pycache__/
+*.py[cod]
+
 # All plugins
 #
 # Note: If you wish to whitelist plugins,

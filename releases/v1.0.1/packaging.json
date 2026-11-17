@@ -1,0 +1,13 @@
+{
+  "release": "1.0.1",
+  "archive": "exin-black-friday-v1.0.1.zip",
+  "bytes": 195862,
+  "sha256": "d37c3dcb577b083cb9b7a3e0c2b7058fba5f32def94a279d8c8a9809e7635585",
+  "files": 90,
+  "crc": "passed",
+  "single_root": "exin-black-friday/",
+  "matches_source_bytes": true,
+  "development_files_excluded": true,
+  "two_builds_byte_identical": true,
+  "test": "python3 tests/test_package.py"
+}

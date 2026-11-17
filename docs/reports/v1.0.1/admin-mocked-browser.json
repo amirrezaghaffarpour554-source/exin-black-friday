@@ -1,0 +1,18 @@
+{
+  "suite": "v101-admin-browser-mocked-rest",
+  "boundary": "Actual JS/helpers/DOM in Chromium with mocked REST; not a real WordPress checkout or server integration test.",
+  "checks": 42,
+  "passed": 42,
+  "failed": 0,
+  "viewport": [
+    [
+      1440,
+      1000
+    ],
+    [
+      390,
+      844
+    ]
+  ],
+  "errors": []
+}

@@ -1,0 +1,11 @@
+{
+  "suite": "v101-helper-browser",
+  "checks": 23,
+  "passed": 23,
+  "failed": 0,
+  "viewport": [
+    390,
+    844
+  ],
+  "errors": []
+}

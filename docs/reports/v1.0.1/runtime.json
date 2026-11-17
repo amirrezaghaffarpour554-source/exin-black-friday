@@ -1,0 +1,30 @@
+{
+  "release": "1.0.1",
+  "observed_date": "2026-11-17",
+  "wordpress": "7.1.4",
+  "woocommerce": "11.3.0",
+  "php": "8.2.35",
+  "database": "MariaDB 11.8.6",
+  "hpos": true,
+  "elementor": "3.34.0",
+  "web_server": "PHP built-in server on loopback",
+  "redis": false,
+  "docker_daemon_available": false,
+  "method": "Verified official PHP binary and official WordPress/WooCommerce sources, private native MariaDB and RAM WordPress fixture; no Production data",
+  "php_source_image": "wordpress:7.1.4-php8.2-fpm-alpine",
+  "php_source_image_digest": "sha256:2abfa39fb9f6833379205fd3e48a8aa9e113befa2fb64d9a7de96825c853ad17",
+  "source_archives": {
+    "wordpress-7.1.4.zip": {
+      "bytes": 63896385,
+      "sha256": "9de885e4f00ae95549e7e599bbaff4333cbcfd77425cabb24e088adf6dd6f848"
+    },
+    "woocommerce.zip": {
+      "bytes": 16827722,
+      "sha256": "8fa4965ca8b42d3dcebad771c1e70792e8b0c685b5a9187438c0dfda9cfdf9bb"
+    },
+    "elementor-3.34.0.zip": {
+      "bytes": 16424827,
+      "sha256": "dea793d51d3f6f5a3e66faf6a22811917c39635e8438f445b130511c895b6fbb"
+    }
+  }
+}

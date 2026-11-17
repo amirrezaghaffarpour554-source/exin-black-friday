@@ -1,0 +1,22 @@
+{
+  "checks": 17,
+  "passed": 17,
+  "failed": 0,
+  "wordpress": "6.9.4",
+  "woocommerce": "10.3.0",
+  "php": "8.3.31",
+  "database": "11.4.13",
+  "source": "extracted installable ZIP",
+  "groups": {
+    "installed_package": {
+      "checks": 15,
+      "passed": 15,
+      "failed": 0
+    },
+    "absent_dependencies": {
+      "checks": 2,
+      "passed": 2,
+      "failed": 0
+    }
+  }
+}
