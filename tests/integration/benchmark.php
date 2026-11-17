@@ -12,6 +12,10 @@ if ( ! defined( 'WP_CLI' ) || ! WP_CLI || wp_get_environment_type() !== 'local' 
 }
 add_filter( 'action_scheduler_allow_async_request_runner', '__return_false' );
 add_filter( 'pre_wp_mail', '__return_true' );
+$site_url = home_url( '/' );
+if ( ! in_array( wp_parse_url( $site_url, PHP_URL_HOST ), array( 'localhost', '127.0.0.1', '::1', '[::1]' ), true ) ) {
+	throw new RuntimeException( 'Benchmark HTTP verification requires a loopback-only site URL.' );
+}
 $repository = new CampaignRepository();
 $logger = new Logger();
 $selection = new ProductSelectionService( $repository );
@@ -65,9 +69,8 @@ foreach ( array( 100, 1000 ) as $size ) {
 	$shortcode_html = do_shortcode( '[exin_bf_products limit="12" pagination="yes"]' );
 	$shortcode_seconds = microtime( true ) - $start;
 	$shortcode_queries = $GLOBALS['wpdb']->num_queries - $qstart;
-	// A separate real HTTP request has its own WordPress request cache. Site URL
-	// stays unchanged: Host matches the configured local site while port80 is
-	// reached from inside the container rather than the host's forwarded8880.
+	// A separate real HTTP request has its own WordPress request cache. Use the
+	// guarded local home URL so both Docker and native test ports are supported.
 	$coming_soon = get_option( 'woocommerce_coming_soon', 'no' );
 	update_option( 'woocommerce_coming_soon', 'no' );
 	$page_id = wp_insert_post( array( 'post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'EXIN benchmark ' . $campaign_id, 'post_content' => '[exin_bf_products limit="12" pagination="yes"]' ), true );
@@ -76,7 +79,7 @@ foreach ( array( 100, 1000 ) as $size ) {
 	}
 	try {
 		$start = microtime( true );
-		$http = wp_remote_get( 'http://127.0.0.1/?page_id=' . $page_id, array( 'headers' => array( 'Host' => 'localhost:8880' ), 'timeout' => 30, 'redirection' => 0 ) );
+		$http = wp_remote_get( add_query_arg( 'page_id', $page_id, $site_url ), array( 'timeout' => 30, 'redirection' => 0 ) );
 		$http_seconds = microtime( true ) - $start;
 		$http_code = (int) wp_remote_retrieve_response_code( $http );
 		$http_html = wp_remote_retrieve_body( $http );
@@ -86,8 +89,8 @@ foreach ( array( 100, 1000 ) as $size ) {
 	}
 	$first = $repository->batch( $campaign_id, 0, 1 )[0];
 	$last = $repository->batch( $campaign_id, $after - 1, 1 )[0];
-	$first_name = wc_get_product( $first['product_id'] )->get_name();
-	$verified = ( count( $result['products'] ) === 12 && $result['total'] === $size && wc_get_product( $first['product_id'] )->get_price( 'edit' ) == '70.00' && wc_get_product( $last['product_id'] )->get_price( 'edit' ) == '70.00' && str_contains( $shortcode_html, $first_name ) && 200 === $http_code && str_contains( $http_html, $first_name ) );
+	$visible_name = $result['products'] ? $result['products'][0]->get_name() : '';
+	$verified = ( count( $result['products'] ) === 12 && $result['total'] === $size && wc_get_product( $first['product_id'] )->get_price( 'edit' ) == '70.00' && wc_get_product( $last['product_id'] )->get_price( 'edit' ) == '70.00' && '' !== $visible_name && str_contains( $shortcode_html, $visible_name ) && 200 === $http_code && str_contains( $http_html, $visible_name ) );
 	if ( ! $verified ) {
 		throw new RuntimeException( 'Benchmark result verification failed.' );
 	}

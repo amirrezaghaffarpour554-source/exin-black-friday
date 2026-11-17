@@ -22,13 +22,13 @@ $assert = static function ( bool $condition, string $message ) use ( &$checks ):
 	echo 'PASS ' . $message . "\n";
 };
 $nonce = wp_create_nonce( 'wc_store_api' );
-$call = static function ( string $route, array $body ) use ( $nonce ): WP_REST_Response {
+$call = static function ( string $route, array $body, bool $allow_error = false ) use ( $nonce ): WP_REST_Response {
 	$request = new WP_REST_Request( 'POST', '/wc/store/v1/' . $route );
 	$request->set_header( 'Nonce', $nonce );
 	$request->set_header( 'Content-Type', 'application/json' );
 	$request->set_body( wp_json_encode( $body ) );
 	$response = rest_do_request( $request );
-	if ( $response->get_status() >= 400 ) {
+	if ( $response->get_status() >= 400 && ! $allow_error ) {
 		throw new RuntimeException( 'Store API ' . $route . ' failed: ' . wp_json_encode( $response->get_data() ) );
 	}
 	$response->set_data( json_decode( wp_json_encode( $response->get_data() ), true, 512, JSON_THROW_ON_ERROR ) );
@@ -52,6 +52,7 @@ update_option( 'woocommerce_flat_rate_' . $instance_id . '_settings', array( 'en
 $settings = $repo->get( $campaign_id )['settings'];
 $settings['free_shipping'] = true;
 $settings['shipping_threshold'] = '70.00';
+$settings['shipping_subsidy_cap'] = '12.00';
 $settings['shipping_instances'] = array( $instance_id );
 $repo->save( $campaign_id, array( 'status' => 'active', 'settings' => $settings ) );
 $processor->apply( $campaign_id, $product->get_id(), 1 );
@@ -74,6 +75,15 @@ $rate_id = 'flat_rate:' . $instance_id;
 $matching = array_values( array_filter( $rates, static fn( $rate ) => $rate['rate_id'] === $rate_id ) );
 $assert( count( $matching ) === 1 && (int) $matching[0]['price'] === 0, 'Blocks actual flat-rate shipping free exactly at threshold' );
 $call( 'cart/select-shipping-rate', array( 'package_id' => 0, 'rate_id' => $rate_id ) );
+$capped_settings = $settings;
+$capped_settings['shipping_subsidy_cap'] = '5.00';
+$version_before_cap = $repo->get( $campaign_id )['version'];
+$repo->save( $campaign_id, array( 'settings' => $capped_settings ) );
+$cart = $call( 'cart/update-item', array( 'key' => $cart_key, 'quantity' => 1 ) )->get_data();
+$assert( $cart['totals']['total_shipping'] === '700' && $repo->get( $campaign_id )['version'] === $version_before_cap, 'Blocks cart invalidates shipping cache for a capped subsidy without a pricing-version change' );
+$repo->save( $campaign_id, array( 'settings' => $settings ) );
+$cart = $call( 'cart/update-item', array( 'key' => $cart_key, 'quantity' => 1 ) )->get_data();
+$assert( $cart['totals']['total_shipping'] === '0', 'Blocks cart restores the full subsidy after a cap-only edit' );
 $coupon = new WC_Coupon();
 $coupon->set_code( 'exin-store-api-' . $campaign_id );
 $coupon->set_discount_type( 'fixed_cart' );
@@ -86,7 +96,41 @@ $assert( $cart['totals']['total_shipping'] === '0', 'Blocks coupon removal resto
 $cart = $call( 'cart/update-item', array( 'key' => $cart_key, 'quantity' => 2 ) )->get_data();
 $assert( $cart['totals']['total_items'] === '14000' && $cart['totals']['total_shipping'] === '0', 'Blocks quantity change recalculates totals and shipping' );
 $call( 'cart/update-item', array( 'key' => $cart_key, 'quantity' => 1 ) );
-$checkout = $call( 'checkout', array( 'billing_address' => $billing, 'shipping_address' => $shipping, 'payment_method' => 'bacs', 'payment_data' => array(), 'customer_note' => '', 'create_account' => false ) );
+$checkout_body = array( 'billing_address' => $billing, 'shipping_address' => $shipping, 'payment_method' => 'bacs', 'payment_data' => array(), 'customer_note' => '', 'create_account' => false );
+$pending = wc_create_order( array( 'status' => 'pending' ) );
+if ( is_wp_error( $pending ) ) {
+	throw new RuntimeException( 'Could not create the real pending-order fixture.' );
+}
+$pending_line_id = $pending->add_product( wc_get_product( $product->get_id() ), 1 );
+$pending->calculate_totals( false );
+$pending->save();
+$pending_amounts = array( $pending->get_total(), $pending->get_item( $pending_line_id )->get_subtotal(), $pending->get_item( $pending_line_id )->get_total() );
+$refresh_cart_product = static function () use ( $cart_key, $product ): void {
+	// Separate HTTP requests reload their product objects. Rehydrate that real DB object here too.
+	$contents = WC()->cart->get_cart();
+	$contents[ $cart_key ]['data'] = wc_get_product( $product->get_id() );
+	WC()->cart->set_cart_contents( $contents );
+};
+try {
+	$sold_out = wc_get_product( $product->get_id() );
+	$sold_out->set_stock_quantity( 0 );
+	$sold_out->set_stock_status( 'outofstock' );
+	$sold_out->save();
+	$refresh_cart_product();
+	$rejected = $call( 'checkout', $checkout_body, true );
+	$error_body = wp_json_encode( $rejected->get_data() );
+	$stock_error = str_contains( $error_body, 'woocommerce_rest_product_out_of_stock' ) || str_contains( $error_body, 'woocommerce_rest_product_partially_out_of_stock' );
+	$assert( in_array( $rejected->get_status(), array( 400, 409 ), true ) && $stock_error, 'Blocks checkout rejects a selected item that sells out after cart insertion' );
+	$pending = wc_get_order( $pending->get_id() );
+	$assert( $pending->has_status( 'pending' ) && $pending_amounts === array( $pending->get_total(), $pending->get_item( $pending_line_id )->get_subtotal(), $pending->get_item( $pending_line_id )->get_total() ), 'Stock-out rejection preserves saved pending order amounts' );
+} finally {
+	$restored = wc_get_product( $product->get_id() );
+	$restored->set_stock_quantity( 10 );
+	$restored->set_stock_status( 'instock' );
+	$restored->save();
+	$refresh_cart_product();
+}
+$checkout = $call( 'checkout', $checkout_body );
 $data = $checkout->get_data();
 $assert( $checkout->get_status() === 200 && $data['payment_result']['payment_status'] === 'success', 'Blocks controller submits real offline BACS checkout' );
 $order = wc_get_order( $data['order_id'] );

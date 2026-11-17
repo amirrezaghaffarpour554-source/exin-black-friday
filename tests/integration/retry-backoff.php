@@ -178,7 +178,7 @@ $assert( 'removed' === $repository->item( $pagination_id, $pagination_first )['s
 $snapshot_before_upgrade = $repository->item( $pagination_id, $pagination_first )['snapshot'];
 update_option( 'exin_bf_schema_version', '1', false );
 Migration::run();
-$assert( '2' === get_option( 'exin_bf_schema_version' ) && $snapshot_before_upgrade === $repository->item( $pagination_id, $pagination_first )['snapshot'], 'Schema one upgrades to durable retry schema two without changing historical snapshots' );
+$assert( '3' === get_option( 'exin_bf_schema_version' ) && $snapshot_before_upgrade === $repository->item( $pagination_id, $pagination_first )['snapshot'], 'Schema one upgrades through durable retries to schema three without changing historical snapshots' );
 
 $retention_campaign = $repository->current();
 $retention_settings = $retention_campaign['settings'];

@@ -2,17 +2,44 @@
   "name": "exin/exin-black-friday",
   "description": "EXIN Black Friday WooCommerce campaign plugin",
   "license": "GPL-2.0-or-later",
-  "require": {"php": ">=8.1"},
+  "require": {
+    "php": ">=8.1"
+  },
   "require-dev": {
     "squizlabs/php_codesniffer": "^3.13",
     "wp-coding-standards/wpcs": "^3.3",
     "dealerdirect/phpcodesniffer-composer-installer": "^1.1"
   },
-  "config": {"allow-plugins": {"dealerdirect/phpcodesniffer-composer-installer": true}},
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    }
+  },
   "scripts": {
     "lint": "phpcs --standard=phpcs.xml.dist",
-    "test:unit": "php tests/unit/run.php",
-    "test:integration": "bash scripts/test-runtime.sh test",
+    "test:unit": [
+      "@test:unit:domain",
+      "@test:unit:date-money",
+      "@test:unit:shipping"
+    ],
+    "test:unit:domain": "php tests/unit/run.php",
+    "test:unit:date-money": "php tests/unit/v101-date-money.php",
+    "test:unit:shipping": "php tests/unit/v101-shipping.php",
+    "test:integration": [
+      "@test:integration:regression",
+      "@test:integration:retry",
+      "@test:integration:core",
+      "@test:integration:catalog",
+      "@test:integration:shipping",
+      "@test:integration:store-api"
+    ],
+    "test:integration:regression": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/run.php",
+    "test:integration:retry": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/retry-backoff.php",
+    "test:integration:core": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/v101-core.php",
+    "test:integration:catalog": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/v101-catalog.php",
+    "test:integration:shipping": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/v101-shipping.php",
+    "test:integration:store-api": "bash scripts/test-store-api.sh",
+    "test:integration:v100-runtime": "bash scripts/test-runtime.sh test",
     "test:package": "python3 tests/test_package.py"
   }
 }

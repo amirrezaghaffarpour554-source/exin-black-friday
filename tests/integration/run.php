@@ -69,11 +69,11 @@ function exin_product( string $name, string $price = '100.00' ): WC_Product_Simp
 function exin_price( int $product_id ): string {
 	return PriceState::money( (string) wc_get_product( $product_id )->get_price( 'edit' ) );
 }
-function exin_rates(): array {
+function exin_rates( int $allowed, int $other, int $pickup ): array {
 	return array(
-		'flat_rate:11' => new WC_Shipping_Rate( 'flat_rate:11', 'Allowed', '12.00', array( 1 => '1.20' ), 'flat_rate', 11 ),
-		'flat_rate:12' => new WC_Shipping_Rate( 'flat_rate:12', 'Other flat', '15.00', array(), 'flat_rate', 12 ),
-		'local_pickup:5' => new WC_Shipping_Rate( 'local_pickup:5', 'Pickup', '3.00', array(), 'local_pickup', 5 ),
+		'flat_rate:' . $allowed => new WC_Shipping_Rate( 'flat_rate:' . $allowed, 'Allowed', '12.00', WC_Tax::calc_shipping_tax( '12.00', WC_Tax::get_shipping_tax_rates() ), 'flat_rate', $allowed ),
+		'flat_rate:' . $other => new WC_Shipping_Rate( 'flat_rate:' . $other, 'Other flat', '15.00', array(), 'flat_rate', $other ),
+		'local_pickup:' . $pickup => new WC_Shipping_Rate( 'local_pickup:' . $pickup, 'Pickup', '3.00', array(), 'local_pickup', $pickup ),
 	);
 }
 function exin_line( WC_Product $product, string $total, int $quantity = 1 ): array {
@@ -312,32 +312,88 @@ exin_test( 'Out-of-stock and backorders follow Woo stock settings without mutati
 	}
 } );
 
+$tax_options = array();
+foreach ( array( 'woocommerce_calc_taxes', 'woocommerce_shipping_tax_class' ) as $option ) {
+	$tax_options[ $option ] = get_option( $option, null );
+}
+$customer_location = array( WC()->customer->get_shipping_country(), WC()->customer->get_shipping_state(), WC()->customer->get_shipping_postcode(), WC()->customer->get_is_vat_exempt() );
+WC_Tax::create_tax_class( 'EXIN legacy shipping', 'exin-legacy-shipping' );
+update_option( 'woocommerce_calc_taxes', 'yes' );
+update_option( 'woocommerce_shipping_tax_class', 'exin-legacy-shipping' );
+WC()->customer->set_shipping_country( 'US' );
+WC()->customer->set_shipping_state( 'CA' );
+WC()->customer->set_shipping_postcode( '90210' );
+WC()->customer->set_is_vat_exempt( false );
+$shipping_zone = new WC_Shipping_Zone();
+$shipping_zone->set_zone_name( 'EXIN legacy shipping ' . wp_generate_uuid4() );
+$shipping_zone->add_location( 'AQ', 'country' );
+$shipping_zone->save();
+$allowed_instance = $shipping_zone->add_shipping_method( 'flat_rate' );
+$other_instance = $shipping_zone->add_shipping_method( 'flat_rate' );
+$pickup_instance = $shipping_zone->add_shipping_method( 'local_pickup' );
+update_option( 'woocommerce_flat_rate_' . $allowed_instance . '_settings', array( 'enabled' => 'yes', 'title' => 'EXIN legacy allowed', 'cost' => '12.00', 'tax_status' => 'taxable' ) );
+update_option( 'woocommerce_flat_rate_' . $other_instance . '_settings', array( 'enabled' => 'yes', 'title' => 'EXIN legacy unselected', 'cost' => '15.00', 'tax_status' => 'none' ) );
+$shipping_tax_id = WC_Tax::_insert_tax_rate( array( 'tax_rate_country' => 'US', 'tax_rate_state' => 'CA', 'tax_rate' => '10.0000', 'tax_rate_name' => 'EXIN legacy shipping tax', 'tax_rate_priority' => 1, 'tax_rate_compound' => 0, 'tax_rate_shipping' => 1, 'tax_rate_order' => 0, 'tax_rate_class' => 'exin-legacy-shipping' ) );
+$rate_key = 'flat_rate:' . $allowed_instance;
+$other_rate_key = 'flat_rate:' . $other_instance;
+$pickup_rate_key = 'local_pickup:' . $pickup_instance;
 $campaign = $repo->get( $campaign_id );
 $settings = $campaign['settings'];
 $settings['free_shipping'] = true;
 $settings['shipping_threshold'] = '70.00';
-$settings['shipping_instances'] = array( 11 );
+$settings['shipping_subsidy_cap'] = '12.00';
+$settings['shipping_instances'] = array( $allowed_instance );
 $repo->save( $campaign_id, array( 'settings' => $settings ) );
 $shipping = new Shipping( $repo );
-exin_test( 'Shipping excludes ordinary cart and mixed-cart ordinary totals', static function () use ( $shipping, $simple, $regular ) {
-	$r = $shipping->rates( exin_rates(), array( 'contents' => array( exin_line( $regular, '500.00' ) ) ) );
-	exin_assert( (string) $r['flat_rate:11']->get_cost() === '12.00', 'Ordinary cart received free shipping' );
-	$r = $shipping->rates( exin_rates(), array( 'contents' => array( exin_line( wc_get_product( $simple->get_id() ), '60.00' ), exin_line( $regular, '500.00' ) ) ) );
-	exin_assert( (string) $r['flat_rate:11']->get_cost() === '12.00', 'Mixed cart counted ordinary totals' );
+$calculate_shipping = static function ( array $contents ) use ( $shipping, $allowed_instance, $other_instance, $pickup_instance ): array {
+	$packages = $shipping->packages( array( array( 'contents' => $contents, 'destination' => array( 'country' => 'US', 'state' => 'CA', 'postcode' => '90210' ) ) ) );
+	return $shipping->rates( exin_rates( $allowed_instance, $other_instance, $pickup_instance ), $packages[0] );
+};
+exin_test( 'Shipping excludes ordinary cart and mixed-cart ordinary totals', static function () use ( $calculate_shipping, $rate_key, $simple, $regular ) {
+	$r = $calculate_shipping( array( exin_line( $regular, '500.00' ) ) );
+	exin_assert( (string) $r[ $rate_key ]->get_cost() === '12.00', 'Ordinary cart received free shipping' );
+	$r = $calculate_shipping( array( exin_line( wc_get_product( $simple->get_id() ), '60.00' ), exin_line( $regular, '500.00' ) ) );
+	exin_assert( (string) $r[ $rate_key ]->get_cost() === '12.00', 'Mixed cart counted ordinary totals' );
 } );
-exin_test( 'Shipping at threshold affects only allowed flat-rate instance and tax', static function () use ( $shipping, $simple ) {
-	$r = $shipping->rates( exin_rates(), array( 'contents' => array( exin_line( wc_get_product( $simple->get_id() ), '70.00' ) ) ) );
-	exin_assert( (float) $r['flat_rate:11']->get_cost() === 0.0 && array_sum( $r['flat_rate:11']->get_taxes() ) === 0, 'Eligible shipping or shipping tax not free' );
-	exin_assert( (string) $r['flat_rate:12']->get_cost() === '15.00', 'Unauthorized flat rate changed' );
-	exin_assert( (string) $r['local_pickup:5']->get_cost() === '3.00', 'Nonflat method changed' );
+exin_test( 'Shipping at threshold affects only allowed flat-rate instance and tax', static function () use ( $calculate_shipping, $rate_key, $other_rate_key, $pickup_rate_key, $simple ) {
+	exin_assert( wc_format_decimal( array_sum( WC_Tax::calc_shipping_tax( '12.00', WC_Tax::get_shipping_tax_rates() ) ), 2 ) === '1.20', 'Real Woo shipping tax fixture was not active' );
+	$r = $calculate_shipping( array( exin_line( wc_get_product( $simple->get_id() ), '70.00' ) ) );
+	exin_assert( (float) $r[ $rate_key ]->get_cost() === 0.0 && array_sum( $r[ $rate_key ]->get_taxes() ) === 0, 'Eligible shipping or shipping tax not free' );
+	exin_assert( (string) $r[ $other_rate_key ]->get_cost() === '15.00', 'Unauthorized flat rate changed' );
+	exin_assert( (string) $r[ $pickup_rate_key ]->get_cost() === '3.00', 'Nonflat method changed' );
 } );
-exin_test( 'Shipping uses post-coupon total, quantity/removal, and package-local threshold', static function () use ( $shipping, $simple ) {
+exin_test( 'Shipping uses post-coupon total, quantity/removal, and package-local threshold', static function () use ( $calculate_shipping, $rate_key, $simple ) {
 	$p = wc_get_product( $simple->get_id() );
 	foreach ( array( array( '60.00', 1, false ), array( '140.00', 2, true ), array( '100.00', 0, false ), array( '35.00', 1, false ) ) as $case ) {
-		$r = $shipping->rates( exin_rates(), array( 'contents' => array( exin_line( $p, $case[0], $case[1] ) ) ) );
-		exin_assert( ( (float) $r['flat_rate:11']->get_cost() === 0.0 ) === $case[2], 'Wrong coupon/quantity/package decision' );
+		$r = $calculate_shipping( array( exin_line( $p, $case[0], $case[1] ) ) );
+		exin_assert( ( (float) $r[ $rate_key ]->get_cost() === 0.0 ) === $case[2], 'Wrong coupon/quantity/package decision' );
 	}
 } );
+exin_test( 'Shipping cap leaves the exact taxable remainder and rejects missing cart context', static function () use ( $repo, $campaign_id, $shipping, $calculate_shipping, $rate_key, $allowed_instance, $other_instance, $pickup_instance, $simple, $settings ) {
+	try {
+		$capped = $settings;
+		$capped['shipping_subsidy_cap'] = '5.00';
+		$repo->save( $campaign_id, array( 'settings' => $capped ) );
+		$contents = array( exin_line( wc_get_product( $simple->get_id() ), '70.00' ) );
+		$r = $calculate_shipping( $contents );
+		exin_assert( (string) $r[ $rate_key ]->get_cost() === '7.00', 'Shipping subsidy exceeded its configured cap' );
+		exin_assert( $r[ $rate_key ]->get_taxes() === WC_Tax::calc_shipping_tax( '7.00', WC_Tax::get_shipping_tax_rates() ), 'Remaining shipping tax differs from Woo calculation' );
+		$r = $shipping->rates( exin_rates( $allowed_instance, $other_instance, $pickup_instance ), array( 'contents' => $contents ) );
+		exin_assert( (string) $r[ $rate_key ]->get_cost() === '12.00', 'Shipping outside the cart allocation received a subsidy' );
+	} finally {
+		$repo->save( $campaign_id, array( 'settings' => $settings ) );
+	}
+} );
+WC_Tax::_delete_tax_rate( $shipping_tax_id );
+WC_Tax::delete_tax_class_by( 'slug', 'exin-legacy-shipping' );
+$shipping_zone->delete();
+foreach ( $tax_options as $option => $value ) {
+	null === $value ? delete_option( $option ) : update_option( $option, $value );
+}
+WC()->customer->set_shipping_country( $customer_location[0] );
+WC()->customer->set_shipping_state( $customer_location[1] );
+WC()->customer->set_shipping_postcode( $customer_location[2] );
+WC()->customer->set_is_vat_exempt( $customer_location[3] );
 
 exin_test( 'Anonymous, invalid nonce and insufficient capability cannot read admin data', static function () {
 	wp_set_current_user( 0 );

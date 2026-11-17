@@ -3,6 +3,7 @@
 from pathlib import Path
 import hashlib
 import json
+import re
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +28,16 @@ def build():
             files.extend(p for p in path.rglob("*") if p.is_file())
         elif path.is_file():
             files.append(path)
-    target = DEST / "exin-black-friday-v1.0.0.zip"
+    bootstrap = (ROOT / "exin-black-friday.php").read_text(encoding="utf-8")
+    header = re.search(r"^\s*\* Version:\s*(\d+\.\d+\.\d+)\s*$", bootstrap, re.MULTILINE)
+    constant = re.search(r"define\(\s*'EXIN_BF_VERSION',\s*'(\d+\.\d+\.\d+)'\s*\)", bootstrap)
+    if not header or not constant or header.group(1) != constant.group(1):
+        raise RuntimeError("Plugin header and runtime version must agree")
+    version = header.group(1)
+    readme = (ROOT / "readme.txt").read_text(encoding="utf-8")
+    if not re.search(r"^Stable tag:\s*" + re.escape(version) + r"\s*$", readme, re.MULTILINE):
+        raise RuntimeError("WordPress readme stable tag must match the plugin version")
+    target = DEST / f"exin-black-friday-v{version}.zip"
     manifest = {}
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(files):
@@ -37,7 +47,7 @@ def build():
             if any(part.startswith(".") for part in Path(rel).parts):
                 raise RuntimeError(f"Hidden file not allowed: {rel}")
             content = path.read_bytes()
-            info = zipfile.ZipInfo("exin-black-friday/" + rel, date_time=(2026, 11, 13, 0, 0, 0))
+            info = zipfile.ZipInfo("exin-black-friday/" + rel, date_time=(2026, 11, 17, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             archive.writestr(info, content)
