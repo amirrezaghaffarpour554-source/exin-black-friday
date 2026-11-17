@@ -4,6 +4,8 @@
     const root = document.getElementById('exin-bf-admin');
     if (!root) return;
     const cfg = exinBFAdmin;
+    // wp_localize_script serializes scalar values as strings, including precision zero.
+    cfg.precision = Number(cfg.precision);
     const helpers = ExinBFHelpers;
     const content = document.getElementById('exin-bf-content');
     const message = document.getElementById('exin-bf-message');
