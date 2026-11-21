@@ -1,0 +1,166 @@
+{
+  "release": "1.1.0",
+  "scope": "Synthetic isolated data only; no Production connection or deployment",
+  "unit": {
+    "suite": "v110-discount-plan",
+    "php": "8.2.35",
+    "cases": 9,
+    "assertions": 50,
+    "passed": 9,
+    "failed": 0,
+    "failures": [],
+    "wpcs_errors": 0,
+    "wpcs_warnings": 0
+  },
+  "financial_integration": {
+    "suite": "v110-financial-integration",
+    "wordpress": "7.1.4",
+    "woocommerce": "11.3.0",
+    "php": "8.2.35",
+    "database": "11.8.6",
+    "hpos": true,
+    "tests": 8,
+    "assertions": 82,
+    "passed": 8,
+    "failed": 0,
+    "results": [
+      {
+        "test": "Immediate discount, preview immutability and changed versus duplicate operation counts",
+        "status": "passed"
+      },
+      {
+        "test": "Increasing decreasing and custom delayed stages use the immutable base and product floor",
+        "status": "passed"
+      },
+      {
+        "test": "Prior Woo sales restore exactly and a manual external price is never overwritten",
+        "status": "passed"
+      },
+      {
+        "test": "Overlapping draft priority grants one owner and never preempts an existing financial owner",
+        "status": "passed"
+      },
+      {
+        "test": "Owned archive and copy are blocked; restored campaign copies and reruns without rewriting old history",
+        "status": "passed"
+      },
+      {
+        "test": "Server-side scope crosses 200 products, resolves group floors and previews/removes without Woo price saves",
+        "status": "passed"
+      },
+      {
+        "test": "Hourly queues recover delayed stages and one failed write uses bounded retry with precise reporting",
+        "status": "passed"
+      },
+      {
+        "test": "REST converts one Persian Toman fixed amount into canonical IRR exactly once",
+        "status": "passed"
+      }
+    ]
+  },
+  "shipping_regression": {
+    "tests": 14,
+    "assertions": 52,
+    "passed": 14,
+    "failed": 0,
+    "wordpress": "7.1.4",
+    "woocommerce": "11.3.0",
+    "php": "8.2.35",
+    "results": [
+      {
+        "test": "Registered WooCommerce shipping tax fixture resolves a positive ten-percent rate",
+        "passed": true
+      },
+      {
+        "test": "Ordinary and mixed carts cannot qualify using ordinary totals",
+        "passed": true
+      },
+      {
+        "test": "At and above threshold customer pays only shipping above one cap",
+        "passed": true
+      },
+      {
+        "test": "Shipping at or below cap becomes zero without negative tax",
+        "passed": true
+      },
+      {
+        "test": "Zero threshold has no minimum but still requires a campaign quantity",
+        "passed": true
+      },
+      {
+        "test": "Coupon, quantity and removal recalculate eligibility",
+        "passed": true
+      },
+      {
+        "test": "Multiple packages share a single cart cap and alternative rates do not multiply it",
+        "passed": true
+      },
+      {
+        "test": "Changing another package invalidates the first package allocation cache",
+        "passed": true
+      },
+      {
+        "test": "Repeated rate filtering is idempotent and disabling restores original rate",
+        "passed": true
+      },
+      {
+        "test": "Unknown package context, unsupported tax and unrounded base fail closed",
+        "passed": true
+      },
+      {
+        "test": "Zero cap and unknown-currency default never invent a shipping discount",
+        "passed": true
+      },
+      {
+        "test": "A changed store currency and external price edit are ineligible",
+        "passed": true
+      },
+      {
+        "test": "WooCommerce session-rate cache cannot retain a full cap after package split",
+        "passed": true
+      },
+      {
+        "test": "A deleted configured method cannot subsidize an externally retained rate",
+        "passed": true
+      }
+    ]
+  },
+  "admin_browser": {
+    "suite": "v110-admin-focused-mocked-rest",
+    "checks": 12,
+    "passed": 12,
+    "failed": 0,
+    "errors": [],
+    "boundary": "Actual JS/DOM Chromium; mocked REST, not real WordPress"
+  },
+  "coding_standard": {
+    "files": 43,
+    "errors": 0,
+    "warnings": 0
+  },
+  "notes": [
+    "Focused suites only; the failed hourly fixture passed an obsolete future callback timestamp after shifting campaign dates. That fixture timestamp was corrected; the early-boundary safety guard remained unchanged.",
+    "Real database integration used WordPress7.1.4 WooCommerce11.3.0 PHP8.2.35 MariaDB11.8.6 and HPOS.",
+    "Bulk financial integration processed250 actual products; browser smoke used1200 mocked results, not a real1200-product benchmark.",
+    "The admin browser suite uses actual JS/DOM with mocked REST; it is not a real WordPress browser checkout.",
+    "The exact former Production scheduler_recovery exception was not available; recovery initialization/queue checks and safe error fingerprints were improved without claiming reproduction."
+  ],
+  "not_run": [
+    "Production or full site replica",
+    "Real WordPress browser workflow for the new UI",
+    "Woodmart WP Rocket Redis Nginx and online gateway matrix",
+    "Broad legacy suites and performance benchmarks",
+    "Clean installation of the final1.1.0 ZIP in a separate fresh site"
+  ],
+  "package": {
+    "archive": "exin-black-friday-v1.1.0.zip",
+    "bytes": 221987,
+    "files": 92,
+    "sha256": "d00bf9e598d12ac836a245ae69674aa6d735572186e967bb66de7e765e359859",
+    "crc": "passed",
+    "single_root": "exin-black-friday/",
+    "source_bytes_match": true,
+    "development_files_excluded": true,
+    "two_builds_byte_identical": true
+  }
+}
