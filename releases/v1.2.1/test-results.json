@@ -1,0 +1,263 @@
+{
+  "version": "1.2.1",
+  "pull_request": 4,
+  "date": "2026-11-21",
+  "review_base_commit": "e36a9853ce314ee125d04780f82b14f8bf0c3d53",
+  "scope": [
+    "NewProducts: fresh lifecycle/deadline check after matching, under campaign lock, before automatic enrollment, manual queuing and approval",
+    "CatalogPage: exact SQL pagination and WooCommerce purchasability/parent visibility; correct taxonomy identifiers, context-aware cache and empty-page count"
+  ],
+  "confirmed_before_fix": [
+    "Approval after campaign expiry created an included item",
+    "SQL counted an empty-price product that WooCommerce excluded after pagination",
+    "WP_Query returned zero total for out-of-range pages despite existing matches",
+    "Woo visibility helper returns term_taxonomy_id, while the old SQL compared it with term_id"
+  ],
+  "focused_integration": {
+    "suite": "v120-financial-integration",
+    "wordpress": "7.1.4",
+    "woocommerce": "11.3.0",
+    "php": "8.2.35",
+    "database": "11.8.6",
+    "hpos": true,
+    "tests": 4,
+    "assertions": 68,
+    "passed": 4,
+    "failed": 0,
+    "results": [
+      {
+        "test": "New products default to exclude, manual approval is idempotent and auto mode queues current-stage recovery",
+        "status": "passed"
+      },
+      {
+        "test": "One storefront smoke: bounded union, deduplication, optional store products, filters, badges and stage countdown",
+        "status": "passed"
+      },
+      {
+        "test": "Review: expired enrollment is rejected again at processing and approval boundaries",
+        "status": "passed"
+      },
+      {
+        "test": "Review: SQL pages match Woo visibility for variations and remain distinct across campaign overlap",
+        "status": "passed"
+      }
+    ]
+  },
+  "static_checks": {
+    "wpcs_two_changed_classes": {
+      "errors": 0,
+      "warnings": 0,
+      "fixable": 0
+    },
+    "php_syntax": "NewProducts.php, CatalogPage.php and plugin bootstrap passed",
+    "package": "99 files, single root, byte identity, dev/secret exclusion and deterministic rebuild passed"
+  },
+  "sql_review": {
+    "method": "EXPLAIN on actual CatalogPage SQL, three local candidate identifiers and LIMIT 2; no benchmark",
+    "plan": [
+      {
+        "select_type": "PRIMARY",
+        "table": "exin_price",
+        "type": "range",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "50",
+        "Extra": "Using index condition; Using where; Start temporary; Using temporary; Using filesort"
+      },
+      {
+        "select_type": "PRIMARY",
+        "table": "wp_posts",
+        "type": "eq_ref",
+        "possible_keys": "PRIMARY,type_status_date,type_status_author",
+        "key": "PRIMARY",
+        "rows": "1",
+        "Extra": "Using where; End temporary"
+      },
+      {
+        "select_type": "PRIMARY",
+        "table": "exin_i",
+        "type": "eq_ref",
+        "possible_keys": "PRIMARY,campaign_status,product_status,display_order",
+        "key": "PRIMARY",
+        "rows": "1",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "PRIMARY",
+        "table": "exin_l",
+        "type": "eq_ref",
+        "possible_keys": "PRIMARY,stock_status,min_max_price",
+        "key": "PRIMARY",
+        "rows": "1",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_r",
+        "type": "ref",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "17",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_r",
+        "type": "ref",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "17",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_r",
+        "type": "ref",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "17",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_q",
+        "type": "index_subquery",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "17",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_pm",
+        "type": "ref",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "17",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_cm",
+        "type": "ref",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "17",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_m",
+        "type": "ref",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "17",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_pm",
+        "type": "ref",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "17",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_cm",
+        "type": "ref",
+        "possible_keys": "post_id,meta_key",
+        "key": "post_id",
+        "rows": "17",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_vis",
+        "type": "ref",
+        "possible_keys": "term_taxonomy_id",
+        "key": "term_taxonomy_id",
+        "rows": "7",
+        "Extra": "Using where; Using index"
+      },
+      {
+        "select_type": "MATERIALIZED",
+        "table": "exin_tt",
+        "type": "ref",
+        "possible_keys": "PRIMARY,term_id_taxonomy,taxonomy",
+        "key": "taxonomy",
+        "rows": "4",
+        "Extra": "Using index condition"
+      },
+      {
+        "select_type": "MATERIALIZED",
+        "table": "exin_t",
+        "type": "eq_ref",
+        "possible_keys": "PRIMARY,slug",
+        "key": "PRIMARY",
+        "rows": "1",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "MATERIALIZED",
+        "table": "exin_tr",
+        "type": "ref",
+        "possible_keys": "PRIMARY,term_taxonomy_id",
+        "key": "term_taxonomy_id",
+        "rows": "2",
+        "Extra": "Using index"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_parent",
+        "type": "unique_subquery",
+        "possible_keys": "PRIMARY,type_status_date,type_status_author",
+        "key": "PRIMARY",
+        "rows": "1",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_w",
+        "type": "ref",
+        "possible_keys": "PRIMARY,campaign_status,product_status,display_order",
+        "key": "product_status",
+        "rows": "1",
+        "Extra": "Using where; Using index"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_o",
+        "type": "ref",
+        "possible_keys": "product_status",
+        "key": "product_status",
+        "rows": "1",
+        "Extra": "Using where"
+      },
+      {
+        "select_type": "DEPENDENT SUBQUERY",
+        "table": "exin_o",
+        "type": "ref",
+        "possible_keys": "product_status",
+        "key": "product_status",
+        "rows": "1",
+        "Extra": "Using index condition; Using where"
+      }
+    ],
+    "result": "Main posts, membership and lookup use indexed access; existing priority ordering and ID-based grouping retained. Empty out-of-range pages use at most one extra unsorted one-ID count query."
+  },
+  "artifact": {
+    "file": "exin-black-friday-v1.2.1.zip",
+    "sha256": "155e24b68043a2aa8a46e9a7dfe5dd33d2371af11a09d4e482ac25cc7a336678"
+  },
+  "prior_validation": "../v1.2.0/test-results.json (historical baseline; unrelated financial/shipping/browser suites were not rerun for this scoped patch)",
+  "production_ready": false,
+  "limitations": [
+    "Synthetic local database only; no Production connection or deployment",
+    "Custom product visibility/price filters supplied by external plugins were not validated",
+    "EXPLAIN is a small local index check, not a production-scale performance measurement"
+  ],
+  "schema_changes": false,
+  "production_actions": []
+}

@@ -12,6 +12,7 @@ use Exin\BlackFriday\Application\ProductSelectionService;
 use Exin\BlackFriday\Application\Scheduler;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
 use Exin\BlackFriday\Infrastructure\Logger;
+use Exin\BlackFriday\Infrastructure\LockManager;
 
 /** No upgrade sweep: only newly published products generate work. */
 final class NewProducts {
@@ -39,7 +40,7 @@ final class NewProducts {
 		if ( 'publish' !== $new_status || 'publish' === $old || ! in_array( $post->post_type, array( 'product', 'product_variation' ), true ) || ! function_exists( 'as_enqueue_async_action' ) ) {
 			return; }
 		foreach ( $this->repo->runnable() as $campaign ) {
-			if ( 'exclude' !== ( $campaign['settings']['new_products'] ?? 'exclude' ) ) {
+			if ( $this->accepts_products( $campaign ) && 'exclude' !== ( $campaign['settings']['new_products'] ?? 'exclude' ) ) {
 				as_enqueue_async_action( 'exin_bf_new_product', array( (int) $post->ID ), Scheduler::GROUP, true );
 				break; }
 		}
@@ -69,14 +70,22 @@ final class NewProducts {
 	public function process( int $product_id ): void {
 		foreach ( $this->repo->runnable() as $campaign ) {
 			$mode = $campaign['settings']['new_products'] ?? 'exclude';
-			if ( 'exclude' === $mode || ! empty( $campaign['settings']['restoring'] ) || strtotime( $campaign['end_utc'] . ' UTC' ) <= time() ) {
+			if ( 'exclude' === $mode || ! $this->accepts_products( $campaign ) ) {
 				continue; }
 			$rules   = $this->rules( $campaign );
 			$filters = $rules['filters'] ?? array( 'scope' => 'instock' );
 			if ( ! ( new CatalogProductQuery() )->matches( $product_id, $filters ) || $this->repo->item( $campaign['id'], $product_id ) ) {
 				continue; }
 			if ( 'manual' === $mode ) {
-				add_option( $this->key( $campaign['id'], $product_id ), time(), '', false ); } elseif ( $rules ) {
+				( new LockManager() )->run(
+					'campaign:' . $campaign['id'],
+					function () use ( $campaign, $product_id ): void {
+						$current = $this->repo->get( $campaign['id'] );
+						if ( $this->accepts_products( $current ) && 'manual' === ( $current['settings']['new_products'] ?? 'exclude' ) ) {
+							add_option( $this->key( $current['id'], $product_id ), time(), '', false );
+						}
+					}
+				); } elseif ( $rules ) {
 				try {
 					$this->enroll( $campaign, $product_id, $rules );
 				} catch ( \Throwable $error ) {
@@ -135,7 +144,7 @@ final class NewProducts {
 		$rules    = $campaign ? $this->rules( $campaign ) : null;
 		if ( $accept && $campaign && 'exclude' === ( $campaign['settings']['new_products'] ?? 'exclude' ) ) {
 			throw new \DomainException( 'new_product_enrollment_disabled' ); }
-		if ( ! $campaign || ! in_array( $campaign['status'], array( 'draft', 'scheduled', 'active', 'paused' ), true ) || count( $ids ) > 25 ) {
+		if ( ! $campaign || ! in_array( $campaign['status'], array( 'draft', 'scheduled', 'active', 'paused' ), true ) || ( $accept && ! $this->accepts_products( $campaign ) ) || count( $ids ) > 25 ) {
 			throw new \DomainException( 'invalid_new_product_approval' ); }
 		$results = array();
 		foreach ( $ids as $id ) {
@@ -168,12 +177,14 @@ final class NewProducts {
 	 * @param array $rules Rules.
 	 */
 	private function enroll( array $campaign, int $id, array $rules ): void {
-		( new \Exin\BlackFriday\Infrastructure\LockManager() )->run(
+		( new LockManager() )->run(
 			'campaign:' . $campaign['id'],
 			function () use ( $campaign, $id, $rules ): void {
+				$matches = ( new CatalogProductQuery() )->matches( $id, $rules['filters'] );
+				// Matching may cross the deadline; check fresh state immediately before enrollment.
 				$current = $this->repo->get( $campaign['id'] );
-				if ( ! $current || 'exclude' === ( $current['settings']['new_products'] ?? 'exclude' ) || ! empty( $current['settings']['restoring'] ) || ! ( new CatalogProductQuery() )->matches( $id, $rules['filters'] ) ) {
-					throw new \DomainException( 'restore_in_progress' ); }
+				if ( ! $this->accepts_products( $current ) || 'exclude' === ( $current['settings']['new_products'] ?? 'exclude' ) || ! $matches ) {
+					throw new \DomainException( 'invalid_new_product_approval' ); }
 				if ( ! $this->repo->item( $current['id'], $id ) ) {
 					( new ProductSelectionService( $this->repo ) )->add( $current['id'], $id, '0', array( 'floor_policy' => $rules['policy'] ) ); }
 				if ( 'active' === $current['status'] && CampaignContext::is_live( $current ) ) {
@@ -198,6 +209,19 @@ final class NewProducts {
 				}
 			}
 		);
+	}
+
+
+	/**
+	 * Fail closed for terminal, restoring, invalid-date or expired campaigns.
+	 *
+	 * @param array|null $campaign Fresh campaign state.
+	 * @return bool Whether new membership may still be created.
+	 */
+	private function accepts_products( ?array $campaign ): bool {
+		$end = $campaign ? strtotime( $campaign['end_utc'] . ' UTC' ) : false;
+		return $campaign && in_array( $campaign['status'], array( 'draft', 'scheduled', 'active', 'paused' ), true )
+			&& empty( $campaign['settings']['restoring'] ) && false !== $end && $end > time();
 	}
 
 	/**

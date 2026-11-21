@@ -188,6 +188,81 @@ try {
         $req=new WP_REST_Request('GET','/exin-bf/v1/time');$req->set_param('campaign_id',$id);$response=rest_do_request($req);$suite->same(true,isset($response->get_data()['stage_ends_at']),'Public endpoint exposes stage boundary only');
         foreach(array($id,$id2)as$cid){$repo->save($cid,array('status'=>'completed'));}$suite->same('',do_shortcode('[exin_bf_badge campaign_id="'.$id.'" product_id="'.$a->get_id().'"]'),'Expired/inactive badge is absent');
     });
+    $suite->test('Review: expired enrollment is rejected again at processing and approval boundaries', static function () use ($suite,$campaign,$product,$repo,$activate): void {
+        $id=$campaign();$activate($id);$p=$product('review expired');
+        $settings=$repo->get($id)['settings'];$settings['new_products']='manual';$settings['new_product_rules']=array('filters'=>array('scope'=>'instock'),'policy'=>array('mode'=>'none'));
+        $repo->save($id,array('settings'=>$settings));$service=new \Exin\BlackFriday\Integration\NewProducts($repo);$service->process($p->get_id());
+        $key='exin_bf_new_'.$id.'_'.$p->get_id();$suite->same(true,(bool)get_option($key),'Live manual enrollment queues for approval');
+        $repo->save($id,array('end_utc'=>gmdate('Y-m-d H:i:s',time()-1)));
+        try{$service->approve($id,array($p->get_id()),true);}catch(DomainException $expected){}
+        $suite->same(null,$repo->item($id,$p->get_id()),'Approval after expiry cannot create membership');
+        foreach(array('active','scheduled','paused','completed','failed','archived')as$status){
+            $repo->save($id,array('status'=>$status));$service->process($p->get_id());
+            $suite->same(null,$repo->item($id,$p->get_id()),'Expired '.$status.' processing cannot enroll');
+        }
+        $repo->save($id,array('status'=>'active','end_utc'=>gmdate('Y-m-d H:i:s',time()+HOUR_IN_SECONDS)));
+        $hit=false;$expire=static function(array $clauses,WP_Query $query)use(&$hit,$p,$repo,$id):array{
+            if(!$hit&&$query->get('exin_bf_bulk_query')){$hit=true;$repo->save($id,array('end_utc'=>gmdate('Y-m-d H:i:s',time()-1)));}return $clauses;
+        };
+        add_filter('posts_clauses',$expire,100,2);
+        try{try{$service->approve($id,array($p->get_id()),true);}catch(DomainException $expected){}}finally{remove_filter('posts_clauses',$expire,100);}
+        $suite->same(true,$hit,'Expiry occurred during product matching, after the initial approval read');
+        $suite->same(null,$repo->item($id,$p->get_id()),'Fresh locked check rejects expiry during approval');
+        $suite->same(true,(bool)get_option($key),'Failed approval retains its pending record');
+        foreach(array('manual','auto')as$mode){
+            delete_option($key);$settings['new_products']=$mode;$repo->save($id,array('status'=>'active','settings'=>$settings,'end_utc'=>gmdate('Y-m-d H:i:s',time()+HOUR_IN_SECONDS)));$hit=false;
+            add_filter('posts_clauses',$expire,100,2);try{$service->process($p->get_id());}finally{remove_filter('posts_clauses',$expire,100);}
+            $suite->same(true,$hit,'Expiry during '.$mode.' product processing was injected');
+            $suite->same(null,$repo->item($id,$p->get_id()),'No enrollment after expiry during '.$mode.' matching');
+            $suite->same(false,(bool)get_option($key),'No stale pending approval created in '.$mode.' mode');
+        }
+
+        $settings['new_products']='auto';$repo->save($id,array('settings'=>$settings));$service->process($p->get_id());
+        $suite->same(null,$repo->item($id,$p->get_id()),'Expired auto enrollment cannot create membership');
+    });
+    $suite->test('Review: SQL pages match Woo visibility for variations and remain distinct across campaign overlap', static function () use ($suite,$campaign,$product,$repo,$selection,$activate): void {
+        $id=$campaign();$id2=$campaign();$a=$product('review simple');$zero=$product('review zero','0');$empty=$product('review empty');$empty->set_regular_price('');$empty->save();
+        $parent=new WC_Product_Variable();$parent->set_name('EXIN120 review variable');$parent->set_status('publish');$parent->save();
+        $make=static function(int $parent_id,string $price='100'):WC_Product_Variation{$p=new WC_Product_Variation();$p->set_parent_id($parent_id);$p->set_status('publish');$p->set_regular_price($price);$p->set_manage_stock(true);$p->set_stock_quantity(5);$p->save();return $p;};
+        $parent->set_manage_stock(true);$parent->set_stock_quantity(5);$parent->save();$v1=$make($parent->get_id());$v2=$make($parent->get_id());$v2->set_manage_stock(false);$v2->save();WC_Product_Variable::sync($parent->get_id());
+        $badparent=new WC_Product_Variable();$badparent->set_name('EXIN120 review parent stock');$badparent->set_status('publish');$badparent->save();$bad=$make($badparent->get_id());
+        $badparent=wc_get_product($badparent->get_id());$badparent->set_manage_stock(true);$badparent->set_stock_quantity(0);$badparent->set_stock_status('outofstock');$badparent->save();
+        foreach(array($a,$v1,$v2,$bad)as$p){$selection->add($id,$p->get_id(),'0');}$selection->add($id2,$v1->get_id(),'0');$activate($id);$activate($id2);$badparent=wc_get_product($badparent->get_id());$badparent->set_manage_stock(true);$badparent->set_stock_quantity(0);$badparent->set_stock_status('outofstock');$badparent->save();
+        $ids=array($a->get_id(),$zero->get_id(),$empty->get_id(),$parent->get_id(),$v1->get_id(),$v2->get_id(),$bad->get_id());
+        $old=get_option('woocommerce_hide_out_of_stock_items');update_option('woocommerce_hide_out_of_stock_items','yes');
+        $query=new \Exin\BlackFriday\Integration\CatalogPage($repo);$campaigns=array($repo->get($id),$repo->get($id2));
+        try{
+            $expected=array_values(array_filter($ids,static fn($pid)=>\Exin\BlackFriday\Integration\CampaignContext::purchasable_product(wc_get_product($pid))));sort($expected);$seen=array();
+            for($page=1;$page<=count($expected)+1;$page++){
+                $result=$query->query($campaigns,array('include_store'=>true,'product_ids'=>$ids,'limit'=>1,'page'=>$page,'orderby'=>'title'));
+                $suite->same(count($expected),$result['total'],'SQL total equals real Woo visibility, including empty/zero-price products');
+                $suite->same(count($expected),$result['pages'],'One-product page count is exact');
+                $suite->same($page<=count($expected)?1:0,count($result['products']),'No empty page before the final page');
+                foreach($result['products']as$p){$seen[]=$p->get_id();}
+            }
+            sort($seen);$suite->same($expected,$seen,'Every purchasable product/variation appears exactly once');
+            $union=$query->query($campaigns,array('product_ids'=>$ids,'limit'=>12));$suite->same(3,$union['total'],'Only selected simple and two sellable variations, with overlapping membership deduplicated');
+            update_option('woocommerce_hide_out_of_stock_items','no');$shown=$query->query($campaigns,array('product_ids'=>$ids,'limit'=>12));$suite->same(4,$shown['total'],'Visibility setting change invalidates the cached page');
+            $suite->same(4,count($shown['products']),'Variation of out-of-stock parent is visible when Woo permits it');
+            $parent=wc_get_product($parent->get_id());$parent->set_stock_quantity(0);$parent->save();update_option('woocommerce_hide_out_of_stock_items','yes');
+            $drained=$query->query($campaigns,array('product_ids'=>$ids,'limit'=>12));$suite->same(1,$drained['total'],'Shared parent stock and parent visibility are applied before pagination');
+            $parent->set_stock_quantity(5);$parent->save();
+            $hidden=$product('review hidden');$hidden->set_catalog_visibility('hidden');$hidden->save();
+            $visibility=wc_get_product_visibility_term_ids();global $wpdb;$ttid=$visibility['exclude-from-catalog'];$term_id=(int)$wpdb->get_var($wpdb->prepare('SELECT term_id FROM %i WHERE term_taxonomy_id=%d',$wpdb->term_taxonomy,$ttid));
+            $wpdb->query('START TRANSACTION');
+            try{
+                $wpdb->insert($wpdb->terms,array('name'=>'review visibility alias','slug'=>'review-'.wp_generate_uuid4(),'term_group'=>0));$alias=(int)$wpdb->insert_id;
+                $wpdb->update($wpdb->term_taxonomy,array('term_id'=>$alias),array('term_taxonomy_id'=>$ttid));
+                $suite->same(true,$alias!==$ttid,'Visibility fixture uses distinct term and term-taxonomy IDs');
+                $invisible=$query->query($campaigns,array('include_store'=>true,'product_ids'=>array($hidden->get_id()),'limit'=>1));$suite->same(0,$invisible['total'],'Woo visibility IDs are interpreted as term-taxonomy IDs');
+            }finally{$wpdb->query('ROLLBACK');}
+            $search=$product('review search-only');$search->set_catalog_visibility('search');$search->save();
+            $catalog=$query->query($campaigns,array('include_store'=>true,'product_ids'=>array($search->get_id()),'limit'=>1));$suite->same(0,$catalog['total'],'Search-only product stays out of a normal catalog');
+            $old_search=$GLOBALS['wp_query']->is_search;$GLOBALS['wp_query']->is_search=true;
+            try{$search_page=$query->query($campaigns,array('include_store'=>true,'product_ids'=>array($search->get_id()),'limit'=>1));$suite->same(1,$search_page['total'],'Search visibility uses its own SQL and cache context');$suite->same(1,count($search_page['products']),'Search page total matches its rendered product');}finally{$GLOBALS['wp_query']->is_search=$old_search;}
+
+        }finally{update_option('woocommerce_hide_out_of_stock_items',$old);}
+    });
 } finally {
 	foreach ( $campaigns as $id ) {
 		$record = $repo->get( $id );

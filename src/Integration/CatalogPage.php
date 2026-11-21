@@ -38,7 +38,7 @@ final class CatalogPage {
 		$campaigns = array_values( array_filter( $campaigns, static fn( $c ) => CampaignContext::is_live( $c ) && ( $c['settings']['currency'] ?? '' ) === get_woocommerce_currency() && (int) ( $c['settings']['precision'] ?? -1 ) === wc_get_price_decimals() ) );
 		if ( ! $campaigns ) {
 			return $empty; }
-		$key    = 'catalog-page-v120:' . hash( 'sha256', wp_json_encode( array( array_map( static fn( $c ) => array( $c['id'], $c['version'] ), $campaigns ), $args, get_option( 'exin_bf_catalog_generation', '1' ), get_option( 'exin_bf_cache_version', '1' ), get_current_user_id(), get_woocommerce_currency(), wc_get_price_decimals() ) ) );
+		$key    = 'catalog-page-v121:' . hash( 'sha256', wp_json_encode( array( array_map( static fn( $c ) => array( $c['id'], $c['version'] ), $campaigns ), $args, get_option( 'exin_bf_catalog_generation', '1' ), get_option( 'exin_bf_cache_version', '1' ), get_current_user_id(), is_search(), get_option( 'woocommerce_hide_out_of_stock_items' ), get_woocommerce_currency(), wc_get_price_decimals() ) ) );
 		$cached = wp_cache_get( $key, 'exin_bf' );
 		if ( ! is_array( $cached ) ) {
 			$ids      = implode( ',', array_map( 'intval', array_column( $campaigns, 'id' ) ) );
@@ -58,7 +58,7 @@ final class CatalogPage {
 			$other_owned = "((exin_o.expected IS NOT NULL AND exin_o.expected<>'null') OR (exin_o.intent IS NOT NULL AND exin_o.intent<>'null'))";
 			$effective   = "exin_i.status IN ('included','pending','active','sold_out','paused') AND (($owned AND NOT EXISTS (SELECT 1 FROM $items exin_o WHERE exin_o.product_id=exin_i.product_id AND exin_o.campaign_id<>exin_i.campaign_id AND $other_owned)) OR (NOT $owned AND exin_i.campaign_id IN ($rank) AND NOT EXISTS (SELECT 1 FROM $items exin_o WHERE exin_o.product_id=exin_i.product_id AND $other_owned) AND NOT EXISTS (SELECT 1 FROM $items exin_w WHERE exin_w.product_id=exin_i.product_id AND exin_w.campaign_id IN ($rank) AND exin_w.status IN ('included','pending','active','sold_out') AND FIELD(exin_w.campaign_id,$rank)<FIELD(exin_i.campaign_id,$rank))))";
 			$join        = " LEFT JOIN $items exin_i ON exin_i.product_id={$wpdb->posts}.ID AND exin_i.campaign_id IN ($ids) AND ($effective) INNER JOIN $lookup exin_l ON exin_l.product_id={$wpdb->posts}.ID ";
-			$where       = " AND exin_l.stock_status='instock' AND exin_l.min_price IS NOT NULL AND ({$wpdb->posts}.post_type='product' OR EXISTS (SELECT 1 FROM {$wpdb->posts} exin_parent WHERE exin_parent.ID={$wpdb->posts}.post_parent AND exin_parent.post_status='publish'))";
+			$where       = " AND exin_l.stock_status='instock' AND exin_l.min_price IS NOT NULL AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} exin_price WHERE exin_price.post_id={$wpdb->posts}.ID AND exin_price.meta_key='_price' AND exin_price.meta_value<>'') AND ({$wpdb->posts}.post_type='product' OR EXISTS (SELECT 1 FROM {$wpdb->posts} exin_parent WHERE exin_parent.ID={$wpdb->posts}.post_parent AND exin_parent.post_status='publish'))";
 			if ( ! empty( $args['product_ids'] ) && is_array( $args['product_ids'] ) ) {
 				$only   = implode( ',', array_map( 'absint', array_slice( $args['product_ids'], 0, 100 ) ) );
 				$where .= " AND {$wpdb->posts}.ID IN ($only)"; }
@@ -68,9 +68,13 @@ final class CatalogPage {
 				$where .= ' AND exin_i.featured=1'; }
 			$where     .= " AND NOT EXISTS (SELECT 1 FROM {$wpdb->term_relationships} exin_tr INNER JOIN {$wpdb->term_taxonomy} exin_tt ON exin_tt.term_taxonomy_id=exin_tr.term_taxonomy_id INNER JOIN {$wpdb->terms} exin_t ON exin_t.term_id=exin_tt.term_id WHERE exin_tr.object_id={$wpdb->posts}.ID AND exin_tt.taxonomy='product_type' AND exin_t.slug IN ('variable','grouped','external'))";
 			$visibility = wc_get_product_visibility_term_ids();
-			$hidden     = (int) ( $visibility['exclude-from-catalog'] ?? 0 );
+			$hidden     = (int) ( $visibility[ is_search() ? 'exclude-from-search' : 'exclude-from-catalog' ] ?? 0 );
 			if ( $hidden ) {
-				$where .= $wpdb->prepare( " AND NOT EXISTS (SELECT 1 FROM %i exin_vis INNER JOIN %i exin_vt ON exin_vt.term_taxonomy_id=exin_vis.term_taxonomy_id WHERE exin_vis.object_id IN ({$wpdb->posts}.ID,{$wpdb->posts}.post_parent) AND exin_vt.taxonomy='product_visibility' AND exin_vt.term_id=%d)", $wpdb->term_relationships, $wpdb->term_taxonomy, $hidden ); }
+				$where .= $wpdb->prepare( " AND NOT EXISTS (SELECT 1 FROM %i exin_vis WHERE exin_vis.object_id IN ({$wpdb->posts}.ID,{$wpdb->posts}.post_parent) AND exin_vis.term_taxonomy_id=%d)", $wpdb->term_relationships, $hidden ); }
+			if ( 'yes' === get_option( 'woocommerce_hide_out_of_stock_items' ) ) {
+				$where .= " AND ({$wpdb->posts}.post_type<>'product_variation' OR EXISTS (SELECT 1 FROM $lookup exin_parent_stock WHERE exin_parent_stock.product_id={$wpdb->posts}.post_parent AND exin_parent_stock.stock_status<>'outofstock'))";
+			}
+
 			$owner    = "CASE WHEN {$wpdb->posts}.post_type='product_variation' AND NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} exin_cm WHERE exin_cm.post_id={$wpdb->posts}.ID AND exin_cm.meta_key='_manage_stock' AND exin_cm.meta_value='yes') AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} exin_pm WHERE exin_pm.post_id={$wpdb->posts}.post_parent AND exin_pm.meta_key='_manage_stock' AND exin_pm.meta_value='yes') THEN {$wpdb->posts}.post_parent ELSE {$wpdb->posts}.ID END";
 			$where   .= " AND (NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} exin_m WHERE exin_m.post_id=($owner) AND exin_m.meta_key='_manage_stock' AND exin_m.meta_value='yes') OR EXISTS (SELECT 1 FROM {$wpdb->postmeta} exin_q WHERE exin_q.post_id=($owner) AND exin_q.meta_key='_stock' AND CAST(exin_q.meta_value AS DECIMAL(30,8))>0))";
 			$regular  = "CAST((SELECT exin_r.meta_value FROM {$wpdb->postmeta} exin_r WHERE exin_r.post_id={$wpdb->posts}.ID AND exin_r.meta_key='_regular_price' LIMIT 1) AS DECIMAL(30,8))";
@@ -113,7 +117,7 @@ final class CatalogPage {
 					$clauses['join']   .= $join;
 					$clauses['where']  .= $where;
 					$clauses['groupby'] = $wpdb->posts . '.ID';
-					$clauses['orderby'] = $sort . ',' . $wpdb->posts . '.ID ASC'; }
+					$clauses['orderby'] = $query->get( 'exin_bf_count_only' ) ? '' : $sort . ',' . $wpdb->posts . '.ID ASC'; }
 				return $clauses;
 			};
 			add_filter( 'posts_clauses', $filter, 20, 2 );
@@ -128,11 +132,28 @@ final class CatalogPage {
 						'exin_bf_public_page' => true,
 						'ignore_sticky_posts' => true,
 					)
-				); } finally {
+				);
+				$total = (int) $query->found_posts;
+				if ( ! $query->posts && $page > 1 ) {
+					// WP_Query skips totals on empty pages. Count with one unsorted ID,
+					// keeping out-of-range pagination accurate without loading all products.
+					$count_query = new \WP_Query(
+						array_replace(
+							$query->query,
+							array(
+								'paged'              => 1,
+								'posts_per_page'     => 1,
+								'exin_bf_count_only' => true,
+							)
+						)
+					);
+					$total       = (int) $count_query->found_posts;
+				}
+			} finally {
 				remove_filter( 'posts_clauses', $filter, 20 ); }
 				$cached = array(
 					'ids'   => array_map( 'intval', $query->posts ),
-					'total' => (int) $query->found_posts,
+					'total' => $total,
 				);
 				wp_cache_set( $key, $cached, 'exin_bf', 300 );
 		}
