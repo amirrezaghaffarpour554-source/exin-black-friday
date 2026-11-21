@@ -1,0 +1,273 @@
+{
+  "version": "1.2.0",
+  "date": "2026-11-21",
+  "base": "2c206bad3b2b4ca0e9081b3bb8f01bfa43d19ee1",
+  "schema": "4",
+  "production_ready": false,
+  "status": "Ready for review; isolated tests passed; target-store acceptance remains unverified",
+  "artifact": {
+    "file": "exin-black-friday-v1.2.0.zip",
+    "sha256": "ba21ce07d26497b73042840ec35eb08942972cf4b7e04d6bc15907fa0bd6c84f",
+    "files": 99
+  },
+  "runtime": {
+    "wordpress": "7.1.4",
+    "woocommerce": "11.3.0",
+    "php": "8.2.35",
+    "mariadb": "11.8.6",
+    "hpos": true,
+    "data": "Synthetic local fixtures only"
+  },
+  "suites": {
+    "reused_v110_financial": {
+      "tests": 8,
+      "assertions": 82,
+      "passed": 8,
+      "failed": 0,
+      "results": [
+        {
+          "test": "Immediate discount, preview immutability and changed versus duplicate operation counts",
+          "status": "passed"
+        },
+        {
+          "test": "Increasing decreasing and custom delayed stages use the immutable base and product floor",
+          "status": "passed"
+        },
+        {
+          "test": "Prior Woo sales restore exactly and a manual external price is never overwritten",
+          "status": "passed"
+        },
+        {
+          "test": "Overlapping draft priority grants one owner and never preempts an existing financial owner",
+          "status": "passed"
+        },
+        {
+          "test": "Owned archive and copy are blocked; restored campaign copies and reruns without rewriting old history",
+          "status": "passed"
+        },
+        {
+          "test": "Server-side scope crosses 200 products, resolves group floors and previews/removes without Woo price saves",
+          "status": "passed"
+        },
+        {
+          "test": "Hourly queues recover delayed stages and one failed write uses bounded retry with precise reporting",
+          "status": "passed"
+        },
+        {
+          "test": "REST converts one Persian Toman fixed amount into canonical IRR exactly once",
+          "status": "passed"
+        }
+      ]
+    },
+    "v120_focused": {
+      "suite": "v120-financial-integration",
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "database": "11.8.6",
+      "hpos": true,
+      "tests": 6,
+      "assertions": 63,
+      "passed": 6,
+      "failed": 0,
+      "results": [
+        {
+          "test": "Schema 3 upgrade and operational settings preserve a live campaign, prices, snapshots and version",
+          "status": "passed"
+        },
+        {
+          "test": "Real mixed-cart coupons respect opt-in floors, stage refresh is visible and saved orders remain unchanged",
+          "status": "passed"
+        },
+        {
+          "test": "Bulk floors preserve independent exceptions and classify unpublished products as rejected",
+          "status": "passed"
+        },
+        {
+          "test": "New products default to exclude, manual approval is idempotent and auto mode queues current-stage recovery",
+          "status": "passed"
+        },
+        {
+          "test": "Notification providers are opt-in and duplicate-safe; actual price audit is bounded and private",
+          "status": "passed"
+        },
+        {
+          "test": "One storefront smoke: bounded union, deduplication, optional store products, filters, badges and stage countdown",
+          "status": "passed"
+        }
+      ]
+    },
+    "notification_retention_followup": {
+      "suite": "v120-financial-integration",
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "database": "11.8.6",
+      "hpos": true,
+      "tests": 1,
+      "assertions": 10,
+      "passed": 1,
+      "failed": 0,
+      "results": [
+        {
+          "test": "Notification providers are opt-in and duplicate-safe; actual price audit is bounded and private",
+          "status": "passed"
+        }
+      ]
+    },
+    "reused_migration_refund_reporting": {
+      "suite": "v101-core",
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "database": "11.8.6",
+      "hpos": true,
+      "tests": 6,
+      "assertions": 42,
+      "passed": 6,
+      "failed": 0,
+      "seconds": 1.0437,
+      "results": [
+        {
+          "test": "Legacy schema migration removes retired settings and preserves snapshot intent retry and prices byte for byte",
+          "status": "passed",
+          "seconds": 0.0847
+        },
+        {
+          "test": "A failed legacy-settings SELECT cannot falsely advance the migration version marker",
+          "status": "passed",
+          "seconds": 0.0285
+        },
+        {
+          "test": "Reports include registered custom sales status and count a multi-item order once while excluding nonsale statuses",
+          "status": "passed",
+          "seconds": 0.464
+        },
+        {
+          "test": "Real partial line refund reduces campaign revenue and units without removing the remaining sale",
+          "status": "passed",
+          "seconds": 0.1578
+        },
+        {
+          "test": "A fully cash-refunded order is excluded even if its status is later changed back to processing",
+          "status": "passed",
+          "seconds": 0.1579
+        },
+        {
+          "test": "Reporting-settings invalidation changes cached statistics without changing pricing version or snapshot",
+          "status": "passed",
+          "seconds": 0.1489
+        }
+      ]
+    },
+    "reused_shipping": {
+      "tests": 14,
+      "assertions": 52,
+      "passed": 14,
+      "failed": 0,
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "results": [
+        {
+          "test": "Registered WooCommerce shipping tax fixture resolves a positive ten-percent rate",
+          "passed": true
+        },
+        {
+          "test": "Ordinary and mixed carts cannot qualify using ordinary totals",
+          "passed": true
+        },
+        {
+          "test": "At and above threshold customer pays only shipping above one cap",
+          "passed": true
+        },
+        {
+          "test": "Shipping at or below cap becomes zero without negative tax",
+          "passed": true
+        },
+        {
+          "test": "Zero threshold has no minimum but still requires a campaign quantity",
+          "passed": true
+        },
+        {
+          "test": "Coupon, quantity and removal recalculate eligibility",
+          "passed": true
+        },
+        {
+          "test": "Multiple packages share a single cart cap and alternative rates do not multiply it",
+          "passed": true
+        },
+        {
+          "test": "Changing another package invalidates the first package allocation cache",
+          "passed": true
+        },
+        {
+          "test": "Repeated rate filtering is idempotent and disabling restores original rate",
+          "passed": true
+        },
+        {
+          "test": "Unknown package context, unsupported tax and unrounded base fail closed",
+          "passed": true
+        },
+        {
+          "test": "Zero cap and unknown-currency default never invent a shipping discount",
+          "passed": true
+        },
+        {
+          "test": "A changed store currency and external price edit are ineligible",
+          "passed": true
+        },
+        {
+          "test": "WooCommerce session-rate cache cannot retain a full cap after package split",
+          "passed": true
+        },
+        {
+          "test": "A deleted configured method cannot subsidize an externally retained rate",
+          "passed": true
+        }
+      ]
+    },
+    "reused_store_api": {
+      "checks": 19,
+      "passed": 19,
+      "failed": 0,
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "payment": "offline BACS fixture",
+      "boundary": "Real Woo REST controllers via rest_do_request; no live payment gateway or browser Blocks UI."
+    },
+    "one_admin_browser_smoke": {
+      "suite": "v120-admin-one-browser-smoke",
+      "checks": 6,
+      "passed": 6,
+      "failed": 0,
+      "boundary": "Actual Chromium and shipped JS; mocked REST. Real PHP storefront rendering is covered separately."
+    }
+  },
+  "static_checks": {
+    "wpcs": {
+      "errors": 0,
+      "warnings": 0,
+      "fixable": 0
+    },
+    "javascript_syntax": "admin.js, public.js, cart.js passed node --check",
+    "package": "99 files; single plugin root; byte identity; deterministic rebuild; dev/secret exclusions passed",
+    "git_diff_check": "passed",
+    "admin_health_endpoint": "real authenticated GET state passed with boolean failed_jobs and runtime version 1.2.0"
+  },
+  "test_scope": "34 distinct PHP cases, 19 real Store API checks, 6 mocked-REST Chromium UI checks; focused retention follow-up reran only its affected case. No benchmark, full E2E matrix or multiple-browser runs.",
+  "fixes_during_validation": [
+    "Corrected savings checked-integer aggregation discovered by real cart calculation.",
+    "Isolated the reused shipping warning assertion to its own campaign so unrelated fixture warnings do not contaminate the result.",
+    "Corrected storefront fixture campaign scope and browser test handling of collapsed details; final affected checks passed."
+  ],
+  "untested": [
+    "Real Production database, campaigns, prices and /black-friday/ design",
+    "Woodmart and real Elementor page rendering",
+    "Redis Object Cache, WP Rocket and Nginx configuration",
+    "Live payment gateway, external SMS adapter and independent cashback plugin",
+    "Browser Blocks UI; real Store API controller and offline BACS were tested"
+  ],
+  "upgrade": "docs/upgrade-v1.2.0.md",
+  "production_actions": []
+}

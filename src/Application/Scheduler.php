@@ -270,6 +270,21 @@ final class Scheduler {
 					$this->plan_next( $campaign );
 					$this->recover_pending( $campaign );
 					if ( 'active' === $campaign['status'] && $index >= 0 ) {
+						try {
+							do_action( 'exin_bf_stage_started', $campaign_id, $version, $index );
+						} catch ( \Throwable $ignored ) {
+							update_option( 'exin_bf_notification_error', 'provider_hook_failed', false ); }
+						$due = strtotime( DiscountPlan::boundaries( $campaign )[ $index ] . ' UTC' );
+						if ( time() - $due > 120 && add_option( 'exin_bf_late_' . $campaign_id . '_' . $version . '_' . $index, time(), '', false ) ) {
+							$this->logger->log(
+								'warning',
+								'job_late',
+								array(
+									'campaign_id' => $campaign_id,
+									'error_code'  => 'stage_late',
+									'result'      => 'catchup',
+								)
+							); }
 						$this->enqueue_batch( $campaign_id, $version, 0, 'apply' );
 					}
 				}

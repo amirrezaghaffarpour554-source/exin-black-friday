@@ -14,17 +14,21 @@
         node.textContent = config.ended || '';
         return;
       }
-      const left = Math.max(0, Math.floor(anchor.end - now));
+      const target = node.dataset.target === 'stage' ? anchor.stageEnd : anchor.end;
+      if (now >= target) { node.textContent = config.ended || ''; anchors.delete(id); sync(); return; }
+      const left = Math.max(0, Math.floor(target - now));
       const days = Math.floor(left / 86400);
       const hours = String(Math.floor(left / 3600) % 24).padStart(2, '0');
       const minutes = String(Math.floor(left / 60) % 60).padStart(2, '0');
       const seconds = String(left % 60).padStart(2, '0');
       node.textContent = days + ' ' + (config.days || 'days') + ' ' + hours + ':' + minutes + ':' + seconds;
     });
+    badges();
   }
+  function badges() { document.querySelectorAll('[data-exin-bf-badge]').forEach(node => { const anchor = anchors.get(Number(node.dataset.campaign)); if (anchor) node.hidden = !anchor.active || anchor.server + (performance.now() - anchor.local) / 1000 >= anchor.end; }); }
   function sync() {
     if (!config.timeUrl) return;
-    const ids = new Set(Array.from(elements(), node => Number(node.dataset.campaign)));
+    const ids = new Set(Array.from(document.querySelectorAll('[data-exin-bf-countdown],[data-exin-bf-badge]'), node => Number(node.dataset.campaign)));
     ids.forEach(function (id) {
       const existing = anchors.get(id);
       if (!Number.isSafeInteger(id) || id < 1 || pending.has(id) || (existing && performance.now() - existing.local < 60000)) return;
@@ -35,7 +39,7 @@
         .then(function (response) { if (!response.ok) throw new Error('server time'); return response.json(); })
         .then(function (data) {
           if (!Number.isFinite(data.server_time)) throw new Error('server time');
-          anchors.set(id, { server: data.server_time + (performance.now() - started) / 2000, local: performance.now(), active: data.active === true, id: Number(data.campaign_id), end: Number(data.ends_at) });
+          anchors.set(id, { server: data.server_time + (performance.now() - started) / 2000, local: performance.now(), active: data.active === true, id: Number(data.campaign_id), end: Number(data.ends_at), stageEnd: Number(data.stage_ends_at || data.ends_at) });
           draw();
         })
         .catch(function () { elements().forEach(function (node) { if (Number(node.dataset.campaign) === id) node.textContent = config.unavailable || ''; }); })

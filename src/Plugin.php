@@ -85,6 +85,9 @@ final class Plugin {
 		( new Integration\Storefront( $repository ) )->register();
 		( new Integration\Shipping( $repository ) )->register();
 		( new Integration\Orders( $repository ) )->register();
+		( new Integration\Cart( $repository ) )->register();
+		( new Integration\NewProducts( $repository ) )->register();
+		( new Integration\Notifications( $repository ) )->register();
 		// Action Scheduler is initialized on init priority 1 by WooCommerce.
 		add_action(
 			'init',

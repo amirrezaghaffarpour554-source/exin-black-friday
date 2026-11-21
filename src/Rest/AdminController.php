@@ -84,6 +84,9 @@ final class AdminController {
 					'/state'                               => array( 'GET', 'state' ),
 					'/campaigns'                           => array( 'GET', 'campaigns' ),
 					'/campaign/(?P<id>\d+)/copy'           => array( 'POST', 'copy_campaign' ),
+					'/campaign/(?P<id>\d+)/presentation'   => array( 'POST', 'presentation' ),
+					'/campaign/(?P<id>\d+)/history'        => array( 'GET', 'history' ),
+					'/campaign/(?P<id>\d+)/new-products'   => array( 'GET,POST', 'new_products' ),
 					'/campaign/(?P<id>\d+)/simulation'     => array( 'POST', 'simulation' ),
 					'/campaign/(?P<id>\d+)/selection-jobs' => array( 'POST', 'selection_job' ),
 					'/campaign/(?P<id>\d+)/selection-jobs/(?P<token>[a-zA-Z0-9_-]{16,80})' => array( 'POST', 'selection_step' ),
@@ -346,6 +349,7 @@ final class AdminController {
 			'scope'       => $this->choice( $value['scope'] ?? 'filtered', array( 'all', 'instock', 'filtered', 'selected' ) ),
 			'search'      => sanitize_text_field( $this->text( $value['search'] ?? '' ) ),
 			'category'    => sanitize_text_field( $this->text( $value['category'] ?? '' ) ),
+			'publication' => $this->choice( $value['publication'] ?? 'publish', array( 'publish', 'draft', 'pending', 'private' ) ),
 			'stock'       => $this->choice( $value['stock'] ?? 'all', array( 'all', 'instock', 'outofstock' ) ),
 			'type'        => $this->choice( $value['type'] ?? 'all', array( 'all', 'simple', 'variable', 'variation' ) ),
 			'taxonomy'    => sanitize_key( $this->text( $value['taxonomy'] ?? '' ) ),
@@ -391,6 +395,120 @@ final class AdminController {
 	}
 
 	/**
+	 * Save operational settings without changing the financial campaign version.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	public function presentation( WP_REST_Request $request ): array {
+		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		return ( new LockManager() )->run(
+			'campaign:' . $id,
+			function () use ( $id, $request ): array {
+				$campaign = $this->required_campaign( $id );
+				$data     = $this->body( $request );
+				$updates  = array();
+				foreach ( array( 'badge_enabled', 'discount_badge', 'cashback_message_enabled', 'include_store_products', 'show_filters' ) as $key ) {
+					if ( array_key_exists( $key, $data ) ) {
+								$updates[ $key ] = $this->boolean( $data[ $key ] ); }
+				}
+				foreach ( array(
+					'badge_text'       => 120,
+					'cashback_message' => 500,
+				) as $key => $limit ) {
+					if ( isset( $data[ $key ] ) ) {
+						$value = sanitize_text_field( $this->text( $data[ $key ] ) );
+						if ( strlen( $value ) > $limit ) {
+										throw new InvalidArgumentException( esc_html__( 'متن بیش از حد طولانی است.', 'exin-black-friday' ) );
+						} $updates[ $key ] = $value; }
+				}
+				if ( isset( $data['badge_color'] ) ) {
+					$color = sanitize_hex_color( $this->text( $data['badge_color'] ) );
+					if ( ! $color ) {
+								throw new InvalidArgumentException( esc_html__( 'رنگ برچسب معتبر نیست.', 'exin-black-friday' ) );
+					} $updates['badge_color'] = $color; }
+				foreach ( array(
+					'badge_position'      => array( 'inline', 'top-right', 'top-left' ),
+					'countdown_target'    => array( 'campaign', 'stage' ),
+					'public_scope'        => array( 'single', 'all' ),
+					'coupon_floor_policy' => array( 'allow', 'protect' ),
+					'new_products'        => array( 'exclude', 'manual', 'auto' ),
+				) as $key => $choices ) {
+					if ( isset( $data[ $key ] ) ) {
+								$updates[ $key ] = $this->choice( $data[ $key ], $choices ); }
+				}
+				if ( isset( $data['notifications'] ) ) {
+					if ( ! is_array( $data['notifications'] ) ) {
+								throw new InvalidArgumentException( esc_html__( 'تنظیم اعلان معتبر نیست.', 'exin-black-friday' ) );
+					} $updates['notifications'] = array();
+					foreach ( array( 'enabled', 'start', 'stage', 'error', 'admin_email' ) as $key ) {
+							$updates['notifications'][ $key ] = $this->boolean( $data['notifications'][ $key ] ?? false ); }
+				}
+				if ( isset( $data['new_product_rules'] ) ) {
+					$value = $data['new_product_rules'];
+					if ( ! is_array( $value ) ) {
+								throw new InvalidArgumentException( esc_html__( 'قواعد ورود محصول معتبر نیست.', 'exin-black-friday' ) ); }
+					$updates['new_product_rules'] = array(
+						'filters' => $this->selection_filters( $value['filters'] ?? array( 'scope' => 'instock' ) ),
+						'policy'  => $this->floor_policy( $value['policy'] ?? array( 'mode' => 'none' ), $this->amount_unit( $data ) ),
+					);
+				}
+				$check             = $campaign;
+				$check['settings'] = array_replace( $campaign['settings'], $updates );
+				if ( 'auto' === ( $check['settings']['new_products'] ?? 'exclude' ) ) {
+					$rules = ( new \Exin\BlackFriday\Integration\NewProducts( $this->repository ) )->rules( $check );
+					if ( ! $rules || ! empty( $rules['filters']['ids'] ) || ! empty( $rules['filters']['source_campaign_id'] ) || in_array( $rules['policy']['mode'] ?? 'independent', array( 'independent', 'previous' ), true ) ) {
+						throw new InvalidArgumentException( esc_html__( 'برای ورود خودکار، محدودهٔ قابل تکرار و یک قاعدهٔ کف گروهی تعیین کنید.', 'exin-black-friday' ) ); }
+				}
+				$this->repository->save( $id, array( 'settings' => $check['settings'] ) );
+				update_option( 'exin_bf_cache_version', wp_generate_uuid4(), false );
+				$this->logger->log(
+					'info',
+					'presentation_updated',
+					array(
+						'campaign_id' => $id,
+						'result'      => 'success',
+					)
+				);
+				return array( 'campaign' => $this->repository->get( $id ) );
+			}
+		);
+	}
+
+	/**
+	 * Retrieve one manager-only audit page.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	public function history( WP_REST_Request $request ): array {
+		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		$this->required_campaign( $id );
+		return $this->logger->history( $id, $this->integer( $request->get_param( 'page' ) ?? 1, 1, 100000 ) );
+	}
+
+	/**
+	 * List or approve a bounded new-product selection.
+	 *
+	 * @throws InvalidArgumentException When selection or enrollment confirmation is invalid.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	public function new_products( WP_REST_Request $request ): array {
+		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		$this->required_campaign( $id );
+		$service = new \Exin\BlackFriday\Integration\NewProducts( $this->repository );
+		if ( 'GET' === $request->get_method() ) {
+			return $service->pending( $id, $this->integer( $request->get_param( 'page' ) ?? 1, 1, 100000 ) ); }
+		$data = $this->body( $request );
+		$ids  = $data['ids'] ?? array();
+		if ( ! is_array( $ids ) || ! $ids || count( $ids ) > 25 ) {
+			throw new InvalidArgumentException( esc_html__( 'هر بار یک تا ۲۵ محصول قابل بررسی است.', 'exin-black-friday' ) ); }
+		$accept = 'approve' === $this->choice( $data['action'] ?? '', array( 'approve', 'reject' ) );
+		if ( $accept && true !== ( $data['confirm_enroll'] ?? false ) ) {
+			throw new InvalidArgumentException( esc_html__( 'ورود با قوانین مرحلهٔ جاری به تأیید صریح نیاز دارد.', 'exin-black-friday' ) ); }
+		return $service->approve( $id, array_map( fn( $value ) => $this->integer( $value, 1, PHP_INT_MAX ), $ids ), $accept );
+	}
+
+	/**
 	 * Searches a bounded page of sellable products by a validated term.
 	 *
 	 * @param WP_REST_Request $request Product search and page parameters.
@@ -405,6 +523,7 @@ final class AdminController {
 		$filters     = array(
 			'category'    => sanitize_text_field( $this->text( $request->get_param( 'category' ) ?? '' ) ),
 			'stock'       => $this->choice( $request->get_param( 'stock' ) ?? 'all', array( 'all', 'instock', 'outofstock' ) ),
+			'publication' => $this->choice( $request->get_param( 'publication' ) ?? 'publish', array( 'publish', 'draft', 'pending', 'private' ) ),
 			'type'        => $this->choice( $request->get_param( 'type' ) ?? 'all', array( 'all', 'simple', 'variable', 'variation' ) ),
 			'taxonomy'    => sanitize_key( $this->text( $request->get_param( 'taxonomy' ) ?? '' ) ),
 			'term'        => sanitize_text_field( $this->text( $request->get_param( 'term' ) ?? '' ) ),
@@ -670,6 +789,8 @@ final class AdminController {
 			$this->selection->resolve( $id, $product, $action );
 		} else {
 			$changes = array();
+			if ( isset( $data['floor_override'] ) ) {
+				$changes['floor_override'] = $this->boolean( $data['floor_override'] ); }
 			if ( isset( $data['floor_price'] ) ) {
 				$this->editable_campaign( $id );
 				$changes['floor_price'] = $this->decimal( $data['floor_price'], $this->amount_unit( $data ) );
@@ -985,18 +1106,29 @@ final class AdminController {
 	 */
 	private function health(): array {
 		return array(
-			'php'               => PHP_VERSION,
-			'wordpress'         => get_bloginfo( 'version' ),
-			'woocommerce'       => defined( 'WC_VERSION' ) ? WC_VERSION : '',
-			'action_scheduler'  => function_exists( 'as_schedule_single_action' ) && function_exists( 'as_has_scheduled_action' ),
-			'cron_disabled'     => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
-			'object_cache'      => wp_using_ext_object_cache(),
-			'timezone'          => wp_timezone_string(),
-			'elementor'         => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : '',
-			'next_watchdog'     => function_exists( 'as_next_scheduled_action' ) ? as_next_scheduled_action( 'exin_bf_tick', array(), 'exin-black-friday' ) : null,
-			'shipping_methods'  => $this->shipping_methods(),
-			'shipping_warnings' => ( new \Exin\BlackFriday\Integration\Shipping( $this->repository ) )->warnings(),
-			'order_statuses'    => wc_get_order_statuses(),
+			'php'                => PHP_VERSION,
+			'wordpress'          => get_bloginfo( 'version' ),
+			'woocommerce'        => defined( 'WC_VERSION' ) ? WC_VERSION : '',
+			'action_scheduler'   => function_exists( 'as_schedule_single_action' ) && function_exists( 'as_has_scheduled_action' ),
+			'cron_disabled'      => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
+			'object_cache'       => wp_using_ext_object_cache(),
+			'timezone'           => wp_timezone_string(),
+			'elementor'          => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : '',
+			'last_tick'          => get_option( 'exin_bf_last_tick', '' ),
+			'late_watchdog'      => ! get_option( 'exin_bf_last_tick' ) || strtotime( get_option( 'exin_bf_last_tick' ) . ' UTC' ) < time() - 180,
+			'failed_jobs'        => function_exists( 'as_get_scheduled_actions' ) && (bool) as_get_scheduled_actions(
+				array(
+					'group'    => Scheduler::GROUP,
+					'status'   => 'failed',
+					'per_page' => 1,
+				),
+				'ids'
+			),
+			'notification_error' => get_option( 'exin_bf_notification_error', '' ),
+			'next_watchdog'      => function_exists( 'as_next_scheduled_action' ) ? as_next_scheduled_action( 'exin_bf_tick', array(), 'exin-black-friday' ) : null,
+			'shipping_methods'   => $this->shipping_methods(),
+			'shipping_warnings'  => ( new \Exin\BlackFriday\Integration\Shipping( $this->repository ) )->warnings(),
+			'order_statuses'     => wc_get_order_statuses(),
 		);
 	}
 

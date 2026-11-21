@@ -28,40 +28,8 @@ final class PublicProductQuery {
 	 * @return array Requested records or presentation data.
 	 */
 	public function query( array $campaign, array $args ): array {
-		$limit = max( 1, min( 48, (int) ( $args['limit'] ?? 12 ) ) );
-		$page  = max( 1, min( 10000, (int) ( $args['page'] ?? 1 ) ) );
-		$empty = array(
-			'products' => array(),
-			'total'    => 0,
-			'pages'    => 0,
-			'page'     => $page,
-		);
-		if ( ! CampaignContext::is_live( $campaign ) ) {
-			return $empty;
-		}
-		$index = new CampaignProductIndex();
-		$ids   = $index->ids( $campaign, filter_var( $args['featured'] ?? false, FILTER_VALIDATE_BOOLEAN ), sanitize_key( $args['orderby'] ?? 'campaign_priority' ) );
-		if ( ! empty( $args['category'] ) ) {
-			$ids = $index->category( $ids, $args['category'] );
-		}
-		$total    = count( $ids );
-		$page_ids = array_slice( $ids, ( $page - 1 ) * $limit, $limit );
-		if ( $page_ids ) {
-			_prime_post_caches( $page_ids, true, true );
-		}
-		$products = array();
-		foreach ( $page_ids as $id ) {
-			$product = wc_get_product( $id );
-			if ( $product && CampaignContext::purchasable_product( $product ) ) {
-				$products[] = $product;
-			}
-		}
-		return array(
-			'products' => $products,
-			'total'    => $total,
-			'pages'    => (int) ceil( $total / $limit ),
-			'page'     => $page,
-		);
+		$campaigns = 'all' === ( $args['campaigns'] ?? ( $campaign['settings']['public_scope'] ?? 'single' ) ) ? $this->repository->live_campaigns() : array( $campaign );
+		return ( new CatalogPage( $this->repository ) )->query( $campaigns, $args );
 	}
 
 	/**
@@ -90,6 +58,7 @@ final class PublicProductQuery {
 		return $ids;
 	}
 
+	// phpcs:disable Generic.CodeAnalysis.UnusedFunctionParameter -- Retained integration signature.
 	/**
 	 * Retrieve categories belonging to selected products and variation parents.
 	 *
@@ -97,21 +66,14 @@ final class PublicProductQuery {
 	 * @return array Requested records or presentation data.
 	 */
 	public function categories( array $campaign ): array {
-		$ids = ( new CampaignProductIndex() )->ids( $campaign );
-		if ( ! $ids ) {
-			return array();
-		}
-		$parents = get_posts(
+		$terms = get_terms(
 			array(
-				'post_type'      => 'product_variation',
-				'post_status'    => 'publish',
-				'post__in'       => $ids,
-				'posts_per_page' => -1,
-				'fields'         => 'id=>parent',
+				'taxonomy'   => 'product_cat',
+				'hide_empty' => true,
+				'number'     => 100,
+				'orderby'    => 'name',
 			)
 		);
-		$ids     = array_unique( array_merge( $ids, array_values( $parents ) ) );
-		$terms   = wp_get_object_terms( $ids, 'product_cat', array( 'orderby' => 'name' ) );
 		return is_wp_error( $terms ) ? array() : $terms;
 	}
 }

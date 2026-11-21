@@ -41,6 +41,7 @@ $suite = new class() {
 		$this->truth( false, 'Expected failure code ' . $code );
 	}
 	public function test( string $name, callable $callback ): void {
+		if ( getenv( 'EXIN_TEST_FILTER' ) && ! preg_match( getenv( 'EXIN_TEST_FILTER' ), $name ) ) { return; }
 		$start = microtime( true );
 		try {
 			$callback();
@@ -264,7 +265,7 @@ try {
 		$repository->put_item( $id, $first->get_id(), array( 'expected' => null ) );
 	} );
 
-	$suite->test( 'Schema 2 to 3 migration removes retired settings and preserves snapshot intent retry and prices byte for byte', static function () use ( $suite, $repository, $selection, $product, $raw_item ): void {
+	$suite->test( 'Legacy schema migration removes retired settings and preserves snapshot intent retry and prices byte for byte', static function () use ( $suite, $repository, $selection, $product, $raw_item ): void {
 		global $wpdb;
 		update_option( 'woocommerce_currency', 'IRR' );
 		update_option( 'woocommerce_price_num_decimals', 0 );
@@ -286,7 +287,7 @@ try {
 			Migration::run();
 			$after_campaign = $repository->get( $id );
 			$after = $raw_item( $id, $item_product->get_id() );
-			$suite->equal( '3', get_option( 'exin_bf_schema_version' ), 'Schema marker advances only to the tested version' );
+			$suite->equal( Migration::VERSION, get_option( 'exin_bf_schema_version' ), 'Schema marker advances only to the tested version' );
 			$suite->truth( ! array_key_exists( 'target_orders', $after_campaign['settings'] ), 'Legacy goal is removed from stored settings' );
 			$suite->truth( ! array_key_exists( 'show_out_of_stock', $after_campaign['settings'] ), 'Legacy unavailable-product override is removed' );
 			$suite->equal( '1500000', $after_campaign['settings']['shipping_subsidy_cap'], 'Default subsidy is exactly 150000 toman in IRR store units' );
@@ -340,6 +341,8 @@ try {
 		$orders->invalidate_campaign( $id );
 		$report = $orders->analytics( $id );
 		$suite->equal( 3, $report['orders'], 'Three eligible orders, not four attributed line items' );
+		$suite->equal( 3, $report['top_products'][0]['orders'], 'Per-product distinct order count is real HPOS data' );
+		$suite->equal( $second->get_id(), $report['least_products'][0]['product_id'], 'Least sellers use actual unit totals' );
 		$suite->equal( 7, $report['units'], 'All eligible line quantities are reported' );
 		$suite->equal( '800.00', $report['item_revenue'], 'Revenue uses real saved campaign item totals' );
 		$suite->equal( '800.00', $report['order_revenue'], 'Related order totals are reported separately' );
@@ -357,6 +360,7 @@ try {
 		$suite->truth( $refund instanceof WC_Order_Refund, 'WooCommerce created an actual partial refund' );
 		$orders->invalidate_campaign( $id );
 		$report = $orders->analytics( $id );
+		$suite->equal( 0, $report['least_products'][0]['units'], 'Unsold products participate in least-seller report' );
 		$suite->equal( 1, $report['orders'], 'Order with remaining campaign sale stays counted once' );
 		$suite->equal( 1, $report['units'], 'Refunded quantity is deducted' );
 		$suite->equal( '100.00', $report['item_revenue'], 'Refunded campaign line amount is deducted' );

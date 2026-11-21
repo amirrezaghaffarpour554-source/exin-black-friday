@@ -77,7 +77,7 @@ final class ProductSelectionService {
 		}
 		$base = $existing ? $existing['base_price'] : $this->base_price( $snapshot, $campaign );
 		if ( isset( $options['floor_policy'] ) ) {
-			$floor = $existing && 'none' === ( $options['floor_policy']['mode'] ?? 'none' )
+			$floor = $existing && ( 'none' === ( $options['floor_policy']['mode'] ?? 'none' ) || ( ! empty( $existing['floor_override'] ) && ! array_key_exists( $product_id, $options['floor_policy']['floors'] ?? array() ) ) )
 				? $existing['floor_price']
 				: BulkSelectionService::resolve_floor( $this->repo, $campaign, $product_id, $base, $options['floor_policy'], (int) ( $options['source_campaign_id'] ?? 0 ) );
 		}
@@ -153,18 +153,19 @@ final class ProductSelectionService {
 							$campaign_id,
 							$product_id,
 							array(
-								'base_price'   => $preview['base_price'],
-								'floor_price'  => $preview['floor_price'],
-								'schedule'     => $preview['schedule'],
-								'snapshot'     => $snapshot,
-								'expected'     => null,
-								'intent'       => null,
-								'retry_state'  => null,
-								'operation_id' => '',
-								'conflict'     => '',
-								'status'       => 'included',
-								'priority'     => (int) ( $options['priority'] ?? 0 ),
-								'featured'     => empty( $options['featured'] ) ? 0 : 1,
+								'base_price'     => $preview['base_price'],
+								'floor_price'    => $preview['floor_price'],
+								'schedule'       => $preview['schedule'],
+								'snapshot'       => $snapshot,
+								'expected'       => null,
+								'intent'         => null,
+								'retry_state'    => null,
+								'operation_id'   => '',
+								'conflict'       => '',
+								'status'         => 'included',
+								'priority'       => (int) ( $options['priority'] ?? 0 ),
+								'featured'       => empty( $options['featured'] ) ? 0 : 1,
+								'floor_override' => isset( $options['floor_override'] ) ? (int) (bool) $options['floor_override'] : ( isset( $options['floor_policy'] ) ? ( array_key_exists( $product_id, $options['floor_policy']['floors'] ?? array() ) ? 1 : 0 ) : 1 ),
 							)
 						);
 						( new Logger() )->log(
@@ -204,7 +205,7 @@ final class ProductSelectionService {
 						if ( ! $item || 'removed' === $item['status'] ) {
 							throw new \DomainException( 'item_not_found' );
 						}
-						$changes = array_intersect_key( $data, array_flip( array( 'priority', 'featured', 'status' ) ) );
+						$changes = array_intersect_key( $data, array_flip( array( 'priority', 'featured', 'status', 'floor_override' ) ) );
 						if ( isset( $changes['status'] ) ) {
 							if ( ! in_array( $changes['status'], array( 'paused', 'included' ), true ) || in_array( $item['status'], array( 'conflict', 'completed' ), true ) ) {
 								throw new \DomainException( 'invalid_item_transition' );
@@ -213,13 +214,16 @@ final class ProductSelectionService {
 								$changes['status'] = 'active';
 							}
 						}
+						if ( isset( $data['floor_override'] ) && ( $item['expected'] || $item['intent'] ) ) {
+							throw new \DomainException( 'financial_settings_frozen' ); }
 						if ( isset( $data['floor_price'] ) || isset( $data['floor_policy'] ) ) {
 							if ( 'draft' !== $campaign['status'] || $item['expected'] || $item['intent'] ) {
 								throw new \DomainException( 'financial_settings_frozen' );
 							}
-							$preview                = $this->preview( $campaign_id, $product_id, (string) ( $data['floor_price'] ?? $item['floor_price'] ), $data );
-							$changes['floor_price'] = $preview['floor_price'];
-							$changes['schedule']    = $preview['schedule'];
+							$preview                   = $this->preview( $campaign_id, $product_id, (string) ( $data['floor_price'] ?? $item['floor_price'] ), $data );
+							$changes['floor_price']    = $preview['floor_price'];
+							$changes['schedule']       = $preview['schedule'];
+							$changes['floor_override'] = isset( $data['floor_override'] ) ? (int) (bool) $data['floor_override'] : ( isset( $data['floor_price'] ) || array_key_exists( $product_id, $data['floor_policy']['floors'] ?? array() ) ? 1 : (int) ( $item['floor_override'] ?? 0 ) );
 						}
 						if ( isset( $changes['priority'] ) ) {
 							$changes['priority'] = (int) $changes['priority'];
