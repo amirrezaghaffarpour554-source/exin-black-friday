@@ -292,6 +292,8 @@ final class AdminController {
 		$id       = $this->integer( $request['id'], 1, PHP_INT_MAX );
 		$campaign = $this->required_campaign( $id );
 		$data     = $this->body( $request );
+		if ( DiscountPlan::automatic( $campaign ) && ! isset( $data['filters'] ) ) {
+			return ( new \Exin\BlackFriday\Application\AutomaticSelection( $this->repository ) )->preview( $campaign, $this->integer( $data['page'] ?? 1, 1, 100000 ), $this->integer( $data['stage_start'] ?? 0, 0, 366 ) ); }
 		if ( isset( $data['filters'] ) ) {
 			$result = ( new BulkSelectionService( $this->repository ) )->preview( $id, $this->selection_filters( $data['filters'] ), $this->floor_policy( $data['floor_policy'] ?? array( 'mode' => 'none' ), $this->amount_unit( $data ) ) );
 		} else {
@@ -973,15 +975,20 @@ final class AdminController {
 					continue;
 				}
 				++$count;
-				$expected = DiscountPlan::schedule( $item['base_price'], $item['floor_price'], $campaign );
-				if ( 'conflict' === $item['status'] || $item['intent'] || $item['expected'] || $expected !== $item['schedule']
+				if ( DiscountPlan::automatic( $campaign ) ) {
+					DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, 0 );
+					$expected = $item['schedule']; } else {
+					$expected = DiscountPlan::schedule( $item['base_price'], $item['floor_price'], $campaign ); }
+					if ( 'conflict' === $item['status'] || $item['intent'] || $item['expected'] || $expected !== $item['schedule']
 					|| ( $item['snapshot']['currency'] ?? '' ) !== get_woocommerce_currency()
 					|| (int) ( $item['snapshot']['precision'] ?? -1 ) !== wc_get_price_decimals() ) {
-					throw new InvalidArgumentException( esc_html__( 'برنامه یا مالکیت یک محصول کامل نیست؛ پیش از فعال‌سازی تعارض‌ها را بررسی کنید.', 'exin-black-friday' ) );
-				}
+						throw new InvalidArgumentException( esc_html__( 'برنامه یا مالکیت یک محصول کامل نیست؛ پیش از فعال‌سازی تعارض‌ها را بررسی کنید.', 'exin-black-friday' ) );
+					}
 			}
 			$row_count = count( $rows );
 		} while ( 100 === $row_count );
+		if ( DiscountPlan::automatic( $campaign ) ) {
+			( new \Exin\BlackFriday\Application\AutomaticSelection( $this->repository ) )->capacity( $campaign, $count ); }
 		if ( 0 === $count ) {
 			throw new InvalidArgumentException( esc_html__( 'برای فعال‌سازی، حداقل یک محصول با کف معتبر انتخاب کنید.', 'exin-black-friday' ) );
 		}
@@ -1084,7 +1091,10 @@ final class AdminController {
 		if ( isset( $settings['discount_plan'] ) ) {
 			if ( ! is_array( $settings['discount_plan'] ) ) {
 				throw new InvalidArgumentException( esc_html__( 'برنامه تخفیف معتبر نیست.', 'exin-black-friday' ) ); }
-			$plan                     = $settings['discount_plan'];
+			$plan = $settings['discount_plan'];
+			if ( DiscountPlan::automatic( array( 'settings' => array( 'discount_plan' => $plan ) ) ) && empty( $plan['seed'] ) ) {
+				$existing     = isset( $data['id'] ) ? $this->repository->get( (int) $data['id'] ) : null;
+				$plan['seed'] = $existing['settings']['discount_plan']['seed'] ?? wp_generate_uuid4(); }
 			$plan['initial_discount'] = 'fixed_amount' === ( $plan['mode'] ?? '' ) ? $this->decimal( $plan['initial_discount'] ?? '0', $unit ) : MoneyInput::normalize( $this->text( $plan['initial_discount'] ?? '0' ), 2 );
 			$plan['final_discount']   = MoneyInput::normalize( $this->text( $plan['final_discount'] ?? '15' ), 2 );
 			if ( isset( $plan['points'] ) ) {
@@ -1096,6 +1106,16 @@ final class AdminController {
 					$point['value'] = 'amount' === ( $point['kind'] ?? '' ) ? $this->decimal( $point['value'] ?? '', $unit ) : MoneyInput::normalize( $this->text( $point['value'] ?? '' ), 2 );
 				}
 				unset( $point );
+			}
+			if ( DiscountPlan::automatic( array( 'settings' => array( 'discount_plan' => $plan ) ) ) ) {
+				foreach ( array( 'intensity_min', 'intensity_max', 'base_max' ) as $field ) {
+					if ( isset( $plan[ $field ] ) ) {
+						$plan[ $field ] = MoneyInput::normalize( $this->text( $plan[ $field ] ), 2 ); }
+				}
+				foreach ( array( 'steps', 'interval_minutes', 'selection_value', 'bands', 'wave_period' ) as $field ) {
+					if ( isset( $plan[ $field ] ) ) {
+						$plan[ $field ] = $this->integer( MoneyInput::normalize( $this->text( $plan[ $field ] ), 0 ), 1, 527040 ); }
+				}
 			}
 			$valid['settings']['discount_plan']        = DiscountPlan::normalize( $plan, wc_get_price_decimals() );
 			$valid['settings']['existing_sale_policy'] = $this->choice( $settings['existing_sale_policy'] ?? 'preserve', array( 'reject', 'preserve' ) );
@@ -1206,6 +1226,9 @@ final class AdminController {
 	 */
 	private function domain_message( string $code ): string {
 		$messages = array(
+			'invalid_automatic_base_floor_or_stage'       => __( 'روش خودکار برای هر محصول به قیمت اصلی معتبر و کف مثبت و کمتر یا مساوی قیمت اصلی نیاز دارد؛ ابتدا کف‌ها را تعیین کنید.', 'exin-black-friday' ),
+			'automatic_flash_capacity_exceeded'           => __( 'فاصلهٔ Flash برای تعداد محصولات و بودجهٔ پردازش فعلی کوتاه است؛ فاصله را بیشتر کنید.', 'exin-black-friday' ),
+			'automatic_cohort_capacity_exceeded'          => __( 'تعداد نوبت‌های ویژه بیش از بودجهٔ ایمن است؛ مراحل یا اندازهٔ گروه ویژه را کاهش دهید.', 'exin-black-friday' ),
 			'selection_requires_editable_campaign'        => __( 'انتخاب گروهی فقط برای پیش‌نویس بدون مالکیت قیمت یا کمپین فعال و منقضی‌نشده مجاز است.', 'exin-black-friday' ),
 			'invalid_money_input'                         => __( 'مبلغ معتبر با ارقام فارسی یا انگلیسی وارد کنید؛ گروه‌بندی هزارگان باید صحیح باشد.', 'exin-black-friday' ),
 			'invalid_money_precision_or_length'           => __( 'طول مبلغ یا دقت ورودی معتبر نیست.', 'exin-black-friday' ),

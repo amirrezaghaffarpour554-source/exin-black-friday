@@ -68,7 +68,10 @@ final class DraftCampaignService {
 							|| (int) ( $item['snapshot']['precision'] ?? -1 ) !== wc_get_price_decimals() ) {
 							throw new \DomainException( 'store_currency_or_precision_changed' );
 						}
-						if ( $replan ) {
+						if ( $replan && DiscountPlan::automatic( $new ) ) {
+							// Automatic decisions are evaluated at execution; do not build N-by-stages arrays.
+							DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $new, 0 );
+						} elseif ( $replan ) {
 							$plans[ $item['product_id'] ] = DiscountPlan::schedule( $item['base_price'], $item['floor_price'], $new );
 						}
 					}

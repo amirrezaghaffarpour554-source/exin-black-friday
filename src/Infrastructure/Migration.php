@@ -13,7 +13,7 @@ use Exin\BlackFriday\Domain\CurrencyDisplay;
 
 /** Creates and upgrades durable campaign database tables. */
 final class Migration {
-	public const VERSION = '4';
+	public const VERSION = '5';
 
 	/**
 	 * Create the current schema and record its independent migration version.
@@ -102,7 +102,18 @@ final class Migration {
             KEY created_at (created_at)
         ) $charset;"
 		);
-		foreach ( array( 'campaigns', 'items', 'locks', 'audit' ) as $table ) {
+		dbDelta(
+			"CREATE TABLE {$prefix}turns (
+            campaign_id bigint unsigned NOT NULL,
+            version bigint unsigned NOT NULL,
+            stage smallint unsigned NOT NULL,
+            product_id bigint unsigned NOT NULL,
+            applied tinyint NOT NULL DEFAULT 0,
+            PRIMARY KEY  (campaign_id,version,stage,product_id),
+            KEY product_turns (campaign_id,version,product_id,stage)
+        ) ENGINE=InnoDB $charset;"
+		);
+		foreach ( array( 'campaigns', 'items', 'locks', 'audit', 'turns' ) as $table ) {
 			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $prefix . $table ) ) ) !== $prefix . $table ) {
 				throw new \RuntimeException( 'schema_creation_failed' );
 			}
@@ -119,7 +130,8 @@ final class Migration {
 					throw new \RuntimeException( 'schema_campaign_extension_missing' ); }
 			}
 		}
-		self::upgrade_settings( $prefix . 'campaigns' );
+		if ( version_compare( (string) get_option( 'exin_bf_schema_version', '0' ), '3', '<' ) ) {
+			self::upgrade_settings( $prefix . 'campaigns' ); }
 		update_option( 'exin_bf_schema_version', self::VERSION, false );
 	}
 

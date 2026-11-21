@@ -2,9 +2,9 @@
 /**
  * Plugin Name: EXIN Black Friday
  * Description: مدیریت امن کمپین بلک فرایدی اکسین برای ووکامرس.
- * Version: 1.2.2
+ * Version: 1.3.0
  * Requires at least: 6.5
- * Requires PHP: 8.1
+ * Requires PHP: 8.2
  * Requires Plugins: woocommerce
  * WC requires at least: 8.2
  * Author: EXIN
@@ -17,7 +17,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'EXIN_BF_VERSION', '1.2.2' );
+define( 'EXIN_BF_VERSION', '1.3.0' );
 define( 'EXIN_BF_FILE', __FILE__ );
 define( 'EXIN_BF_PATH', plugin_dir_path( __FILE__ ) );
 define( 'EXIN_BF_URL', plugin_dir_url( __FILE__ ) );
