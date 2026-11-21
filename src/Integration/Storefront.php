@@ -41,6 +41,9 @@ final class Storefront {
 		add_shortcode( 'exin_bf_featured', fn( $atts ) => $this->render( 'featured', (array) $atts ) );
 		add_shortcode( 'exin_bf_countdown', fn( $atts ) => $this->render( 'countdown', (array) $atts ) );
 		add_shortcode( 'exin_bf_categories', fn( $atts ) => $this->render( 'categories', (array) $atts ) );
+		add_shortcode( 'exin_bf_related', fn( $atts ) => $this->render( 'related', (array) $atts ) );
+		add_shortcode( 'exin_bf_badge', fn( $atts ) => $this->render( 'badge', (array) $atts ) );
+		add_shortcode( 'exin_bf_cashback', fn( $atts ) => $this->render( 'cashback', (array) $atts ) );
 		add_shortcode( 'exin_bf_status', fn( $atts ) => $this->render( 'status', (array) $atts ) );
 		add_action( 'rest_api_init', array( $this, 'routes' ) );
 		add_action( 'elementor/widgets/register', array( $this, 'widgets' ) );
@@ -71,10 +74,11 @@ final class Storefront {
 					$live = CampaignContext::is_live( $campaign );
 					$response = new \WP_REST_Response(
 						array(
-							'server_time' => time(),
-							'active'      => $live,
-							'campaign_id' => $live ? (int) $campaign['id'] : null,
-							'ends_at'     => $live ? strtotime( $campaign['end_utc'] . ' UTC' ) : null,
+							'server_time'   => time(),
+							'active'        => $live,
+							'campaign_id'   => $live ? (int) $campaign['id'] : null,
+							'ends_at'       => $live ? strtotime( $campaign['end_utc'] . ' UTC' ) : null,
+							'stage_ends_at' => $live ? $this->stage_end( $campaign ) : null,
 						)
 					);
 					$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
@@ -95,7 +99,7 @@ final class Storefront {
 			return;
 		}
 		Elementor\CampaignWidget::use_storefront( $this );
-		foreach ( array( Elementor\ProductsWidget::class, Elementor\FeaturedWidget::class, Elementor\CountdownWidget::class, Elementor\CategoriesWidget::class, Elementor\StatusWidget::class, Elementor\BadgeWidget::class ) as $class ) {
+		foreach ( array( Elementor\ProductsWidget::class, Elementor\FeaturedWidget::class, Elementor\CountdownWidget::class, Elementor\CategoriesWidget::class, Elementor\StatusWidget::class, Elementor\BadgeWidget::class, Elementor\RelatedWidget::class ) as $class ) {
 			$manager->register( new $class() );
 		}
 	}
@@ -146,10 +150,16 @@ final class Storefront {
 			return $this->status( $campaign );
 		}
 		if ( ! CampaignContext::is_live( $campaign ) ) {
+			if ( 'badge' === $kind ) {
+				return ''; }
 			return 'empty' === ( $campaign['settings']['inactive_output'] ?? 'message' ) ? '' : '<p class="exin-bf-message">' . esc_html__( 'کمپین در حال حاضر فعال نیست.', 'exin-black-friday' ) . '</p>';
 		}
+		if ( 'cashback' === $kind ) {
+			return empty( $campaign['settings']['cashback_message_enabled'] ) ? '' : '<p class="exin-bf-cashback">' . esc_html( $campaign['settings']['cashback_message'] ?? '' ) . '</p>'; }
+		if ( 'related' === $kind ) {
+			return $this->related( $campaign, $attributes ); }
 		if ( 'countdown' === $kind ) {
-			return '<div class="exin-bf-countdown" role="timer" aria-label="' . esc_attr__( 'زمان باقی‌مانده کمپین', 'exin-black-friday' ) . '" data-exin-bf-countdown data-campaign="' . esc_attr( (string) $campaign['id'] ) . '"><span>' . esc_html__( 'در حال دریافت زمان سرور…', 'exin-black-friday' ) . '</span></div>';
+			return '<div class="exin-bf-countdown" role="timer" aria-label="' . esc_attr__( 'زمان باقی‌مانده کمپین', 'exin-black-friday' ) . '" data-exin-bf-countdown data-campaign="' . esc_attr( (string) $campaign['id'] ) . '" data-target="' . esc_attr( 'stage' === ( $attributes['target'] ?? ( $campaign['settings']['countdown_target'] ?? 'campaign' ) ) ? 'stage' : 'campaign' ) . '"><span>' . esc_html__( 'در حال دریافت زمان سرور…', 'exin-black-friday' ) . '</span></div>';
 		}
 		if ( 'categories' === $kind ) {
 			return $this->categories( $campaign );
@@ -203,6 +213,14 @@ final class Storefront {
 				'category'       => 0,
 				'featured'       => false,
 				'pagination'     => 'yes',
+				'campaigns'      => $campaign['settings']['public_scope'] ?? 'single',
+				'include_store'  => ! empty( $campaign['settings']['include_store_products'] ),
+				'filters'        => ! empty( $campaign['settings']['show_filters'] ),
+				'min_discount'   => '',
+				'max_discount'   => '',
+				'min_price'      => '',
+				'max_price'      => '',
+				'product_ids'    => array(),
 			),
 			$attributes
 		);
@@ -211,6 +229,12 @@ final class Storefront {
 		if ( empty( $category ) && isset( $_GET['exin_bf_category'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only category navigation.
 			$category = is_scalar( $_GET['exin_bf_category'] ) ? sanitize_text_field( wp_unslash( $_GET['exin_bf_category'] ) ) : '-invalid-category-'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		}
+		foreach ( array( 'min_discount', 'max_discount', 'min_price', 'max_price' ) as $name ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only bounded product filtering.
+			if ( isset( $_GET[ 'exin_bf_' . $name ] ) && is_scalar( $_GET[ 'exin_bf_' . $name ] ) ) {
+				// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only filter.
+				$atts[ $name ] = sanitize_text_field( wp_unslash( $_GET[ 'exin_bf_' . $name ] ) ); }
+		} // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only catalog filtering.
 		$featured = $featured || filter_var( $atts['featured'], FILTER_VALIDATE_BOOLEAN );
 		$result   = $this->query->query(
 			$campaign,
@@ -265,6 +289,8 @@ final class Storefront {
 			);
 			$loop = $this->loop_start( (string) woocommerce_product_loop_start( false ) );
 			echo '<div class="exin-bf-products woocommerce" style="--exin-bf-columns:' . esc_attr( (string) $cols ) . ';--exin-bf-tablet:' . esc_attr( (string) $tablet ) . ';--exin-bf-mobile:' . esc_attr( (string) $mobile ) . '">';
+			if ( filter_var( $atts['filters'], FILTER_VALIDATE_BOOLEAN ) ) {
+				echo $this->filters( $atts ); } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped form renderer.
 			echo $loop['html']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Trusted WooCommerce loop template; active theme structure must be preserved.
 			foreach ( $result['products'] as $product ) {
 				$GLOBALS['product'] = $product;
@@ -434,19 +460,86 @@ final class Storefront {
 	 * @return string Escaped presentation markup or component metadata.
 	 */
 	private function product_badge( \WC_Product $product, array $campaign = array() ): string {
-		$label         = 'general' === ( $campaign['settings']['campaign_type'] ?? '' ) ? __( 'تخفیف EXIN', 'exin-black-friday' ) : __( 'بلک فرایدی EXIN', 'exin-black-friday' );
-		$default_label = $label;
-		$regular       = $product->get_regular_price();
-		$current       = $product->get_price();
+		$campaign = $this->repository->campaign_for_product( $product->get_id() );
+		if ( ! $campaign || ! CampaignContext::is_live( $campaign ) ) {
+			return ''; }
+		$config   = $campaign['settings'];
+		$label    = $config['badge_text'] ?? ( 'general' === ( $config['campaign_type'] ?? '' ) ? __( 'تخفیف EXIN', 'exin-black-friday' ) : __( 'بلک فرایدی EXIN', 'exin-black-friday' ) );
+		$color    = sanitize_hex_color( $config['badge_color'] ?? '#c72937' );
+		$position = in_array( $config['badge_position'] ?? 'inline', array( 'inline', 'top-right', 'top-left' ), true ) ? ( $config['badge_position'] ?? 'inline' ) : 'inline';
+		$html     = '';
+		if ( ! isset( $config['badge_enabled'] ) || $config['badge_enabled'] ) {
+			$html .= '<span class="exin-bf-badge" style="background:' . esc_attr( $color ) . '">' . esc_html( $label ) . '</span>'; }
 		try {
-			if ( '' !== $regular && '' !== $current && $product->is_on_sale() ) {
-				$percent = ( new PricingEngine() )->discount_percent( (string) $regular, (string) $current, wc_get_price_decimals(), 0 );
-				$label  .= ' · ' . number_format_i18n( (int) $percent ) . '%';
+			if ( ( ! isset( $config['discount_badge'] ) || $config['discount_badge'] ) && $product->is_on_sale() ) {
+				$percent = ( new PricingEngine() )->discount_percent( (string) $product->get_regular_price(), (string) $product->get_price(), wc_get_price_decimals(), 0 );
+				$html   .= '<span class="exin-bf-discount">' . esc_html( number_format_i18n( (int) $percent ) . '%' ) . '</span>';
 			}
 		} catch ( \Throwable $error ) {
-			// Invalid external display-price filters cannot create a fabricated percentage.
-			$label = $default_label;
-		}
-		return '<span class="exin-bf-badge">' . esc_html( $label ) . '</span>';
+			// Omit an unrepresentable discount while retaining the configured campaign badge.
+			$html .= '';  }
+		return '' === $html ? '' : '<span class="exin-bf-badges exin-bf-badges--' . esc_attr( $position ) . '" data-exin-bf-badge data-campaign="' . esc_attr( (string) $campaign['id'] ) . '">' . $html . '</span>';
+	}
+
+	/**
+	 * Resolve the next stage boundary or campaign end.
+	 *
+	 * @param array $campaign Campaign.
+	 */
+	private function stage_end( array $campaign ): int {
+		$stages = \Exin\BlackFriday\Domain\DiscountPlan::boundaries( $campaign );
+		$index  = \Exin\BlackFriday\Domain\DiscountPlan::index( $campaign, time() );
+		return strtotime( ( $stages[ $index + 1 ] ?? $campaign['end_utc'] ) . ' UTC' );
+	}
+
+	/**
+	 * Render read-only catalog filtering controls.
+	 *
+	 * @param array $atts Atts.
+	 */
+	private function filters( array $atts ): string {
+		$html = '<form class="exin-bf-catalog-filters" method="get">';
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only pagination preservation.
+		if ( isset( $_GET['page_id'] ) ) {
+			$html .= '<input type="hidden" name="page_id" value="' . esc_attr( (string) absint( $_GET['page_id'] ) ) . '">'; } // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only filter form.
+		$html .= '<label>' . esc_html__( 'دسته‌بندی', 'exin-black-friday' ) . '<select name="exin_bf_category"><option value="">' . esc_html__( 'همه', 'exin-black-friday' ) . '</option>';
+		foreach ( $this->query->categories( array() ) as $term ) {
+			$html .= '<option value="' . esc_attr( $term->slug ) . '" ' . selected( (string) $atts['category'], $term->slug, false ) . '>' . esc_html( $term->name ) . '</option>'; }
+		$html .= '</select></label>';
+		foreach ( array(
+			'min_discount' => __( 'حداقل تخفیف ٪', 'exin-black-friday' ),
+			'min_price'    => __( 'حداقل قیمت', 'exin-black-friday' ),
+			'max_price'    => __( 'حداکثر قیمت', 'exin-black-friday' ),
+		) as $field => $label ) {
+			$html .= '<label>' . esc_html( $label ) . '<input type="number" min="0" step="any" name="exin_bf_' . esc_attr( $field ) . '" value="' . esc_attr( (string) $atts[ $field ] ) . '"></label>'; }
+		return $html . '<button type="submit">' . esc_html__( 'اعمال فیلتر', 'exin-black-friday' ) . '</button></form>';
+	}
+
+	/**
+	 * Render standard WooCommerce related and complementary products.
+	 *
+	 * @param array $campaign Campaign.
+	 * @param array $attributes Attributes.
+	 */
+	private function related( array $campaign, array $attributes ): string {
+		$product = wc_get_product( absint( $attributes['product_id'] ?? get_the_ID() ) );
+		if ( ! $product ) {
+			return ''; }
+		$limit = max( 1, min( 12, (int) ( $attributes['limit'] ?? 4 ) ) );
+		$ids   = array_slice( array_values( array_unique( array_merge( $product->get_upsell_ids(), $product->get_cross_sell_ids(), wc_get_related_products( $product->get_id(), $limit ) ) ) ), 0, $limit );
+		return $ids ? $this->products(
+			$campaign,
+			array_merge(
+				$attributes,
+				array(
+					'product_ids'   => $ids,
+					'include_store' => true,
+					'pagination'    => 'no',
+					'filters'       => false,
+					'limit'         => $limit,
+				)
+			),
+			false
+		) : '';
 	}
 }

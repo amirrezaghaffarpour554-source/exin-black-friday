@@ -98,6 +98,8 @@ final class Dashboard {
 				<button type="button" data-view="dashboard" aria-current="page"><?php esc_html_e( 'نمای کلی', 'exin-black-friday' ); ?></button>
 				<button type="button" data-view="products"><?php esc_html_e( 'محدوده محصولات', 'exin-black-friday' ); ?></button>
 				<button type="button" data-view="settings"><?php esc_html_e( 'تخفیف و زمان‌بندی', 'exin-black-friday' ); ?></button>
+				<button type="button" data-view="operations">نمایش، سبد و اعلان‌ها</button>
+				<button type="button" data-view="history">تاریخچه</button>
 				<button type="button" data-view="diagnostics"><?php esc_html_e( 'گزارش و عیب‌یابی', 'exin-black-friday' ); ?></button>
 			</nav>
 			<div id="exin-bf-message" class="exin-bf-message" role="status" aria-live="polite" hidden></div>

@@ -3,7 +3,7 @@ Contributors: exin
 Tags: woocommerce, campaign, black-friday, pricing
 Requires at least: 6.5
 Requires PHP: 8.1
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: exin-black-friday
@@ -57,6 +57,10 @@ Text Domain: exin-black-friday
 داده هنگام حذف به‌طور پیش‌فرض حفظ می‌شود. Opt-in پاک‌سازی در حضور مالکیت یا Intent باز رد می‌شود. بازگشت فایل افزونه به‌تنهایی قیمت‌ها را برنمی‌گرداند؛ راهنمای docs/rollback-fa.md را اجرا کنید.
 
 == Changelog ==
+
+= 1.2.0 =
+Operational settings, coupon floor policy, cart stage refresh, bounded public catalogs, new product policies, notifications and HPOS audit/report additions. Additive schema 4 upgrade preserves financial state. See docs/upgrade-v1.2.0.md.
+
 
 = 1.1.0 =
 * چند کمپین، کپی و آرشیو امن؛ تخفیف اولیه و زمان‌بندی منعطف؛ انتخاب سروری بدون محدودیت ۲۰۰؛ کف گروهی، پیش‌نمایش و گزارش تغییر واقعی قیمت.

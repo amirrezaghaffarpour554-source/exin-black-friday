@@ -31,7 +31,7 @@ final class CatalogProductQuery {
 			$query = new \WP_Query(
 				array(
 					'post_type'              => array( 'product', 'product_variation' ),
-					'post_status'            => 'publish',
+					'post_status'            => in_array( $filters['publication'] ?? 'publish', array( 'publish', 'draft', 'pending', 'private' ), true ) ? ( $filters['publication'] ?? 'publish' ) : 'publish',
 					'posts_per_page'         => self::PAGE_SIZE,
 					'paged'                  => $page,
 					'orderby'                => array(
@@ -76,7 +76,7 @@ final class CatalogProductQuery {
 		$query = new \WP_Query(
 			array(
 				'post_type'              => array( 'product', 'product_variation' ),
-				'post_status'            => 'publish',
+				'post_status'            => array( 'publish', 'draft', 'pending', 'private' ),
 				'posts_per_page'         => 1,
 				'fields'                 => 'ids',
 				'orderby'                => 'ID',
@@ -107,6 +107,24 @@ final class CatalogProductQuery {
 			'after' => $ids ? max( $ids ) : $after,
 			'done'  => count( $ids ) < $limit,
 		);
+	}
+
+	/**
+	 * Match one newly published product against reusable selection rules.
+	 *
+	 * @param int   $product_id Product id.
+	 * @param array $filters Filters.
+	 */
+	public function matches( int $product_id, array $filters ): bool {
+		$scope = $filters['scope'] ?? 'filtered';
+		if ( in_array( $scope, array( 'all', 'instock' ), true ) ) {
+			$filters = array( 'stock' => 'instock' === $scope ? 'instock' : 'all' ); }
+		if ( ! empty( $filters['ids'] ) || ! empty( $filters['source_campaign_id'] ) ) {
+			return false; }
+		$filters['scope']       = 'filtered';
+		$filters['ids']         = array( $product_id );
+		$filters['publication'] = 'publish';
+		return in_array( $product_id, $this->scan( $filters, max( 0, $product_id - 1 ), $product_id, 1 )['ids'], true );
 	}
 
 	/**
@@ -163,7 +181,7 @@ final class CatalogProductQuery {
 			return new \WP_Query(
 				array(
 					'post_type'              => array( 'product', 'product_variation' ),
-					'post_status'            => 'publish',
+					'post_status'            => in_array( $filters['publication'] ?? 'publish', array( 'publish', 'draft', 'pending', 'private' ), true ) ? ( $filters['publication'] ?? 'publish' ) : 'publish',
 					'posts_per_page'         => $limit,
 					'fields'                 => 'ids',
 					'orderby'                => 'ID',

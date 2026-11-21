@@ -56,6 +56,7 @@ abstract class CampaignWidget extends \Elementor\Widget_Base {
 			'categories' => 'EXIN BF Categories',
 			'status'     => 'EXIN BF Campaign Status',
 			'badge'      => 'EXIN BF Product Badge',
+			'related'    => 'محصولات مرتبط و مکمل EXIN',
 		);
 		return $titles[ $this->kind ] ?? 'EXIN Black Friday';
 	}
@@ -96,7 +97,7 @@ abstract class CampaignWidget extends \Elementor\Widget_Base {
 				'min'   => 1,
 			)
 		);
-		if ( in_array( $this->kind, array( 'products', 'featured' ), true ) ) {
+		if ( in_array( $this->kind, array( 'products', 'featured', 'related' ), true ) ) {
 			$this->add_control(
 				'limit',
 				array(
@@ -178,7 +179,7 @@ abstract class CampaignWidget extends \Elementor\Widget_Base {
 					'default'      => 'yes',
 				)
 			);
-		} elseif ( 'badge' === $this->kind ) {
+		} elseif ( in_array( $this->kind, array( 'badge', 'related' ), true ) ) {
 			$this->add_control(
 				'product_id',
 				array(
@@ -188,6 +189,57 @@ abstract class CampaignWidget extends \Elementor\Widget_Base {
 				)
 			);
 		}
+		if ( in_array( $this->kind, array( 'products', 'featured' ), true ) ) {
+			$this->add_control(
+				'campaigns',
+				array(
+					'label'   => __( 'منبع کمپین', 'exin-black-friday' ),
+					'type'    => \Elementor\Controls_Manager::SELECT,
+					'options' => array(
+						'single' => __( 'کمپین انتخابی', 'exin-black-friday' ),
+						'all'    => __( 'همه کمپین‌های فعال بدون تکرار', 'exin-black-friday' ),
+					),
+					'default' => 'single',
+				)
+			);
+			foreach ( array(
+				'include_store' => 'نمایش سایر محصولات فروشگاه',
+				'filters'       => 'نمایش فیلتر قیمت و تخفیف',
+			) as $key => $label ) {
+				$this->add_control(
+					$key,
+					array(
+						'label' => $label,
+						'type'  => \Elementor\Controls_Manager::SWITCHER,
+					)
+				); }
+			foreach ( array(
+				'min_discount' => 'حداقل تخفیف درصد',
+				'min_price'    => 'حداقل قیمت در واحد فروشگاه',
+				'max_price'    => 'حداکثر قیمت در واحد فروشگاه',
+			) as $key => $label ) {
+				$this->add_control(
+					$key,
+					array(
+						'label' => $label,
+						'type'  => \Elementor\Controls_Manager::NUMBER,
+						'min'   => 0,
+					)
+				); }
+		}
+		if ( 'countdown' === $this->kind ) {
+			$this->add_control(
+				'target',
+				array(
+					'label'   => 'پایان شمارش معکوس',
+					'type'    => \Elementor\Controls_Manager::SELECT,
+					'options' => array(
+						'campaign' => 'پایان کمپین',
+						'stage'    => 'پایان مرحله جاری',
+					),
+					'default' => 'campaign',
+				)
+			); }
 		$this->end_controls_section();
 		$this->start_controls_section(
 			'appearance',

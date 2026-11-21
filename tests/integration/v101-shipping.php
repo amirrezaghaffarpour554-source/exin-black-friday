@@ -121,10 +121,10 @@ try {
 		$base_taxes = WC_Tax::calc_shipping_tax( '20.00', $tax_rates );
 		$assert( isset( $base_taxes[ $tax_id ] ) && 200 === Money::parse( wc_format_decimal( $base_taxes[ $tax_id ], 2 ), 2 ), 'The original 20.00 shipping cost did not carry a real 2.00 tax.' );
 	} );
-	$test( 'Ordinary and mixed carts cannot qualify using ordinary totals', static function () use ( $assert, $calculate, $cost, $package, $line, $ordinary, $selected, $shipping ): void {
+	$test( 'Ordinary and mixed carts cannot qualify using ordinary totals', static function () use ( $assert, $calculate, $cost, $package, $line, $ordinary, $selected, $shipping, $campaign_id ): void {
 		[, $result] = $calculate( array( $package( array( $line( $ordinary, '1000.00' ) ) ) ) );
 		$assert( '20.00' === $cost( $result[0] ), 'Ordinary cart received campaign subsidy.' );
-		$assert( array() === $shipping->warnings(), 'A normal nonqualifying package generated a false configuration warning.' );
+		$assert( array() === $shipping->warnings( $campaign_id ), 'A normal nonqualifying package generated a false configuration warning.' );
 		[, $result] = $calculate( array( $package( array( $line( $selected, '69.99' ), $line( $ordinary, '1000.00' ) ) ) ) );
 		$assert( '20.00' === $cost( $result[0] ), 'Mixed-cart ordinary totals incorrectly qualified.' );
 	} );

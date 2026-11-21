@@ -77,11 +77,20 @@ final class BulkSelectionService {
 					'removed'     => 0,
 					'skipped'     => 0,
 					'failed'      => 0,
+					'rejected'    => 0,
 					'errors'      => array(),
 					'complete'    => 0 === $total,
 					'status'      => 0 === $total ? 'completed' : 'running',
 					'started_at'  => time(),
 				);
+				if ( 'add' === $action ) {
+					$settings                    = $campaign['settings'];
+					$settings['selection_rules'] = array(
+						'filters' => $filters,
+						'policy'  => $job['policy'],
+					);
+					$this->repo->save( $campaign_id, array( 'settings' => $settings ) );
+				}
 				$this->persist( $campaign_id, $job );
 				return $this->summary( $job );
 			}
@@ -139,7 +148,7 @@ final class BulkSelectionService {
 								++$job['removed'];
 							}
 						} elseif ( $item && 'removed' !== $item['status'] ) {
-							if ( 'none' === $job['policy']['mode'] ) {
+							if ( 'none' === $job['policy']['mode'] || ( ! empty( $item['floor_override'] ) && ! array_key_exists( $product_id, $job['policy']['floors'] ?? array() ) ) ) {
 								++$job['skipped'];
 							} else {
 								$selection->update(
@@ -165,7 +174,7 @@ final class BulkSelectionService {
 							++$job['added'];
 						}
 					} catch ( \Throwable $error ) {
-						$this->error( $job, $product_id, $error->getMessage() );
+						$this->error( $job, $product_id, $error->getMessage(), $error instanceof \DomainException || $error instanceof \InvalidArgumentException );
 					}
 				}
 				$job['after']    = $batch['after'];
@@ -370,7 +379,7 @@ final class BulkSelectionService {
 		if ( in_array( $result['scope'], array( 'all', 'instock' ), true ) ) {
 			return $result;
 		}
-		foreach ( array( 'search', 'category', 'stock', 'type', 'taxonomy', 'term' ) as $name ) {
+		foreach ( array( 'search', 'category', 'stock', 'type', 'taxonomy', 'term', 'publication' ) as $name ) {
 			if ( isset( $filters[ $name ] ) && is_scalar( $filters[ $name ] ) && '' !== (string) $filters[ $name ] ) {
 				$result[ $name ] = substr( sanitize_text_field( (string) $filters[ $name ] ), 0, 100 );
 			}
@@ -483,7 +492,7 @@ final class BulkSelectionService {
 	 * @return array Admin-only progress document.
 	 */
 	private function summary( array $job ): array {
-		$data             = array_intersect_key( $job, array_flip( array( 'token', 'action', 'status', 'complete', 'total', 'processed', 'added', 'updated', 'removed', 'skipped', 'failed', 'errors' ) ) );
+		$data             = array_intersect_key( $job, array_flip( array( 'token', 'action', 'status', 'complete', 'total', 'processed', 'added', 'updated', 'removed', 'skipped', 'failed', 'rejected', 'errors' ) ) );
 		$data['done']     = (bool) $job['complete'];
 		$data['selected'] = $this->repo->count_items( (int) $job['campaign_id'] );
 		return $data;
@@ -495,10 +504,12 @@ final class BulkSelectionService {
 	 * @param array  $job Mutable progress state.
 	 * @param int    $product_id Product identifier or zero for a job-wide failure.
 	 * @param string $code Internal exception code.
+	 * @param bool   $rejected Whether validation rejected this product.
 	 * @return void
 	 */
-	private function error( array &$job, int $product_id, string $code ): void {
-		++$job['failed'];
+	private function error( array &$job, int $product_id, string $code, bool $rejected = false ): void {
+		$key         = $rejected ? 'rejected' : 'failed';
+		$job[ $key ] = (int) ( $job[ $key ] ?? 0 ) + 1;
 		if ( count( $job['errors'] ) < 10 ) {
 			$job['errors'][] = array(
 				'product_id' => $product_id,

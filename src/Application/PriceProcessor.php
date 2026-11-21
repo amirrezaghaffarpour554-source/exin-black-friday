@@ -260,10 +260,12 @@ final class PriceProcessor {
 				'info',
 				'intent_recovered',
 				array(
-					'campaign_id' => $campaign_id,
-					'product_id'  => $product_id,
-					'job_id'      => $item['operation_id'],
-					'result'      => 'already_written',
+					'campaign_id'  => $campaign_id,
+					'product_id'   => $product_id,
+					'job_id'       => $item['operation_id'],
+					'result'       => 'already_written',
+					'before_price' => $intent['before']['price'],
+					'after_price'  => $intent['target']['price'],
 				)
 			);
 			$this->repo->put_item(
@@ -357,10 +359,12 @@ final class PriceProcessor {
 			'info',
 			'price_' . $kind,
 			array(
-				'campaign_id' => $campaign_id,
-				'product_id'  => $product_id,
-				'job_id'      => $operation,
-				'result'      => $before['price'] === $target['price'] ? 'unchanged' : 'changed',
+				'campaign_id'  => $campaign_id,
+				'product_id'   => $product_id,
+				'job_id'       => $operation,
+				'result'       => $before['price'] === $target['price'] ? 'unchanged' : 'changed',
+				'before_price' => $before['price'],
+				'after_price'  => $target['price'],
 			)
 		);
 		$this->repo->put_item(

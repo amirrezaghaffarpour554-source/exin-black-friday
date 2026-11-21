@@ -13,7 +13,7 @@ use Exin\BlackFriday\Domain\CurrencyDisplay;
 
 /** Creates and upgrades durable campaign database tables. */
 final class Migration {
-	public const VERSION = '3';
+	public const VERSION = '4';
 
 	/**
 	 * Create the current schema and record its independent migration version.
@@ -68,6 +68,7 @@ final class Migration {
             last_changed datetime NOT NULL,
             priority int NOT NULL DEFAULT 0,
             featured tinyint NOT NULL DEFAULT 0,
+            floor_override tinyint NOT NULL DEFAULT 1,
             PRIMARY KEY  (campaign_id,product_id),
             KEY campaign_status (campaign_id,status),
             KEY product_status (product_id,status),
@@ -92,6 +93,9 @@ final class Migration {
             job_id varchar(64) NOT NULL DEFAULT '',
             result varchar(64) NOT NULL DEFAULT '',
             error_code varchar(100) NOT NULL DEFAULT '',
+            before_price varchar(64) NULL,
+            after_price varchar(64) NULL,
+            currency varchar(12) NOT NULL DEFAULT '',
             created_at datetime NOT NULL,
             PRIMARY KEY  (id),
             KEY campaign_created (campaign_id,created_at),
@@ -105,6 +109,15 @@ final class Migration {
 		}
 		if ( 'retry_state' !== $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', $prefix . 'items', 'retry_state' ) ) ) {
 			throw new \RuntimeException( 'schema_retry_state_missing' );
+		}
+		foreach ( array(
+			'items' => array( 'floor_override' ),
+			'audit' => array( 'before_price', 'after_price', 'currency' ),
+		) as $table => $columns ) {
+			foreach ( $columns as $column ) {
+				if ( $column !== $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', $prefix . $table, $column ) ) ) {
+					throw new \RuntimeException( 'schema_campaign_extension_missing' ); }
+			}
 		}
 		self::upgrade_settings( $prefix . 'campaigns' );
 		update_option( 'exin_bf_schema_version', self::VERSION, false );

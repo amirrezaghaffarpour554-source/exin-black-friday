@@ -139,9 +139,11 @@ final class Orders {
 			return;
 		}
 		wp_cache_delete( 'analytics:' . $campaign_id, 'exin_bf' );
+		wp_cache_delete( 'analytics:v120:' . $campaign_id, 'exin_bf' );
 		wp_cache_delete( 'analytics:v101:' . $campaign_id, 'exin_bf' );
-		delete_transient( 'exin_bf_analytics_' . $campaign_id );
 		delete_transient( 'exin_bf_analytics_v101_' . $campaign_id );
+		delete_transient( 'exin_bf_analytics_' . $campaign_id );
+		delete_transient( 'exin_bf_analytics_v120_' . $campaign_id );
 		update_option( 'exin_bf_report_generation_' . $campaign_id, wp_generate_uuid4(), false );
 	}
 
@@ -162,7 +164,7 @@ final class Orders {
 			return array();
 		}
 		$generation = get_option( 'exin_bf_report_generation_' . $campaign_id, '1' );
-		$cache_key  = 'analytics:v101:' . $campaign_id;
+		$cache_key  = 'analytics:v120:' . $campaign_id;
 		$cached     = wp_cache_get( $cache_key, 'exin_bf' );
 		if ( is_array( $cached ) && ! empty( $cached['complete'] ) && ( $cached['generation'] ?? null ) === $generation && ( $cached['campaign_version'] ?? null ) === (int) $campaign['version'] ) {
 			return $cached;
@@ -174,7 +176,7 @@ final class Orders {
 		if ( ! $statuses ) {
 			$statuses = array( 'wc-processing', 'wc-completed' );
 		}
-		$checkpoint_key = 'exin_bf_analytics_v101_' . $campaign_id;
+		$checkpoint_key = 'exin_bf_analytics_v120_' . $campaign_id;
 		$signature      = hash( 'sha256', wp_json_encode( array( $campaign['version'], $statuses, get_woocommerce_currency(), $precision, $generation ) ) );
 		$checkpoint     = get_transient( $checkpoint_key );
 		if ( ! is_array( $checkpoint ) || ( $checkpoint['signature'] ?? '' ) !== $signature ) {
@@ -218,9 +220,10 @@ final class Orders {
 				if ( $total_minor > 0 && $refunded_minor >= $total_minor ) {
 					continue;
 				}
-				$net        = 0;
-				$quantity   = 0;
-				$attributed = false;
+				$net           = 0;
+				$quantity      = 0;
+				$attributed    = false;
+				$seen_products = array();
 				foreach ( $order->get_items( 'line_item' ) as $item_id => $item ) {
 					if ( (int) $item->get_meta( '_exin_bf_campaign_id', true ) !== $campaign_id ) {
 						continue;
@@ -237,8 +240,12 @@ final class Orders {
 							'name'          => $item->get_name(),
 							'units'         => 0,
 							'revenue_minor' => 0,
+							'orders'        => 0,
 						);
 					}
+					if ( ( $line_units > 0 || $line_net > 0 ) && ! isset( $seen_products[ $product_id ] ) ) {
+						$products[ $product_id ]['orders'] = (int) ( $products[ $product_id ]['orders'] ?? 0 ) + 1;
+						$seen_products[ $product_id ]      = true; }
 					$products[ $product_id ]['units']        += $line_units;
 					$products[ $product_id ]['revenue_minor'] = $this->add( $products[ $product_id ]['revenue_minor'], $line_net );
 				}
@@ -286,6 +293,7 @@ final class Orders {
 				600
 			);
 		}
+		$least = $complete ? $this->least( $campaign_id, $products, $precision ) : array();
 		usort( $products, static fn( $a, $b ) => $b['units'] <=> $a['units'] );
 		$top = array_slice( $products, 0, 10 );
 		foreach ( $top as &$product ) {
@@ -304,6 +312,7 @@ final class Orders {
 			'item_revenue'             => Money::format( $item_revenue, $precision ),
 			'order_revenue'            => Money::format( $order_revenue, $precision ),
 			'top_products'             => $top,
+			'least_products'           => $least,
 			'recent_orders'            => $recent,
 			'currency'                 => get_woocommerce_currency(),
 			'excluded_currencies'      => array_values( array_diff( array_keys( $currencies ), array( get_woocommerce_currency() ) ) ),
@@ -332,26 +341,10 @@ final class Orders {
 	private function inventory( array $campaign ): array {
 		global $wpdb;
 		$table = $wpdb->prefix . 'exin_bf_items';
-		$key   = 'inventory_ids:' . (int) $campaign['id'] . ':' . (int) $campaign['version'] . ':' . get_option( 'exin_bf_cache_version', '1' );
-		$ids   = wp_cache_get( $key, 'exin_bf' );
-		if ( ! is_array( $ids ) ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- EXIN-owned indexed item table; cache invalidates on campaign/selection mutations.
-			$ids = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( "SELECT product_id FROM %i WHERE campaign_id = %d AND status <> 'removed' ORDER BY product_id ASC", $table, (int) $campaign['id'] ) ) );
-			wp_cache_set( $key, $ids, 'exin_bf', 300 );
-		}
-		if ( $ids ) {
-			_prime_post_caches( $ids, true, true );
-			$parents = array();
-			foreach ( $ids as $id ) {
-				$post = get_post( $id );
-				if ( $post && $post->post_parent ) {
-					$parents[] = (int) $post->post_parent;
-				}
-			}
-			if ( $parents ) {
-				_prime_post_caches( array_values( array_unique( $parents ) ), true, true );
-			}
-		}
+		// Bounded inventory detail; aggregate shared stock owners in SQL below.
+		$ids = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( "SELECT product_id FROM %i WHERE campaign_id=%d AND status<>'removed' ORDER BY product_id ASC LIMIT 100", $table, (int) $campaign['id'] ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Own indexed table, bounded reporting page.
+		_prime_post_caches( $ids, true, true );
+
 		$quantity     = 0;
 		$unmanaged    = 0;
 		$items        = array();
@@ -379,11 +372,58 @@ final class Orders {
 				);
 			}
 		}
+		$owner     = "CASE WHEN p.post_type='product_variation' AND NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} cm WHERE cm.post_id=p.ID AND cm.meta_key='_manage_stock' AND cm.meta_value='yes') AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id=p.post_parent AND pm.meta_key='_manage_stock' AND pm.meta_value='yes') THEN p.post_parent ELSE p.ID END";
+		$source    = $wpdb->prepare( "SELECT $owner AS stock_owner,COUNT(*) AS members FROM %i i INNER JOIN %i p ON p.ID=i.product_id WHERE i.campaign_id=%d AND i.status<>'removed' GROUP BY stock_owner", $table, $wpdb->posts, (int) $campaign['id'] ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Fixed stock-owner expression, identifiers and campaign are prepared.
+		$sql       = "SELECT COALESCE(SUM(CASE WHEN m.meta_value='yes' AND q.meta_value IS NOT NULL THEN GREATEST(0,FLOOR(CAST(q.meta_value AS DECIMAL(30,8)))) ELSE 0 END),0) AS quantity,COALESCE(SUM(CASE WHEN m.meta_value='yes' AND q.meta_value IS NOT NULL THEN 0 ELSE o.members END),0) AS unmanaged FROM ($source) o LEFT JOIN {$wpdb->postmeta} m ON m.post_id=o.stock_owner AND m.meta_key='_manage_stock' LEFT JOIN {$wpdb->postmeta} q ON q.post_id=o.stock_owner AND q.meta_key='_stock'";
+		$totals    = $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared -- Restricted EXIN membership aggregation, already-prepared source SQL and fixed WP table names.
+		$quantity  = (int) ( $totals['quantity'] ?? 0 );
+		$unmanaged = (int) ( $totals['unmanaged'] ?? 0 );
 		return array(
 			'quantity'  => $quantity,
 			'unmanaged' => $unmanaged,
 			'items'     => $items,
 		);
+	}
+
+	/**
+	 * Include unsold products after a complete real-order scan.
+	 *
+	 * @param int   $campaign_id Campaign id.
+	 * @param array $products Products.
+	 * @param int   $precision Precision.
+	 */
+	private function least( int $campaign_id, array $products, int $precision ): array {
+		global $wpdb;
+		$ids     = array_map( 'intval', array_keys( $products ) );
+		$holders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		$sql     = "SELECT product_id FROM %i WHERE campaign_id=%d AND status<>'removed'" . ( $ids ? " AND product_id NOT IN ($holders)" : '' ) . ' ORDER BY product_id ASC LIMIT 10';
+		$zero    = $wpdb->get_col( $wpdb->prepare( $sql, array_merge( array( $wpdb->prefix . 'exin_bf_items', $campaign_id ), $ids ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared -- Private complete-report IDs, generated integer placeholders and a bounded own-table result.
+		$rows    = array();
+		foreach ( $zero as $id ) {
+			$product = wc_get_product( $id );
+			if ( $product ) {
+				$rows[] = array(
+					'product_id' => (int) $id,
+					'name'       => $product->get_name(),
+					'units'      => 0,
+					'orders'     => 0,
+					'revenue'    => Money::format( 0, $precision ),
+				); }
+		}
+		usort(
+			$products,
+			static function ( $a, $b ) {
+				$r = $a['units'] <=> $b['units'];
+				return $r ? $r : $a['product_id'] <=> $b['product_id'];
+			}
+		);
+		foreach ( $products as $product ) {
+			if ( count( $rows ) >= 10 ) {
+				break;
+			} $product['revenue'] = Money::format( $product['revenue_minor'], $precision );
+			unset( $product['revenue_minor'] );
+			$rows[] = $product; }
+		return $rows;
 	}
 
 	/**

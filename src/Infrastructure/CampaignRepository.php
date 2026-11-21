@@ -495,7 +495,7 @@ final class CampaignRepository {
 	public function put_item( int $campaign_id, int $product_id, array $data ): void {
 		global $wpdb;
 		$old                 = $this->item( $campaign_id, $product_id );
-		$allowed             = array( 'base_price', 'floor_price', 'schedule', 'snapshot', 'expected', 'intent', 'retry_state', 'status', 'operation_id', 'conflict', 'last_changed', 'priority', 'featured' );
+		$allowed             = array( 'base_price', 'floor_price', 'schedule', 'snapshot', 'expected', 'intent', 'retry_state', 'status', 'operation_id', 'conflict', 'last_changed', 'priority', 'featured', 'floor_override' );
 		$row                 = array_intersect_key( $data, array_flip( $allowed ) );
 		$row['last_changed'] = gmdate( 'Y-m-d H:i:s' );
 		foreach ( array( 'schedule', 'snapshot', 'expected', 'intent', 'retry_state' ) as $field ) {
@@ -645,7 +645,7 @@ final class CampaignRepository {
 		foreach ( array( 'schedule', 'snapshot', 'expected', 'intent', 'retry_state' ) as $field ) {
 			$row[ $field ] = null === ( $row[ $field ] ?? null ) ? null : json_decode( $row[ $field ], true, 512, JSON_THROW_ON_ERROR );
 		}
-		foreach ( array( 'campaign_id', 'product_id', 'priority', 'featured' ) as $field ) {
+		foreach ( array( 'campaign_id', 'product_id', 'priority', 'featured', 'floor_override' ) as $field ) {
 			$row[ $field ] = (int) $row[ $field ];
 		}
 		return $row;
