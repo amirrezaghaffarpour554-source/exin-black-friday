@@ -6,7 +6,8 @@
     "test:browser": "npm run test:browser:helpers && npm run test:browser:admin",
     "test:browser:helpers": "node tests/browser/v101-helpers.cjs",
     "test:browser:admin": "node tests/browser/v101-admin.cjs",
-    "test:browser:wordpress": "node tests/browser/v101-admin-wordpress.cjs"
+    "test:browser:wordpress": "node tests/browser/v101-admin-wordpress.cjs",
+    "test:browser:v110": "node tests/browser/v110-admin.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"

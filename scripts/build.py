@@ -47,7 +47,7 @@ def build():
             if any(part.startswith(".") for part in Path(rel).parts):
                 raise RuntimeError(f"Hidden file not allowed: {rel}")
             content = path.read_bytes()
-            info = zipfile.ZipInfo("exin-black-friday/" + rel, date_time=(2026, 11, 17, 0, 0, 0))
+            info = zipfile.ZipInfo("exin-black-friday/" + rel, date_time=(2026, 11, 21, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             archive.writestr(info, content)
