@@ -37,6 +37,10 @@ final class Eligibility {
 		if ( ! CampaignContext::is_live( $campaign ) ) {
 			return false;
 		}
+		$effective = $this->repository->campaign_for_product( $product_id );
+		if ( ! $effective || (int) $effective['id'] !== (int) $campaign['id'] ) {
+			return false;
+		}
 		$item = $this->repository->item( (int) $campaign['id'], $product_id );
 		if ( ! CampaignContext::eligible_item( $item )
 			|| ( $item['snapshot']['currency'] ?? '' ) !== get_woocommerce_currency()
@@ -57,6 +61,10 @@ final class Eligibility {
 	 */
 	public function owns( array $campaign, int $product_id, ?\WC_Product $product = null ): bool {
 		if ( ! CampaignContext::is_live( $campaign ) ) {
+			return false;
+		}
+		$effective = $this->repository->campaign_for_product( $product_id );
+		if ( ! $effective || (int) $effective['id'] !== (int) $campaign['id'] ) {
 			return false;
 		}
 		$item = $this->repository->item( (int) $campaign['id'], $product_id );

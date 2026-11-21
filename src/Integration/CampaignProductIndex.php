@@ -9,6 +9,7 @@ namespace Exin\BlackFriday\Integration;
 
 use Exin\BlackFriday\Domain\IntegerMath;
 use Exin\BlackFriday\Domain\Money;
+use Exin\BlackFriday\Infrastructure\CampaignRepository;
 
 /** Rebuilds a versioned ID index from current Woo data, never future prices. */
 final class CampaignProductIndex {
@@ -41,7 +42,12 @@ final class CampaignProductIndex {
 		if ( ! $rows ) {
 			return array();
 		}
-		$ids = array_map( 'intval', array_column( $rows, 'product_id' ) );
+		$ids = ( new CampaignRepository() )->effective_product_ids( (int) $campaign['id'], array_map( 'intval', array_column( $rows, 'product_id' ) ) );
+		if ( ! $ids ) {
+			return array();
+		}
+		$effective = array_fill_keys( $ids, true );
+		$rows      = array_values( array_filter( $rows, static fn( $row ) => isset( $effective[ (int) $row['product_id'] ] ) ) );
 		_prime_post_caches( $ids, true, true );
 		$parents    = $this->parents( $ids );
 		$parent_ids = array_values( array_unique( array_filter( $parents ) ) );

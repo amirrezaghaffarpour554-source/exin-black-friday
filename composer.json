@@ -40,6 +40,8 @@
     "test:integration:shipping": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/v101-shipping.php",
     "test:integration:store-api": "bash scripts/test-store-api.sh",
     "test:integration:v100-runtime": "bash scripts/test-runtime.sh test",
-    "test:package": "python3 tests/test_package.py"
+    "test:package": "python3 tests/test_package.py",
+    "test:unit:v110": "php tests/unit/v110-plan.php",
+    "test:integration:v110": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/v110.php"
   }
 }

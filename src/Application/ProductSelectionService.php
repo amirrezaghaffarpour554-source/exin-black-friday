@@ -7,7 +7,8 @@
 
 namespace Exin\BlackFriday\Application;
 
-use Exin\BlackFriday\Domain\PricingEngine;
+use Exin\BlackFriday\Domain\DiscountPlan;
+use Exin\BlackFriday\Domain\Money;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
 use Exin\BlackFriday\Infrastructure\LockManager;
 use Exin\BlackFriday\Infrastructure\Logger;
@@ -48,20 +49,39 @@ final class ProductSelectionService {
 	 *
 	 * @param int    $campaign_id Campaign identifier.
 	 * @param int    $product_id Sellable product or variation identifier.
-	 * @param string $floor Requested positive floor price.
+	 * @param string $floor Requested floor price.
+	 * @param array  $options Optional bulk floor policy resolved from the captured base.
 	 *
 	 * @return array Operation result.
+	 * @throws \DomainException When unresolved ownership or invalid prices prevent preview.
 	 */
-	public function preview( int $campaign_id, int $product_id, string $floor ): array {
+	public function preview( int $campaign_id, int $product_id, string $floor, array $options = array() ): array {
 		$campaign = $this->require_campaign( $campaign_id );
+		if ( isset( $campaign['settings']['currency'] ) && ( get_woocommerce_currency() !== $campaign['settings']['currency'] || wc_get_price_decimals() !== (int) $campaign['settings']['precision'] ) ) {
+			throw new \DomainException( 'store_currency_or_precision_changed' );
+		}
 		$product  = $this->require_product( $product_id );
 		$existing = $this->repo->item( $campaign_id, $product_id );
+		if ( $existing && 'removed' === $existing['status'] ) {
+			if ( $existing['expected'] || $existing['intent'] ) {
+				throw new \DomainException( 'restore_conflict_requires_resolution' );
+			}
+			$existing = null;
+		}
 		$snapshot = $existing ? $existing['snapshot'] : PriceState::capture( $product );
 		if ( ! $existing ) {
-			$this->eligible( $product, $snapshot );
+			$this->eligible( $product, $snapshot, $campaign );
+			if ( $this->repo->owned_elsewhere( $campaign_id, $product_id ) ) {
+				throw new \DomainException( 'product_owned_by_another_campaign' );
+			}
 		}
-		$base     = $existing ? $existing['base_price'] : $snapshot['price'];
-		$schedule = ( new PricingEngine() )->schedule( $base, $floor, $campaign['days'], $campaign['strategy'], wc_get_price_decimals(), $campaign['power'], $campaign['rounding'] );
+		$base = $existing ? $existing['base_price'] : $this->base_price( $snapshot, $campaign );
+		if ( isset( $options['floor_policy'] ) ) {
+			$floor = $existing && 'none' === ( $options['floor_policy']['mode'] ?? 'none' )
+				? $existing['floor_price']
+				: BulkSelectionService::resolve_floor( $this->repo, $campaign, $product_id, $base, $options['floor_policy'], (int) ( $options['source_campaign_id'] ?? 0 ) );
+		}
+		$schedule = DiscountPlan::schedule( $base, $floor, $campaign );
 		return array_merge(
 			$this->presentation( $product ),
 			array(
@@ -109,11 +129,15 @@ final class ProductSelectionService {
 						$this->repo->save( $campaign_id, array( 'settings' => $settings ) );
 						$product  = $this->require_product( $product_id );
 						$snapshot = PriceState::capture( $product );
-						$this->eligible( $product, $snapshot );
+						$this->eligible( $product, $snapshot, $campaign );
 						// Derive snapshot, base and schedule from the SAME captured object.
-						$schedule                = ( new PricingEngine() )->schedule( $snapshot['price'], $floor, $campaign['days'], $campaign['strategy'], wc_get_price_decimals(), $campaign['power'], $campaign['rounding'] );
+						$base = $this->base_price( $snapshot, $campaign );
+						if ( isset( $options['floor_policy'] ) ) {
+							$floor = BulkSelectionService::resolve_floor( $this->repo, $campaign, $product_id, $base, $options['floor_policy'], (int) ( $options['source_campaign_id'] ?? 0 ) );
+						}
+						$schedule                = DiscountPlan::schedule( $base, $floor, $campaign );
 						$preview                 = array(
-							'base_price'  => $snapshot['price'],
+							'base_price'  => $base,
 							'floor_price' => PriceState::money( $floor ),
 							'schedule'    => $schedule,
 						);
@@ -189,11 +213,11 @@ final class ProductSelectionService {
 								$changes['status'] = 'active';
 							}
 						}
-						if ( isset( $data['floor_price'] ) ) {
+						if ( isset( $data['floor_price'] ) || isset( $data['floor_policy'] ) ) {
 							if ( 'draft' !== $campaign['status'] || $item['expected'] || $item['intent'] ) {
 								throw new \DomainException( 'financial_settings_frozen' );
 							}
-							$preview                = $this->preview( $campaign_id, $product_id, (string) $data['floor_price'] );
+							$preview                = $this->preview( $campaign_id, $product_id, (string) ( $data['floor_price'] ?? $item['floor_price'] ), $data );
 							$changes['floor_price'] = $preview['floor_price'];
 							$changes['schedule']    = $preview['schedule'];
 						}
@@ -376,20 +400,39 @@ final class ProductSelectionService {
 	 *
 	 * @param \WC_Product $product WooCommerce product object.
 	 * @param array       $snapshot Immutable original financial fingerprint.
+	 * @param array       $campaign Campaign with an explicit existing-sale policy.
 	 *
 	 * @return void Operation result.
 	 * @throws \DomainException When the campaign, product, or requested operation fails validation.
 	 */
-	private function eligible( \WC_Product $product, array $snapshot ): void {
-		if ( '' !== $snapshot['sale'] || $snapshot['from'] || $snapshot['to'] ) {
+	private function eligible( \WC_Product $product, array $snapshot, array $campaign ): void {
+		$preserve_sale = ! empty( $campaign['settings']['discount_plan'] ) && 'preserve' === ( $campaign['settings']['existing_sale_policy'] ?? '' );
+		if ( ! $preserve_sale && ( '' !== $snapshot['sale'] || $snapshot['from'] || $snapshot['to'] ) ) {
 			throw new \DomainException( 'existing_or_scheduled_sale_conflict' );
 		}
-		if ( '' === $snapshot['regular'] || $snapshot['regular'] !== $snapshot['price'] ) {
+		$precision = wc_get_price_decimals();
+		if ( '' === $snapshot['regular'] || '' === $snapshot['price'] || Money::parse( $snapshot['regular'], $precision ) <= 0
+			|| Money::parse( $snapshot['price'], $precision ) < 0
+			|| Money::parse( $snapshot['regular'], $precision ) < Money::parse( $snapshot['price'], $precision )
+			|| ( ! $preserve_sale && $snapshot['regular'] !== $snapshot['price'] )
+			|| ( $preserve_sale && $snapshot['regular'] !== $snapshot['price'] && ( '' === $snapshot['sale'] || $snapshot['sale'] !== $snapshot['price'] ) )
+			|| ( $preserve_sale && '' !== $snapshot['sale'] && ( Money::parse( $snapshot['sale'], $precision ) < 0 || Money::parse( $snapshot['sale'], $precision ) > Money::parse( $snapshot['regular'], $precision ) ) ) ) {
 			throw new \DomainException( 'regular_price_conflict' );
 		}
 		if ( PriceState::dynamic( $product ) ) {
 			throw new \DomainException( 'dynamic_price_conflict' );
 		}
+	}
+
+	/**
+	 * Use the original regular price for a general campaign without stacking sales.
+	 *
+	 * @param array $snapshot Full original WooCommerce financial fingerprint.
+	 * @param array $campaign Campaign and explicit sale-preservation policy.
+	 * @return string Canonical, validated immutable campaign base.
+	 */
+	private function base_price( array $snapshot, array $campaign ): string {
+		return ! empty( $campaign['settings']['discount_plan'] ) && 'preserve' === ( $campaign['settings']['existing_sale_policy'] ?? '' ) ? $snapshot['regular'] : $snapshot['price'];
 	}
 
 	/**

@@ -244,6 +244,9 @@ final class CampaignRepository {
 		if ( false === $wpdb->update( $this->table( 'campaigns' ), $this->campaign_data( $data ), array( 'id' => $id ) ) ) {
 			throw new \RuntimeException( 'campaign_save_failed' );
 		}
+		if ( isset( $data['status'] ) || isset( $data['version'] ) ) {
+			$this->item_changed( $id, 0 );
+		}
 	}
 
 	/**
@@ -300,7 +303,171 @@ final class CampaignRepository {
 	 */
 	public function owned_elsewhere( int $campaign_id, int $product_id ): bool {
 		global $wpdb;
-		return (bool) $wpdb->get_var( $wpdb->prepare( "SELECT product_id FROM %i WHERE product_id=%d AND campaign_id<>%d AND status NOT IN ('completed','removed') LIMIT 1", $this->table( 'items' ), $product_id, $campaign_id ) );
+		return (bool) $wpdb->get_var( $wpdb->prepare( "SELECT product_id FROM %i WHERE product_id=%d AND campaign_id<>%d AND ((expected IS NOT NULL AND expected<>'null') OR (intent IS NOT NULL AND intent<>'null')) LIMIT 1", $this->table( 'items' ), $product_id, $campaign_id ) );
+	}
+
+	/**
+	 * Check unresolved financial ownership, independently of presentation status.
+	 *
+	 * @param int $campaign_id Campaign id.
+	 * @return bool Operation result.
+	 */
+	public function has_ownership( int $campaign_id ): bool {
+		global $wpdb;
+		return (bool) $wpdb->get_var( $wpdb->prepare( "SELECT product_id FROM %i WHERE campaign_id=%d AND ((expected IS NOT NULL AND expected<>'null') OR (intent IS NOT NULL AND intent<>'null')) LIMIT 1", $this->table( 'items' ), $campaign_id ) );
+	}
+
+	/**
+	 * Retrieve a bounded, independent campaign history page.
+	 *
+	 * @param int $page Page.
+	 * @param int $limit Limit.
+	 * @return array Operation result.
+	 */
+	public function campaigns( int $page = 1, int $limit = 25 ): array {
+		global $wpdb;
+		$limit = min( 50, max( 1, $limit ) );
+		$rows  = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM %i ORDER BY id DESC LIMIT %d OFFSET %d', $this->table( 'campaigns' ), $limit, ( max( 1, $page ) - 1 ) * $limit ), ARRAY_A );
+		return array(
+			'campaigns' => array_map( array( $this, 'decode_campaign' ), $rows ),
+			'total'     => (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $this->table( 'campaigns' ) ) ),
+			'page'      => $page,
+			'has_more'  => count( $rows ) === $limit,
+		);
+	}
+
+	/**
+	 * Latest recorded floor; immutable old campaign rows are never rewritten.
+	 *
+	 * @param int $product_id Product id.
+	 * @return ?string Operation result.
+	 */
+	public function previous_floor( int $product_id ): ?string {
+		global $wpdb;
+		$row      = $wpdb->get_row( $wpdb->prepare( 'SELECT floor_price,snapshot FROM %i WHERE product_id=%d ORDER BY campaign_id DESC LIMIT 1', $this->table( 'items' ), $product_id ), ARRAY_A );
+		$snapshot = $row ? json_decode( $row['snapshot'], true ) : null;
+		return $snapshot && ( $snapshot['currency'] ?? '' ) === get_woocommerce_currency() && (int) ( $snapshot['precision'] ?? -1 ) === wc_get_price_decimals() ? (string) $row['floor_price'] : null;
+	}
+
+	/**
+	 * Freeze source membership traversal, including deleted WooCommerce products.
+	 *
+	 * @param int $campaign_id Campaign id.
+	 * @return int Operation result.
+	 */
+	public function item_ceiling( int $campaign_id ): int {
+		global $wpdb;
+		return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT MAX(product_id) FROM %i WHERE campaign_id=%d', $this->table( 'items' ), $campaign_id ) );
+	}
+
+	/**
+	 * Filter a private product index against current ownership and campaign priority.
+	 *
+	 * @param int   $campaign_id Campaign id.
+	 * @param array $product_ids Product ids.
+	 * @return array Operation result.
+	 */
+	public function effective_product_ids( int $campaign_id, array $product_ids ): array {
+		global $wpdb;
+		$effective = array();
+		$now       = gmdate( 'Y-m-d H:i:s' );
+		foreach ( array_chunk( array_values( array_unique( array_map( 'intval', $product_ids ) ) ), 500 ) as $chunk ) {
+			$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+			$sql          = "SELECT i.product_id,i.status AS item_status,i.expected,i.intent,c.id,c.status,c.start_utc,c.end_utc,c.settings FROM %i i INNER JOIN %i c ON i.campaign_id=c.id WHERE i.product_id IN ($placeholders) AND (((i.expected IS NOT NULL AND i.expected<>'null') OR (i.intent IS NOT NULL AND i.intent<>'null')) OR (c.status IN ('active','scheduled','paused') AND c.start_utc<=%s AND c.end_utc>%s))";
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Only generated integer placeholders; every identifier and value is prepared.
+			$rows    = $wpdb->get_results( $wpdb->prepare( $sql, array_merge( array( $this->table( 'items' ), $this->table( 'campaigns' ) ), $chunk, array( $now, $now ) ) ), ARRAY_A );
+			$choices = array();
+			foreach ( $rows as $row ) {
+				$pid      = (int) $row['product_id'];
+				$id       = (int) $row['id'];
+				$settings = json_decode( $row['settings'], true );
+				$owned    = ( ! empty( $row['expected'] ) && 'null' !== $row['expected'] ) || ( ! empty( $row['intent'] ) && 'null' !== $row['intent'] );
+				if ( $owned ) {
+					$choices[ $pid ]['owners'][] = $row;
+					continue; }
+				if ( ! in_array( $row['item_status'], array( 'included', 'pending', 'active', 'sold_out' ), true ) || 'paused' === $row['status'] || ! empty( $settings['restoring'] ) ) {
+					continue; }
+				$priority = (int) ( $settings['priority'] ?? 0 );
+				$old      = $choices[ $pid ]['winner'] ?? null;
+				if ( ! $old || $priority > $old['priority'] || ( $priority === $old['priority'] && $id < $old['id'] ) ) {
+					$choices[ $pid ]['winner'] = array(
+						'id'       => $id,
+						'priority' => $priority,
+					); }
+			}
+			foreach ( $choices as $pid => $choice ) {
+				$owners = $choice['owners'] ?? array();
+				if ( $owners ) {
+					if ( 1 === count( $owners ) && (int) $owners[0]['id'] === $campaign_id && \Exin\BlackFriday\Integration\CampaignContext::is_live( $owners[0] ) ) {
+						$effective[ $pid ] = true; }
+				} elseif ( ( $choice['winner']['id'] ?? 0 ) === $campaign_id ) {
+					$effective[ $pid ] = true; }
+			}
+		}
+		return array_values( array_filter( $product_ids, static fn( $id ) => isset( $effective[ (int) $id ] ) ) );
+	}
+
+	/** Live campaigns ordered by explicit priority, then stable identifier. */
+	public function live_campaigns(): array {
+		$campaigns = array_values( array_filter( $this->runnable(), static fn( $campaign ) => \Exin\BlackFriday\Integration\CampaignContext::is_live( $campaign ) ) );
+		usort(
+			$campaigns,
+			static function ( $a, $b ) {
+				$priority = (int) ( $b['settings']['priority'] ?? 0 ) <=> (int) ( $a['settings']['priority'] ?? 0 );
+				return 0 !== $priority ? $priority : $a['id'] <=> $b['id'];
+			}
+		);
+		return $campaigns;
+	}
+
+	/**
+	 * A new draft must not hide an already running campaign from the storefront.
+	 *
+	 * @param ?int $id Id.
+	 * @return ?array Operation result.
+	 */
+	public function display_campaign( ?int $id = null ): ?array {
+		if ( $id ) {
+			return $this->get( $id );
+		}
+		return $this->live_campaigns()[0] ?? $this->current();
+	}
+
+	/**
+	 * Priority winner for an unowned product. Never preempts an existing owner.
+	 *
+	 * @param int $product_id Product id.
+	 * @param int $now Now.
+	 * @return ?array Operation result.
+	 */
+	public function winner_for_product( int $product_id, int $now ): ?array {
+		global $wpdb;
+		$rows      = $wpdb->get_results( $wpdb->prepare( "SELECT c.* FROM %i c INNER JOIN %i i ON c.id=i.campaign_id WHERE i.product_id=%d AND i.status IN ('included','pending','active','sold_out') AND c.status IN ('active','scheduled') AND c.start_utc<=%s AND c.end_utc>%s", $this->table( 'campaigns' ), $this->table( 'items' ), $product_id, gmdate( 'Y-m-d H:i:s', $now ), gmdate( 'Y-m-d H:i:s', $now ) ), ARRAY_A );
+		$campaigns = array_values( array_filter( array_map( array( $this, 'decode_campaign' ), $rows ), static fn( $campaign ) => empty( $campaign['settings']['restoring'] ) ) );
+		usort(
+			$campaigns,
+			static function ( $a, $b ) {
+				$priority = (int) ( $b['settings']['priority'] ?? 0 ) <=> (int) ( $a['settings']['priority'] ?? 0 );
+				return 0 !== $priority ? $priority : $a['id'] <=> $b['id'];
+			}
+		);
+		return $campaigns[0] ?? null;
+	}
+
+	/**
+	 * Resolve attribution to the actual live owner before considering priority.
+	 *
+	 * @param int $product_id Product id.
+	 * @return ?array Operation result.
+	 */
+	public function campaign_for_product( int $product_id ): ?array {
+		global $wpdb;
+		$id = $wpdb->get_var( $wpdb->prepare( "SELECT campaign_id FROM %i WHERE product_id=%d AND ((expected IS NOT NULL AND expected<>'null') OR (intent IS NOT NULL AND intent<>'null')) ORDER BY campaign_id ASC LIMIT 1", $this->table( 'items' ), $product_id ) );
+		if ( $id ) {
+			$campaign = $this->get( (int) $id );
+			return \Exin\BlackFriday\Integration\CampaignContext::is_live( $campaign ) ? $campaign : null;
+		}
+		return $this->winner_for_product( $product_id, time() );
 	}
 
 	/**

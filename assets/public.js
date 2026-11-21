@@ -1,14 +1,16 @@
 (function () {
   'use strict';
-  let anchor = null;
-  let pending = null;
+  const anchors = new Map();
+  const pending = new Map();
   const config = window.exinBFPublic || {};
   function elements() { return document.querySelectorAll('[data-exin-bf-countdown]'); }
   function draw() {
-    if (!anchor) return;
-    const now = anchor.server + (performance.now() - anchor.local) / 1000;
     elements().forEach(function (node) {
-      if (!anchor.active || Number(node.dataset.campaign) !== anchor.id || now >= anchor.end) {
+      const id = Number(node.dataset.campaign);
+      const anchor = anchors.get(id);
+      if (!anchor) return;
+      const now = anchor.server + (performance.now() - anchor.local) / 1000;
+      if (!anchor.active || id !== anchor.id || now >= anchor.end) {
         node.textContent = config.ended || '';
         return;
       }
@@ -21,20 +23,29 @@
     });
   }
   function sync() {
-    if (pending || !elements().length || !config.timeUrl) return;
-    const started = performance.now();
-    pending = fetch(config.timeUrl, { cache: 'no-store', credentials: 'same-origin' })
-      .then(function (response) { if (!response.ok) throw new Error('server time'); return response.json(); })
-      .then(function (data) {
-        if (!Number.isFinite(data.server_time)) throw new Error('server time');
-        anchor = { server: data.server_time + (performance.now() - started) / 2000, local: performance.now(), active: data.active === true, id: Number(data.campaign_id), end: Number(data.ends_at) };
-        draw();
-      })
-      .catch(function () { elements().forEach(function (node) { node.textContent = config.unavailable || ''; }); })
-      .finally(function () { pending = null; });
+    if (!config.timeUrl) return;
+    const ids = new Set(Array.from(elements(), node => Number(node.dataset.campaign)));
+    ids.forEach(function (id) {
+      const existing = anchors.get(id);
+      if (!Number.isSafeInteger(id) || id < 1 || pending.has(id) || (existing && performance.now() - existing.local < 60000)) return;
+      const started = performance.now();
+      const url = new URL(config.timeUrl, window.location.href);
+      url.searchParams.set('campaign_id', String(id));
+      const request = fetch(url.toString(), { cache: 'no-store', credentials: 'same-origin' })
+        .then(function (response) { if (!response.ok) throw new Error('server time'); return response.json(); })
+        .then(function (data) {
+          if (!Number.isFinite(data.server_time)) throw new Error('server time');
+          anchors.set(id, { server: data.server_time + (performance.now() - started) / 2000, local: performance.now(), active: data.active === true, id: Number(data.campaign_id), end: Number(data.ends_at) });
+          draw();
+        })
+        .catch(function () { elements().forEach(function (node) { if (Number(node.dataset.campaign) === id) node.textContent = config.unavailable || ''; }); })
+        .finally(function () { pending.delete(id); });
+      pending.set(id, request);
+    });
+    draw();
   }
   function init() { sync(); window.setInterval(draw, 1000); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && (!anchor || performance.now() - anchor.local > 60000)) sync(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) sync(); });
   if (window.elementorFrontend && window.elementorFrontend.hooks) window.elementorFrontend.hooks.addAction('frontend/element_ready/global', sync);
 }());

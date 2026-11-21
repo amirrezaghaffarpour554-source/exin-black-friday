@@ -95,7 +95,7 @@ final class Orders {
 		if ( $item->meta_exists( '_exin_bf_campaign_id' ) ) {
 			return false;
 		}
-		$campaign = $this->repository->current();
+		$campaign = $this->repository->campaign_for_product( $product_id );
 		if ( ! $campaign || ! $this->eligibility->enrolled( $campaign, $product_id, $product ) ) {
 			return false;
 		}

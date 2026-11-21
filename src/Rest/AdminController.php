@@ -12,6 +12,9 @@ use DateTimeZone;
 use Exin\BlackFriday\Application\ProductSelectionService;
 use Exin\BlackFriday\Application\Scheduler;
 use Exin\BlackFriday\Application\DraftCampaignService;
+use Exin\BlackFriday\Application\BulkSelectionService;
+use Exin\BlackFriday\Domain\DiscountPlan;
+use Exin\BlackFriday\Domain\MoneyInput;
 use Exin\BlackFriday\Domain\CurrencyDisplay;
 use Exin\BlackFriday\Domain\Jalali;
 use Exin\BlackFriday\Domain\PricingEngine;
@@ -78,16 +81,21 @@ final class AdminController {
 			'rest_api_init',
 			function (): void {
 				$routes = array(
-					'/state'                        => array( 'GET', 'state' ),
-					'/products'                     => array( 'GET', 'products' ),
-					'/product-filters'              => array( 'GET', 'product_filters' ),
-					'/campaign'                     => array( 'POST', 'campaign' ),
-					'/campaign/(?P<id>\d+)/action'  => array( 'POST', 'action' ),
-					'/campaign/(?P<id>\d+)/preview' => array( 'POST', 'preview' ),
-					'/campaign/(?P<id>\d+)/items'   => array( 'POST', 'items' ),
-					'/campaign/(?P<id>\d+)/bulk'    => array( 'POST', 'bulk' ),
+					'/state'                               => array( 'GET', 'state' ),
+					'/campaigns'                           => array( 'GET', 'campaigns' ),
+					'/campaign/(?P<id>\d+)/copy'           => array( 'POST', 'copy_campaign' ),
+					'/campaign/(?P<id>\d+)/simulation'     => array( 'POST', 'simulation' ),
+					'/campaign/(?P<id>\d+)/selection-jobs' => array( 'POST', 'selection_job' ),
+					'/campaign/(?P<id>\d+)/selection-jobs/(?P<token>[a-zA-Z0-9_-]{16,80})' => array( 'POST', 'selection_step' ),
+					'/products'                            => array( 'GET', 'products' ),
+					'/product-filters'                     => array( 'GET', 'product_filters' ),
+					'/campaign'                            => array( 'POST', 'campaign' ),
+					'/campaign/(?P<id>\d+)/action'         => array( 'POST', 'action' ),
+					'/campaign/(?P<id>\d+)/preview'        => array( 'POST', 'preview' ),
+					'/campaign/(?P<id>\d+)/items'          => array( 'POST', 'items' ),
+					'/campaign/(?P<id>\d+)/bulk'           => array( 'POST', 'bulk' ),
 					'/campaign/(?P<id>\d+)/report-settings' => array( 'POST', 'report_settings' ),
-					'/campaign/(?P<id>\d+)/reorder' => array( 'POST', 'reorder' ),
+					'/campaign/(?P<id>\d+)/reorder'        => array( 'POST', 'reorder' ),
 					'/campaign/(?P<id>\d+)/item/(?P<product>\d+)' => array( 'POST', 'item' ),
 				);
 				foreach ( $routes as $route => $definition ) {
@@ -143,9 +151,10 @@ final class AdminController {
 	 * @return array Private campaign state and diagnostics.
 	 */
 	public function state( WP_REST_Request $request ): array {
-		$campaign = $this->repository->current();
-		$page     = $this->integer( $request->get_param( 'page' ) ?? 1, 1, 100000 );
-		$items    = $campaign ? $this->repository->items( (int) $campaign['id'], 25, ( $page - 1 ) * 25 ) : array();
+		$requested = $this->integer( $request->get_param( 'campaign_id' ) ?? 0, 0, PHP_INT_MAX );
+		$campaign  = $requested ? $this->required_campaign( $requested ) : $this->repository->current();
+		$page      = $this->integer( $request->get_param( 'page' ) ?? 1, 1, 100000 );
+		$items     = $campaign ? $this->repository->items( (int) $campaign['id'], 25, ( $page - 1 ) * 25 ) : array();
 		foreach ( $items as &$item ) {
 			$product         = wc_get_product( (int) $item['product_id'] );
 			$image           = $product ? wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' ) : false;
@@ -168,16 +177,217 @@ final class AdminController {
 			$analytics = $orders->analytics( (int) $campaign['id'], $this->integer( $request->get_param( 'report_page' ) ?? 1, 1, 100000 ) );
 		}
 		return array(
-			'campaign'    => $campaign,
-			'items'       => $items,
-			'count'       => $campaign ? $this->repository->count_items( (int) $campaign['id'] ) : 0,
-			'page'        => $page,
-			'has_more'    => count( $items ) === 25,
-			'analytics'   => $analytics,
-			'server_time' => time(),
-			'health'      => $this->health(),
-			'logs'        => $this->logger->recent( 30 ),
+			'campaign'      => $campaign,
+			'campaign_id'   => $campaign ? $campaign['id'] : null,
+			'campaigns'     => $this->repository->campaigns( 1, 50 )['campaigns'],
+			'selection_job' => $campaign ? ( new BulkSelectionService( $this->repository ) )->status( (int) $campaign['id'] ) : null,
+			'items'         => $items,
+			'count'         => $campaign ? $this->repository->count_items( (int) $campaign['id'] ) : 0,
+			'page'          => $page,
+			'has_more'      => count( $items ) === 25,
+			'analytics'     => $analytics,
+			'server_time'   => time(),
+			'health'        => $this->health(),
+			'logs'          => $this->logger->recent( 30 ),
 		);
+	}
+
+
+	/**
+	 * List independent campaigns without replacing their durable history.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array Operation result.
+	 */
+	public function campaigns( WP_REST_Request $request ): array {
+		return $this->repository->campaigns( $this->integer( $request->get_param( 'page' ) ?? 1, 1, 100000 ) );
+	}
+
+	/**
+	 * Copy a restored campaign into a new draft; retain all old financial rows.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array Operation result.
+	 */
+	public function copy_campaign( WP_REST_Request $request ): array {
+		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		return ( new LockManager() )->run(
+			'campaign:' . $id,
+			function () use ( $id, $request ): array {
+				$source = $this->required_campaign( $id );
+				if ( $this->repository->has_ownership( $id ) || ! empty( $source['settings']['restoring'] ) ) {
+					throw new InvalidArgumentException( esc_html__( 'برای کپی و اجرای مجدد، ابتدا قیمت‌های کمپین قبلی را بازیابی کنید.', 'exin-black-friday' ) );
+				}
+				if ( ( $source['settings']['currency'] ?? '' ) !== get_woocommerce_currency() || (int) ( $source['settings']['precision'] ?? -1 ) !== wc_get_price_decimals() ) {
+					throw new \DomainException( 'store_currency_or_precision_changed' );
+				}
+				$data  = $this->body( $request );
+				$title = sanitize_text_field( $this->text( $data['title'] ?? $source['title'] . ' — ' . __( 'نسخه جدید', 'exin-black-friday' ) ) );
+				if ( '' === $title || strlen( $title ) > 200 ) {
+					throw new InvalidArgumentException( esc_html__( 'عنوان کمپین معتبر نیست.', 'exin-black-friday' ) ); }
+				$settings = $source['settings'];
+				unset( $settings['started_at'], $settings['restoring'], $settings['last_run'] );
+				$settings['copied_from'] = $id;
+				$copy                    = array_intersect_key( $source, array_flip( array( 'timezone', 'days', 'strategy', 'power', 'rounding' ) ) );
+				$copy['title']           = $title;
+				$copy['settings']        = $settings;
+				$copy['start_utc']       = gmdate( 'Y-m-d H:i:00', time() + HOUR_IN_SECONDS );
+				$copy['end_utc']         = DiscountPlan::end( $copy );
+				$new_id                  = $this->repository->create( $copy );
+				$job                     = ( new BulkSelectionService( $this->repository ) )->start( $new_id, array( 'source_campaign_id' => $id ), array( 'mode' => 'previous' ) );
+				$this->logger->log(
+					'info',
+					'campaign_copied',
+					array(
+						'campaign_id' => $new_id,
+						'result'      => 'draft_created',
+					)
+				);
+				return array(
+					'campaign' => $this->repository->get( $new_id ),
+					'job'      => $job,
+				);
+			}
+		);
+	}
+
+	/**
+	 * Start a bounded resumable selection operation; never save product prices.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array Operation result.
+	 */
+	public function selection_job( WP_REST_Request $request ): array {
+		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		$this->editable_campaign( $id );
+		$data = $this->body( $request );
+		return array( 'job' => ( new BulkSelectionService( $this->repository ) )->start( $id, $this->selection_filters( $data['filters'] ?? array() ), $this->floor_policy( $data['floor_policy'] ?? array( 'mode' => 'none' ), $this->amount_unit( $data ) ), $this->choice( $data['action'] ?? 'add', array( 'add', 'remove' ) ) ) );
+	}
+
+	/**
+	 * Process only the next server-side batch belonging to the saved job.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array Operation result.
+	 */
+	public function selection_step( WP_REST_Request $request ): array {
+		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		return array( 'job' => ( new BulkSelectionService( $this->repository ) )->step( $id, $this->text( $request['token'] ) ) );
+	}
+
+	/**
+	 * Read the exact selected plans or a bounded scope sample without price writes.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array Operation result.
+	 */
+	public function simulation( WP_REST_Request $request ): array {
+		$id       = $this->integer( $request['id'], 1, PHP_INT_MAX );
+		$campaign = $this->required_campaign( $id );
+		$data     = $this->body( $request );
+		if ( isset( $data['filters'] ) ) {
+			$result = ( new BulkSelectionService( $this->repository ) )->preview( $id, $this->selection_filters( $data['filters'] ), $this->floor_policy( $data['floor_policy'] ?? array( 'mode' => 'none' ), $this->amount_unit( $data ) ) );
+		} else {
+			$result = array(
+				'count'    => 0,
+				'in_stock' => 0,
+				'samples'  => array(),
+				'warnings' => array(),
+			);
+			$after  = 0;
+			do {
+				$rows = $this->repository->batch( $id, $after, 100 );
+				foreach ( $rows as $item ) {
+					$after = $item['product_id'];
+					if ( 'removed' === $item['status'] ) {
+						continue; }
+					++$result['count'];
+					$product = wc_get_product( $item['product_id'] );
+					if ( $product && \Exin\BlackFriday\Integration\CampaignContext::purchasable_product( $product ) ) {
+						++$result['in_stock']; }
+					if ( count( $result['warnings'] ) < 10 && ( 'conflict' === $item['status'] || $this->repository->owned_elsewhere( $id, $item['product_id'] ) ) ) {
+						$result['warnings'][] = __( 'برخی محصولات با کمپین یا تغییر قیمت دیگری تداخل دارند؛ تخفیف‌ها انباشته نمی‌شوند.', 'exin-black-friday' );
+					}
+					if ( count( $result['samples'] ) < 5 ) {
+						$result['samples'][] = array(
+							'product_id'  => $item['product_id'],
+							'name'        => $product ? $product->get_name() : '',
+							'base_price'  => $item['base_price'],
+							'floor_price' => $item['floor_price'],
+							'schedule'    => $item['schedule'],
+						);
+					}
+				}
+				$row_count = count( $rows );
+			} while ( 100 === $row_count );
+			$result['warnings'] = array_values( array_unique( $result['warnings'] ) );
+		}
+		return array_merge(
+			$result,
+			array(
+				'start_utc' => $campaign['start_utc'],
+				'end_utc'   => $campaign['end_utc'],
+				'stages'    => DiscountPlan::boundaries( $campaign ),
+			)
+		);
+	}
+
+	/**
+	 * Validate only catalog filters, never accept arbitrary query arguments.
+	 *
+	 * @param mixed $value Value.
+	 * @return array Operation result.
+	 * @throws InvalidArgumentException When submitted values are invalid.
+	 */
+	private function selection_filters( $value ): array {
+		if ( ! is_array( $value ) ) {
+			throw new InvalidArgumentException( esc_html__( 'محدوده محصولات معتبر نیست.', 'exin-black-friday' ) ); }
+		$filters = array(
+			'scope'       => $this->choice( $value['scope'] ?? 'filtered', array( 'all', 'instock', 'filtered', 'selected' ) ),
+			'search'      => sanitize_text_field( $this->text( $value['search'] ?? '' ) ),
+			'category'    => sanitize_text_field( $this->text( $value['category'] ?? '' ) ),
+			'stock'       => $this->choice( $value['stock'] ?? 'all', array( 'all', 'instock', 'outofstock' ) ),
+			'type'        => $this->choice( $value['type'] ?? 'all', array( 'all', 'simple', 'variable', 'variation' ) ),
+			'taxonomy'    => sanitize_key( $this->text( $value['taxonomy'] ?? '' ) ),
+			'term'        => sanitize_text_field( $this->text( $value['term'] ?? '' ) ),
+			'tax_filters' => $this->catalog_tax_filters( $value['tax_filters'] ?? array() ),
+		);
+		if ( strlen( $filters['search'] ) > 100 || strlen( $filters['category'] ) > 100 ) {
+			throw new InvalidArgumentException( esc_html__( 'فیلتر محصول بیش از حد طولانی است.', 'exin-black-friday' ) ); }
+		if ( isset( $value['ids'] ) ) {
+			if ( ! is_array( $value['ids'] ) || count( $value['ids'] ) > 1000 ) {
+				throw new InvalidArgumentException( esc_html__( 'انتخاب دستی را در دسته‌های حداکثر ۱۰۰۰ شناسه ارسال کنید.', 'exin-black-friday' ) ); }
+			$filters['ids'] = array_values( array_unique( array_map( fn( $id ) => $this->integer( $id, 1, PHP_INT_MAX ), $value['ids'] ) ) );
+		}
+		if ( isset( $value['source_campaign_id'] ) ) {
+			$filters['source_campaign_id'] = $this->integer( $value['source_campaign_id'], 1, PHP_INT_MAX );
+			$this->required_campaign( $filters['source_campaign_id'] ); }
+		return $filters;
+	}
+
+	/**
+	 * Normalize percentages separately from store-currency monetary floor values.
+	 *
+	 * @param mixed  $value Value.
+	 * @param string $unit Unit.
+	 * @return array Operation result.
+	 * @throws InvalidArgumentException When submitted values are invalid.
+	 */
+	private function floor_policy( $value, string $unit ): array {
+		if ( ! is_array( $value ) ) {
+			throw new InvalidArgumentException( esc_html__( 'روش تعیین کف معتبر نیست.', 'exin-black-friday' ) ); }
+		$mode   = $this->choice( $value['mode'] ?? 'none', array( 'none', 'independent', 'percent', 'amount', 'shared', 'previous' ) );
+		$policy = array( 'mode' => $mode );
+		if ( in_array( $mode, array( 'percent', 'amount', 'shared' ), true ) ) {
+			$policy['value'] = 'percent' === $mode ? MoneyInput::normalize( $this->text( $value['value'] ?? '' ), 2 ) : $this->decimal( $value['value'] ?? '', $unit ); }
+		if ( isset( $value['floors'] ) ) {
+			if ( ! is_array( $value['floors'] ) || count( $value['floors'] ) > 1000 ) {
+				throw new InvalidArgumentException( esc_html__( 'تعداد کف‌های مستقل این درخواست بیش از حد است.', 'exin-black-friday' ) ); }
+			$policy['floors'] = array();
+			foreach ( $value['floors'] as $id => $floor ) {
+				$policy['floors'][ $this->integer( $id, 1, PHP_INT_MAX ) ] = $this->decimal( $floor, $unit ); }
+		}
+		return $policy;
 	}
 
 	/**
@@ -300,28 +510,6 @@ final class AdminController {
 		if ( $existing && 'draft' !== $existing['status'] ) {
 			throw new InvalidArgumentException( esc_html__( 'تنظیمات کمپین شروع‌شده قابل تغییر نیست. برای کمپین بعدی پیش‌نویس بسازید.', 'exin-black-friday' ) );
 		}
-		if ( ! $existing ) {
-			$current = $this->repository->current();
-			if ( $current && ! in_array( $current['status'], array( 'completed', 'draft' ), true ) ) {
-				throw new InvalidArgumentException( esc_html__( 'ابتدا کمپین جاری را پایان دهید و بازیابی قیمت‌ها را بررسی کنید.', 'exin-black-friday' ) );
-			}
-			if ( $current && 'draft' === $current['status'] ) {
-				throw new InvalidArgumentException( esc_html__( 'یک پیش‌نویس موجود است؛ همان را ویرایش کنید.', 'exin-black-friday' ) );
-			}
-		}
-		if ( ! $existing && $current ) {
-			$offset = 0;
-			do {
-				$previous_items = $this->repository->items( (int) $current['id'], 100, $offset );
-				foreach ( $previous_items as $previous_item ) {
-					if ( ! empty( $previous_item['expected'] ) || ! empty( $previous_item['intent'] ) || 'conflict' === $previous_item['status'] ) {
-						throw new InvalidArgumentException( esc_html__( 'بازیابی کمپین قبلی کامل نیست. ابتدا مالکیت قیمت‌ها و تعارض‌ها را بررسی کنید.', 'exin-black-friday' ) );
-					}
-				}
-				$offset        += 100;
-				$previous_count = count( $previous_items );
-			} while ( 100 === $previous_count );
-		}
 		$valid = $this->validate_campaign( $data );
 		if ( $existing ) {
 			$valid['settings']['order_statuses'] = $existing['settings']['order_statuses'] ?? array( 'processing', 'completed' );
@@ -364,7 +552,29 @@ final class AdminController {
 		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
 		$this->required_campaign( $id );
 		$data   = $this->body( $request );
-		$action = $this->choice( $data['action'] ?? '', array( 'schedule', 'start', 'pause', 'resume', 'restore', 'recover' ) );
+		$action = $this->choice( $data['action'] ?? '', array( 'schedule', 'start', 'pause', 'resume', 'restore', 'recover', 'archive' ) );
+		if ( 'archive' === $action ) {
+			$campaign = $this->required_campaign( $id );
+			if ( $this->repository->has_ownership( $id ) || ! empty( $campaign['settings']['restoring'] ) ) {
+				throw new InvalidArgumentException( esc_html__( 'پیش از آرشیو، بازیابی قیمت‌های این کمپین را کامل کنید.', 'exin-black-friday' ) );
+			}
+			$this->repository->save(
+				$id,
+				array(
+					'status'  => 'archived',
+					'version' => $campaign['version'] + 1,
+				)
+			);
+			$this->logger->log(
+				'info',
+				'campaign_archived',
+				array(
+					'campaign_id' => $id,
+					'result'      => 'success',
+				)
+			);
+			return array( 'campaign' => $this->repository->get( $id ) );
+		}
 		if ( in_array( $action, array( 'start', 'schedule' ), true ) ) {
 			if ( true !== ( $data['confirm_activate'] ?? false ) ) {
 				throw new InvalidArgumentException( esc_html__( 'فعال‌سازی فقط پس از بررسی نهایی و تأیید صریح مدیر مجاز است.', 'exin-black-friday' ) );
@@ -622,6 +832,10 @@ final class AdminController {
 	 * @throws InvalidArgumentException When enrollment data is incomplete or conflicted.
 	 */
 	private function assert_ready( array $campaign ): void {
+		$job = ( new BulkSelectionService( $this->repository ) )->status( (int) $campaign['id'] );
+		if ( $job && empty( $job['complete'] ) && 'running' === ( $job['status'] ?? '' ) ) {
+			throw new InvalidArgumentException( esc_html__( 'ابتدا پردازش انتخاب محصولات را کامل کنید.', 'exin-black-friday' ) );
+		}
 		$after = 0;
 		$count = 0;
 		do {
@@ -632,7 +846,7 @@ final class AdminController {
 					continue;
 				}
 				++$count;
-				$expected = ( new PricingEngine() )->schedule( $item['base_price'], $item['floor_price'], (int) $campaign['days'], $campaign['strategy'], wc_get_price_decimals(), (int) $campaign['power'], $campaign['rounding'] );
+				$expected = DiscountPlan::schedule( $item['base_price'], $item['floor_price'], $campaign );
 				if ( 'conflict' === $item['status'] || $item['intent'] || $item['expected'] || $expected !== $item['schedule']
 					|| ( $item['snapshot']['currency'] ?? '' ) !== get_woocommerce_currency()
 					|| (int) ( $item['snapshot']['precision'] ?? -1 ) !== wc_get_price_decimals() ) {
@@ -718,7 +932,7 @@ final class AdminController {
 				throw new InvalidArgumentException( esc_html__( 'روش ارسال انتخابی نرخ ثابت فعال نیست؛ روش ناسازگار تغییر نمی‌کند.', 'exin-black-friday' ) );
 			}
 		}
-		return array(
+		$valid                              = array(
 			'title'     => $title,
 			'timezone'  => $timezone,
 			'days'      => $days,
@@ -738,6 +952,30 @@ final class AdminController {
 				'retention_days'       => $this->integer( $settings['retention_days'] ?? 90, 7, 365 ),
 			),
 		);
+		$valid['settings']['campaign_type'] = $this->choice( $settings['campaign_type'] ?? 'black_friday', array( 'black_friday', 'general' ) );
+		$valid['settings']['priority']      = $this->integer( $settings['priority'] ?? 0, 0, 999999 );
+		if ( isset( $settings['discount_plan'] ) ) {
+			if ( ! is_array( $settings['discount_plan'] ) ) {
+				throw new InvalidArgumentException( esc_html__( 'برنامه تخفیف معتبر نیست.', 'exin-black-friday' ) ); }
+			$plan                     = $settings['discount_plan'];
+			$plan['initial_discount'] = 'fixed_amount' === ( $plan['mode'] ?? '' ) ? $this->decimal( $plan['initial_discount'] ?? '0', $unit ) : MoneyInput::normalize( $this->text( $plan['initial_discount'] ?? '0' ), 2 );
+			$plan['final_discount']   = MoneyInput::normalize( $this->text( $plan['final_discount'] ?? '15' ), 2 );
+			if ( isset( $plan['points'] ) ) {
+				if ( ! is_array( $plan['points'] ) || count( $plan['points'] ) > 366 ) {
+					throw new InvalidArgumentException( esc_html__( 'حداکثر ۳۶۶ مرحله مجاز است.', 'exin-black-friday' ) ); }
+				foreach ( $plan['points'] as &$point ) {
+					if ( ! is_array( $point ) ) {
+						throw new InvalidArgumentException( esc_html__( 'مرحله تخفیف معتبر نیست.', 'exin-black-friday' ) ); }
+					$point['value'] = 'amount' === ( $point['kind'] ?? '' ) ? $this->decimal( $point['value'] ?? '', $unit ) : MoneyInput::normalize( $this->text( $point['value'] ?? '' ), 2 );
+				}
+				unset( $point );
+			}
+			$valid['settings']['discount_plan']        = DiscountPlan::normalize( $plan, wc_get_price_decimals() );
+			$valid['settings']['existing_sale_policy'] = $this->choice( $settings['existing_sale_policy'] ?? 'preserve', array( 'reject', 'preserve' ) );
+			$valid['days']                             = $valid['settings']['discount_plan']['steps'];
+			$valid['end_utc']                          = DiscountPlan::end( $valid );
+		}
+		return $valid;
 	}
 
 	/**

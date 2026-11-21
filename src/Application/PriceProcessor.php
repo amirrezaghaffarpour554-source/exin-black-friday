@@ -7,7 +7,7 @@
 
 namespace Exin\BlackFriday\Application;
 
-use Exin\BlackFriday\Domain\Timeline;
+use Exin\BlackFriday\Domain\DiscountPlan;
 use Exin\BlackFriday\Domain\Money;
 use Exin\BlackFriday\Infrastructure\Cache;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
@@ -80,59 +80,77 @@ final class PriceProcessor {
 	}
 
 	/**
-	 * Apply the price for the current campaign day when ownership is intact.
+	 * Apply the current stage once without replacing another campaign ownership.
 	 *
-	 * @param int $campaign_id Campaign identifier.
-	 * @param int $product_id Sellable product or variation identifier.
-	 * @param int $version Expected campaign settings version.
+	 * @param int      $campaign_id Campaign identifier.
+	 * @param int      $product_id Sellable product or variation identifier.
+	 * @param int      $version Expected campaign settings version.
+	 * @param int|null $stage Optional expected stage to stop an old batch at a boundary.
 	 *
-	 * @return void Operation result.
+	 * @return string Changed, unchanged, skipped, stage_changed or error.
 	 */
-	public function apply( int $campaign_id, int $product_id, int $version ): void {
-		$this->locked(
+	public function apply( int $campaign_id, int $product_id, int $version, ?int $stage = null ): string {
+		return $this->locked(
 			$campaign_id,
 			$product_id,
-			function () use ( $campaign_id, $product_id, $version ) {
+			function () use ( $campaign_id, $product_id, $version, $stage ): string {
 				$campaign = $this->repo->get( $campaign_id );
 				if ( ! $campaign || 'active' !== $campaign['status'] || $campaign['version'] !== $version ) {
-					return;
+					return 'skipped';
 				}
-				$day = ( new Timeline() )->day_index( $campaign, time() );
-				if ( $day < 0 || $day >= $campaign['days'] ) {
-					return;
+				$day = DiscountPlan::index( $campaign, time() );
+				if ( null !== $stage && $stage !== $day ) {
+					return 'stage_changed';
+				}
+				if ( $day < 0 || $day >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+					return 'skipped';
 				}
 				$item = $this->repo->item( $campaign_id, $product_id );
-				if ( ! $item || in_array( $item['status'], array( 'removed', 'completed', 'conflict', 'paused' ), true ) ) {
-					return;
+				if ( ! $item || in_array( $item['status'], array( 'removed', 'completed', 'paused' ), true ) ) {
+					return 'skipped';
+				}
+				if ( 'conflict' === $item['status'] ) {
+					return 'error';
+				}
+				// Another campaign's durable ownership cannot be preempted by priority.
+				if ( $this->repo->owned_elsewhere( $campaign_id, $product_id ) ) {
+					return 'skipped';
+				}
+				$winner = $this->repo->winner_for_product( $product_id, time() );
+				if ( ! $item['expected'] && ! $item['intent'] && $winner && (int) $winner['id'] !== $campaign_id ) {
+					return 'skipped';
 				}
 				$product = wc_get_product( $product_id );
 				if ( ! $this->validate_product( $campaign_id, $product_id, $product, $item ) ) {
-					return;
+					return 'error';
 				}
-				$item = $this->settle_intent( $campaign_id, $product_id, $product, $item );
+				$recovered = $item['intent'] && PriceState::same( PriceState::capture( $product ), $item['intent']['target'] )
+					&& $item['intent']['before']['price'] !== $item['intent']['target']['price'];
+				$item      = $this->settle_intent( $campaign_id, $product_id, $product, $item );
 				if ( 'conflict' === $item['status'] ) {
-					return;
+					return 'error';
 				}
 				$current  = PriceState::capture( $product );
 				$expected = $item['expected'] ? $item['expected'] : $item['snapshot'];
 				if ( ! PriceState::same( $current, $expected ) ) {
 					$this->conflict( $campaign_id, $product_id, 'external_price_changed' );
-					return;
+					return 'error';
 				}
 				if ( PriceState::dynamic( $product ) ) {
 					$this->conflict( $campaign_id, $product_id, 'dynamic_price_conflict' );
-					return;
+					return 'error';
 				}
 				$price = $item['schedule'][ $day ] ?? null;
 				if ( ! is_string( $price ) ) {
 					$this->conflict( $campaign_id, $product_id, 'invalid_price_schedule' );
-					return;
+					return 'error';
 				}
 				$precision = wc_get_price_decimals();
 				$minor     = Money::parse( $price, $precision );
-				if ( $minor < Money::parse( $item['floor_price'], $precision ) || $minor > Money::parse( $item['base_price'], $precision ) || $item['base_price'] !== $item['snapshot']['regular'] ) {
+				$basis     = $item['snapshot']['regular'];
+				if ( $minor < Money::parse( $item['floor_price'], $precision ) || $minor > Money::parse( $item['base_price'], $precision ) || $item['base_price'] !== $basis ) {
 					$this->conflict( $campaign_id, $product_id, 'schedule_financial_bounds_failed' );
-					return;
+					return 'error';
 				}
 				$target          = $current;
 				$target['price'] = $price;
@@ -141,9 +159,10 @@ final class PriceProcessor {
 				$target['to']    = null;
 				$status          = $product->is_in_stock() ? 'active' : 'sold_out';
 				if ( $item['expected'] && PriceState::same( $current, $target ) && $status === $item['status'] ) {
-					return;
+					return $recovered ? 'changed' : 'unchanged';
 				}
-				$this->write( $campaign_id, $product_id, $product, $current, $target, 'apply', $status, $version );
+				$result = $this->write( $campaign_id, $product_id, $product, $current, $target, 'apply', $status, $version );
+				return $recovered && 'unchanged' === $result ? 'changed' : $result;
 			}
 		);
 	}
@@ -154,16 +173,16 @@ final class PriceProcessor {
 	 * @param int $campaign_id Campaign identifier.
 	 * @param int $product_id Sellable product or variation identifier.
 	 *
-	 * @return void Operation result.
+	 * @return string Changed, unchanged, skipped or error.
 	 */
-	public function restore( int $campaign_id, int $product_id ): void {
-		$this->locked(
+	public function restore( int $campaign_id, int $product_id ): string {
+		$result = $this->locked(
 			$campaign_id,
 			$product_id,
-			function () use ( $campaign_id, $product_id ) {
+			function () use ( $campaign_id, $product_id ): string {
 				$item = $this->repo->item( $campaign_id, $product_id );
 				if ( ! $item || 'removed' === $item['status'] ) {
-					return;
+					return 'skipped';
 				}
 				if ( ! $item['expected'] && ! $item['intent'] ) {
 					$this->repo->put_item(
@@ -174,15 +193,18 @@ final class PriceProcessor {
 							'conflict' => '',
 						)
 					);
-					return;
+					return 'unchanged';
 				}
 				$product = wc_get_product( $product_id );
 				if ( ! $this->validate_product( $campaign_id, $product_id, $product, $item ) ) {
-					return;
+					return 'error';
 				}
-				$item = $this->settle_intent( $campaign_id, $product_id, $product, $item );
+				$recovered = $item['intent'] && 'restore' === $item['intent']['kind']
+					&& PriceState::same( PriceState::capture( $product ), $item['intent']['target'] )
+					&& $item['intent']['before']['price'] !== $item['intent']['target']['price'];
+				$item      = $this->settle_intent( $campaign_id, $product_id, $product, $item );
 				if ( $item['intent'] ) {
-					return; // An unresolved intent never grants ownership of an arbitrary current price.
+					return 'error'; // An unresolved intent never grants ownership of an arbitrary current price.
 				}
 				$current = PriceState::capture( $product );
 				if ( PriceState::same( $current, $item['snapshot'] ) ) {
@@ -196,19 +218,24 @@ final class PriceProcessor {
 							'conflict' => '',
 						)
 					);
-					return;
+					return $recovered ? 'changed' : 'unchanged';
 				}
 				if ( ! $item['expected'] || ! PriceState::same( $current, $item['expected'] ) ) {
 					$this->conflict( $campaign_id, $product_id, 'restore_external_price_changed' );
-					return;
+					return 'error';
 				}
 				if ( PriceState::dynamic( $product ) ) {
 					$this->conflict( $campaign_id, $product_id, 'dynamic_price_conflict' );
-					return;
+					return 'error';
 				}
-				$this->write( $campaign_id, $product_id, $product, $current, $item['snapshot'], 'restore', 'completed', 0 );
+				return $this->write( $campaign_id, $product_id, $product, $current, $item['snapshot'], 'restore', 'completed', 0 );
 			}
 		);
+		if ( in_array( $result, array( 'changed', 'unchanged' ), true ) ) {
+			// Queue the next winner only after the previous ownership is cleared.
+			do_action( 'exin_bf_price_released', $product_id );
+		}
+		return $result;
 	}
 
 	/**
@@ -288,9 +315,9 @@ final class PriceProcessor {
 	 * @param string      $status Desired recorded product status.
 	 * @param int         $version Expected campaign settings version.
 	 *
-	 * @return void Operation result.
+	 * @return string Whether the customer price changed, stayed unchanged or failed.
 	 */
-	private function write( int $campaign_id, int $product_id, \WC_Product $product, array $before, array $target, string $kind, string $status, int $version ): void {
+	private function write( int $campaign_id, int $product_id, \WC_Product $product, array $before, array $target, string $kind, string $status, int $version ): string {
 		$operation = wp_generate_uuid4();
 		$intent    = array(
 			'kind'       => $kind,
@@ -313,7 +340,7 @@ final class PriceProcessor {
 			$fresh = wc_get_product( $product_id );
 			if ( ! $fresh || ! PriceState::same( PriceState::capture( $fresh ), $before ) ) {
 				$this->conflict( $campaign_id, $product_id, 'compare_before_write_failed' );
-				return;
+				return 'error';
 			}
 			( new LockManager() )->assert_held( 'campaign:' . $campaign_id );
 			( new LockManager() )->assert_held( 'product:' . $product_id );
@@ -322,7 +349,7 @@ final class PriceProcessor {
 		}
 		if ( ! $product || ! PriceState::same( PriceState::capture( $product ), $target ) ) {
 			$this->conflict( $campaign_id, $product_id, 'write_verification_failed' );
-			return;
+			return 'error';
 		}
 		// Audit acknowledgement precedes clearing the durable intent. If the audit
 		// table is unavailable, a retry can prove and acknowledge the saved target.
@@ -333,7 +360,7 @@ final class PriceProcessor {
 				'campaign_id' => $campaign_id,
 				'product_id'  => $product_id,
 				'job_id'      => $operation,
-				'result'      => 'success',
+				'result'      => $before['price'] === $target['price'] ? 'unchanged' : 'changed',
 			)
 		);
 		$this->repo->put_item(
@@ -347,6 +374,7 @@ final class PriceProcessor {
 			)
 		);
 		Cache::invalidate( $product_id );
+		return $before['price'] === $target['price'] ? 'unchanged' : 'changed';
 	}
 
 	/**
@@ -409,13 +437,13 @@ final class PriceProcessor {
 	 * @param int      $product_id Sellable product or variation identifier.
 	 * @param callable $callback Callback invoked under exclusive locks.
 	 *
-	 * @return void Operation result.
+	 * @return string Result returned by the financial callback.
 	 */
-	private function locked( int $campaign_id, int $product_id, callable $callback ): void {
-		( new LockManager() )->run(
+	private function locked( int $campaign_id, int $product_id, callable $callback ): string {
+		return ( new LockManager() )->run(
 			'campaign:' . $campaign_id,
-			function () use ( $product_id, $callback ) {
-				( new LockManager() )->run( 'product:' . $product_id, $callback );
+			function () use ( $product_id, $callback ): string {
+				return ( new LockManager() )->run( 'product:' . $product_id, $callback );
 			}
 		);
 	}

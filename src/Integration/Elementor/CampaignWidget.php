@@ -88,6 +88,14 @@ abstract class CampaignWidget extends \Elementor\Widget_Base {
 	 */
 	protected function register_controls(): void {
 		$this->start_controls_section( 'campaign', array( 'label' => __( 'نمایش کمپین', 'exin-black-friday' ) ) );
+		$this->add_control(
+			'campaign_id',
+			array(
+				'label' => __( 'شناسه کمپین (خالی: کمپین فعال با اولویت بالاتر)', 'exin-black-friday' ),
+				'type'  => \Elementor\Controls_Manager::NUMBER,
+				'min'   => 1,
+			)
+		);
 		if ( in_array( $this->kind, array( 'products', 'featured' ), true ) ) {
 			$this->add_control(
 				'limit',

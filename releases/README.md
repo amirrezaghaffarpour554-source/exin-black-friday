@@ -1,6 +1,6 @@
 # بسته‌های انتشار EXIN Black Friday
 
-نسخهٔ جاری **۱٫۰٫۱** در [پوشهٔ v1.0.1](v1.0.1/README.md) قرار دارد: ZIP نصب‌پذیر، SHA256، فهرست فایل‌ها و شاهد نصب همان بسته. [گزارش تست](../docs/testing.md)، [ارتقا](../docs/installation-fa.md) و [Rollback](../docs/rollback-fa.md) مرجع ارزیابی هستند. استقرار Production انجام نشده است.
+نسخهٔ جاری **۱٫۱٫۰** در [پوشهٔ v1.1.0](v1.1.0/README.md) قرار دارد: ZIP نصب‌پذیر، SHA256، Manifest و نتیجهٔ بررسی‌های ضروری. [نسخهٔ ۱٫۰٫۱](v1.0.1/README.md) نیز حفظ شده است. [گزارش تست](../docs/testing.md)، [ارتقا](../docs/installation-fa.md) و [Rollback](../docs/rollback-fa.md) مرجع ارزیابی هستند. استقرار Production انجام نشده است.
 
 ## آرشیو نسخهٔ ۱٫۰٫۰
 
