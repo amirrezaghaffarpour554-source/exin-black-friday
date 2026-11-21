@@ -1,0 +1,77 @@
+{
+  "version": "1.2.2",
+  "date": "2026-11-21",
+  "base_commit": "c0293a3def814d8ca22cafe9082e297f85344f71",
+  "scope": "Hotfix only: live campaign product selection, positive new-product floors, current-stage application and safe per-product exit",
+  "financial_integration": {
+    "suite": "v122-financial-integration",
+    "wordpress": "7.1.4",
+    "woocommerce": "11.3.0",
+    "php": "8.2.35",
+    "database": "11.8.6",
+    "hpos": true,
+    "tests": 4,
+    "assertions": 97,
+    "passed": 4,
+    "failed": 0,
+    "results": [
+      {
+        "test": "Live additions are bounded, honor current-stage and exception floors, and preserve every prior row and campaign plan",
+        "status": "passed"
+      },
+      {
+        "test": "Missing zero oversized and competing floors are rejected before live membership or price writes",
+        "status": "passed"
+      },
+      {
+        "test": "Single-item pause resume and grouped removal restore owned prices and preserve external edits",
+        "status": "passed"
+      },
+      {
+        "test": "Interrupted live enrollment resumes the same reserved product without recapturing or duplicating membership",
+        "status": "passed"
+      }
+    ]
+  },
+  "admin_smoke": {
+    "suite": "v122-live-product-picker",
+    "checks": 13,
+    "passed": 13,
+    "failed": 0,
+    "boundary": "One Chromium, real shipped admin JavaScript, mocked REST. Real live selection/restore financial services are tested separately."
+  },
+  "static_checks": {
+    "wpcs_three_changed_php_files": {
+      "errors": 0,
+      "warnings": 0,
+      "fixable": 0
+    },
+    "javascript": "assets/admin.js passed node --check",
+    "package": "99-file installable single-root ZIP; byte-for-byte source identity, development-file exclusion and reproducible build passed"
+  },
+  "behavior": {
+    "batch_limit_live": 10,
+    "batch_limit_draft": 25,
+    "new_active_floor": "Strictly positive and at or below the captured base; independent exceptions override the group rule",
+    "existing_members": "Skipped in live add jobs; floor, snapshot, intent, expected price and schedule remain unchanged",
+    "existing_campaign": "No version, start/end, discount plan or existing selection-rule changes; only per-stage run counters for new items change",
+    "new_price": "Current campaign stage using original global start time and existing Scheduler/PriceProcessor",
+    "conflicts": "Reject current owner or a competing live winner; restore never overwrites external prices",
+    "interruption": "One product reservation plus per-item checkpoints; same token resumes after an interruption; price work also uses existing durable retries",
+    "pause": "Restore owned price before setting paused; resume prices at current stage",
+    "stock": "Unavailable stock is rejected before membership so it cannot block a live add batch"
+  },
+  "artifact": {
+    "file": "exin-black-friday-v1.2.2.zip",
+    "sha256": "8d8e4ceeda545af26a5e3df6e21338b6a913d5803118b3ff21e1ea82d8ba1f5a"
+  },
+  "schema_changes": false,
+  "production_actions": [],
+  "limits": [
+    "No Production connection or deployment; real campaign 2 was not inspected or modified",
+    "Admin smoke uses one Chromium and mocked REST; financial tests use real WooCommerce services and synthetic HPOS data",
+    "Unrelated checkout/shipping/refund/browser suites, benchmarks and full CI were not run",
+    "Production theme, cache, gateway and external plugins remain unverified"
+  ],
+  "production_acceptance": "Requires separate target-store acceptance; isolated hotfix checks passed"
+}

@@ -3,7 +3,7 @@ Contributors: exin
 Tags: woocommerce, campaign, black-friday, pricing
 Requires at least: 6.5
 Requires PHP: 8.1
-Stable tag: 1.2.1
+Stable tag: 1.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: exin-black-friday
@@ -57,6 +57,10 @@ Text Domain: exin-black-friday
 داده هنگام حذف به‌طور پیش‌فرض حفظ می‌شود. Opt-in پاک‌سازی در حضور مالکیت یا Intent باز رد می‌شود. بازگشت فایل افزونه به‌تنهایی قیمت‌ها را برنمی‌گرداند؛ راهنمای docs/rollback-fa.md را اجرا کنید.
 
 == Changelog ==
+
+= 1.2.2 =
+Allow bounded enrollment of new WooCommerce products into a live campaign with required positive floors and per-product exceptions. Preserve existing products and schedule; apply the current stage. Safely restore individual paused/removed products and resume interrupted enrollment.
+
 
 = 1.2.1 =
 Recheck campaign lifecycle/deadline before new-product enrollment. Correct catalog counts, empty-price and parent visibility filtering, visibility taxonomy IDs and out-of-range pagination.

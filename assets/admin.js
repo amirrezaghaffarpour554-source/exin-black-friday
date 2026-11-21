@@ -374,7 +374,7 @@
     }
     function renderProducts() {
         content.innerHTML = `${state.campaign.status === 'draft' ? steps(1) : ''}<div class="exin-bf-toolbar"><div><h2>${esc(labels.products)} <span class="exin-bf-status">${helpers.persianDigits(state.count)}</span></h2><p class="exin-bf-note">${esc(wp.i18n.__('تنوع‌ها مستقل‌اند. ردیف‌های ویژه را بکشید یا اولویت عددی بدهید؛ ترتیب عادی بر اساس تخفیف روز، فروش و تازگی است.', 'exin-black-friday'))}</p></div><div class="exin-bf-actions">${button(labels.add, 'add', 'exin-bf-primary')}${state.campaign.status === 'draft' ? button('تخفیف و زمان‌بندی ←', 'settings') : ''}${button(wp.i18n.__('حذف انتخاب‌شده‌ها', 'exin-black-friday'), 'bulk-remove', 'exin-bf-danger')}${button(labels.review, 'review')}</div></div>
-            ${state.campaign.status === 'draft' ? `<section class="exin-bf-card exin-bf-scope"><h3>محدودهٔ محصولات</h3><p class="exin-bf-note">برای هزاران محصول، انتخاب و پردازش دسته‌ای روی سرور انجام می‌شود؛ همهٔ محصولات در مرورگر بارگذاری نمی‌شوند.</p><div class="exin-bf-actions">${button('تمام محصولات فروشگاه', 'scope-all')}${button('تمام محصولات موجود', 'scope-instock')}${button('انتخاب با فیلترها', 'add')}${state.count ? button('حذف تمام انتخاب‌های کمپین', 'selection-remove-all', 'exin-bf-danger') : ''}</div>${storageGet(sessionStorage, jobKey()) ? `<p class="exin-bf-warning">یک پردازش گروهی ناتمام دارید. ${button('ادامهٔ پردازش', 'selection-resume')}</p>` : ''}<div id="exin-bf-job-progress" role="status" aria-live="polite"></div></section>` : ''}
+            ${['draft','active'].includes(state.campaign.status) ? `<section class="exin-bf-card exin-bf-scope"><h3>محدودهٔ محصولات</h3><p class="exin-bf-note">برای هزاران محصول، انتخاب و پردازش دسته‌ای روی سرور انجام می‌شود؛ همهٔ محصولات در مرورگر بارگذاری نمی‌شوند.</p><div class="exin-bf-actions">${button('تمام محصولات فروشگاه', 'scope-all')}${button('تمام محصولات موجود', 'scope-instock')}${button('انتخاب با فیلترها', 'add')}${state.count ? button('حذف تمام انتخاب‌های کمپین', 'selection-remove-all', 'exin-bf-danger') : ''}</div>${storageGet(sessionStorage, jobKey()) ? `<p class="exin-bf-warning">یک پردازش گروهی ناتمام دارید. ${button('ادامهٔ پردازش', 'selection-resume')}</p>` : ''}<div id="exin-bf-job-progress" role="status" aria-live="polite"></div></section>` : ''}
             <div class="exin-bf-filter"><input id="exin-bf-filter-text" class="exin-bf-search" type="search" placeholder="${esc(wp.i18n.__('جست‌وجو در صفحه جاری', 'exin-black-friday'))}" aria-label="${esc(labels.search)}"><select id="exin-bf-filter-status" aria-label="${esc(wp.i18n.__('فیلتر وضعیت', 'exin-black-friday'))}"><option value="">${esc(labels.all)}</option>${Object.entries(statuses).map(([key, text]) => `<option value="${key}">${esc(text)}</option>`).join('')}</select></div>
             <section class="exin-bf-card"><div class="exin-bf-table-scroll"><table class="exin-bf-table"><thead><tr><th><input type="checkbox" id="exin-bf-select-all" aria-label="${esc(wp.i18n.__('انتخاب ردیف‌های صفحه', 'exin-black-friday'))}"></th><th>${esc(wp.i18n.__('محصول', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('قیمت مبنا', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('قیمت فعلی', 'exin-black-friday'))}</th><th>${esc(labels.floor)}</th><th>${esc(wp.i18n.__('تخفیف فعلی', 'exin-black-friday'))}</th><th>${esc(labels.stock)}</th><th>${esc(wp.i18n.__('وضعیت', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('ویژه و ترتیب', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('عملیات', 'exin-black-friday'))}</th></tr></thead><tbody>${(state.items || []).map(productRow).join('') || `<tr><td colspan="10">${esc(wp.i18n.__('محصولی اضافه نشده است.', 'exin-black-friday'))}</td></tr>`}</tbody></table></div></section>
             <div class="exin-bf-pagination">${button(labels.previous, 'previous', '', page <= 1 ? 'disabled' : '')}<span>${helpers.persianDigits(page)}</span>${button(labels.next, 'next', '', page * 25 >= state.count ? 'disabled' : '')}</div><details class="exin-bf-advanced"><summary>${esc(wp.i18n.__('ابزار پیشرفته: ورود با شناسه', 'exin-black-friday'))}</summary><p>${esc(wp.i18n.__('روش اصلی، انتخاب‌گر ووکامرس است؛ این ابزار برای اپراتور باتجربه باقی مانده است.', 'exin-black-friday'))}</p>${button(wp.i18n.__('ورود گروهی با شناسه', 'exin-black-friday'), 'bulk-add')}</details>`;
@@ -451,11 +451,15 @@
         if (state.campaign.status !== 'draft') throw new Error(labels.draftOnly);
         if (savePromise || savedRevision !== editRevision) await saveDraft();
     }
-    async function openPicker() {
+    async function requireSelection() {
+        if (state.campaign?.status === 'active' && !state.campaign.settings.restoring) return;
         await requireDraft();
-        picker = {selected: new Map(), rows: [], page: 1, total: 0, hasMore: false, parent: 0, filters: {search: '', category: '', stock: 'all', type: 'all', publication: 'publish', tax_filters: {}}, floorPolicy: {mode: state.campaign.settings.discount_plan ? 'none' : 'independent', value: ''}};
+    }
+    async function openPicker() {
+        await requireSelection();
+        picker = {selected: new Map(), rows: [], page: 1, total: 0, hasMore: false, parent: 0, filters: {search: '', category: '', stock: 'all', type: 'all', publication: 'publish', tax_filters: {}}, floorPolicy: {mode: state.campaign.status === 'active' ? 'shared' : state.campaign.settings.discount_plan ? 'none' : 'independent', value: ''}};
         openModal(labels.add, `<div id="exin-bf-picker"><div class="exin-bf-picker-filters"><label>${esc(labels.search)}<input type="search" id="exin-bf-product-search" autocomplete="off"></label><label>دسته‌بندی<select data-picker-filter="category"><option value="">${esc(labels.all)}</option></select></label><label>وضعیت انتشار<select data-picker-filter="publication">${options([['publish','منتشرشده'],['draft','پیش‌نویس؛ ورود پس از انتشار'],['pending','در انتظار بررسی'],['private','خصوصی']],'publish')}</select></label><div id="exin-bf-brand-filters"></div><label>${esc(labels.stock)}<select data-picker-filter="stock">${options([['all', 'همه'], ['instock', 'موجود'], ['outofstock', 'ناموجود']], 'all')}</select></label><label>نوع محصول<select data-picker-filter="type">${options([['all', 'همه'], ['simple', 'ساده'], ['variable', 'متغیر'], ['variation', 'تنوع']], 'all')}</select></label></div><details class="exin-bf-picker-advanced"><summary>فیلترهای پیشرفته</summary><div class="exin-bf-picker-filters" id="exin-bf-taxonomy-filters"></div></details>
-            <section class="exin-bf-floor-policy"><h3>روش تعیین کف قیمت</h3><div class="exin-bf-form"><label>روش<select id="exin-bf-floor-policy-mode">${options([['none', 'بدون کف مستقل؛ محاسبه از مبنای معتبر'], ['percent', 'درصد پایین‌تر از قیمت مبنا'], ['amount', 'مبلغ پایین‌تر از قیمت مبنا'], ['shared', 'کف مشترک'], ['previous', 'استفاده از کف قبلی'], ['independent', 'کف مستقل هر محصول']], picker.floorPolicy.mode)}</select></label><label>مقدار <span id="exin-bf-floor-policy-unit">${esc(cfg.currency)}</span><input id="exin-bf-floor-policy-value" data-exin-money inputmode="decimal" value="" disabled></label></div><p class="exin-bf-note">در تخفیف عمومی درصدی، ورود کف مستقل اجباری نیست. کف قبلی فقط از دادهٔ ثبت‌شده خوانده می‌شود.</p></section>
+            <section class="exin-bf-floor-policy"><h3>روش تعیین کف قیمت</h3><div class="exin-bf-form"><label>روش<select id="exin-bf-floor-policy-mode">${options([...(state.campaign.status === 'active' ? [] : [['none', 'بدون کف مستقل؛ محاسبه از مبنای معتبر']]), ['percent', 'درصد پایین‌تر از قیمت مبنا'], ['amount', 'مبلغ پایین‌تر از قیمت مبنا'], ['shared', 'کف مشترک'], ['previous', 'استفاده از کف قبلی'], ['independent', 'کف مستقل هر محصول']], picker.floorPolicy.mode)}</select></label><label>مقدار <span id="exin-bf-floor-policy-unit">${esc(cfg.currency)}</span><input id="exin-bf-floor-policy-value" data-exin-money inputmode="decimal" value="" ${['none','independent','previous'].includes(picker.floorPolicy.mode) ? 'disabled' : ''}></label></div><p class="exin-bf-note">${state.campaign.status === 'active' ? 'کف معتبر و مثبت برای هر محصول جدید الزامی است. ردیف‌ها و کف‌های قبلی تغییر نمی‌کنند؛ محصول جدید از مرحلهٔ فعلی تخفیف می‌گیرد. برای استثنا، محصول را انتخاب و کف اختصاصی آن را وارد کنید.' : 'در تخفیف عمومی درصدی، ورود کف مستقل اجباری نیست. کف قبلی فقط از دادهٔ ثبت‌شده خوانده می‌شود.'}</p></section>
             <div class="exin-bf-actions">${button('انتخاب صفحه جاری', 'picker-select-page')}${button('تمام نتایج فیلترشده', 'picker-select-filtered')}${button('تمام محصولات سایت', 'picker-select-all')}${button('تمام محصولات موجود', 'picker-select-instock')}${button('پاک‌کردن انتخاب‌های این پنجره', 'picker-clear')}${button('بازگشت به همه محصولات', 'picker-parent-back')}</div><div id="exin-bf-search-results" class="exin-bf-picker-results" aria-live="polite"></div><div id="exin-bf-picker-pagination" class="exin-bf-pagination"></div>
             <section class="exin-bf-picker-selection"><h3>انتخاب‌های فعلی <span id="exin-bf-selection-count" class="exin-bf-status">۰</span></h3><div id="exin-bf-picker-selected"></div><div class="exin-bf-actions">${button('پیش‌نمایش و ثبت انتخاب‌ها', 'picker-save', 'exin-bf-primary')}${button(labels.close, 'close-dialog')}</div></section><section id="exin-bf-selection-preview" aria-live="polite"></section><div id="exin-bf-picker-job-progress" role="status" aria-live="polite"></div></div>`);
         renderPickerSelection();
@@ -474,7 +478,7 @@
         const mode = document.getElementById('exin-bf-floor-policy-mode')?.value || picker?.floorPolicy.mode || 'none';
         const value = document.getElementById('exin-bf-floor-policy-value')?.value ?? picker?.floorPolicy.value ?? '';
         const floors = {};
-        if (mode === 'independent') picker?.selected.forEach(row => { floors[row.product.id] = row.floor; });
+        picker?.selected.forEach(row => { if (mode === 'independent' || (state.campaign.status === 'active' && String(row.floor).trim() !== '')) floors[row.product.id] = row.floor; });
         return {mode, value, floors};
     }
     function scopeFilters() { return {...picker.filters, parent_id: picker.parent}; }
@@ -485,7 +489,7 @@
         if (preview) preview.innerHTML = '';
     }
     async function prepareSelection(filters, action = 'add', remaining = []) {
-        await requireDraft();
+        await requireSelection();
         if (!picker) return;
         const allPolicy = floorPolicyPayload();
         const policy = {...allPolicy, floors: filters.ids ? Object.fromEntries(filters.ids.map(id => [id, allPolicy.floors[id]]).filter(([, value]) => value !== undefined)) : allPolicy.floors};
@@ -493,7 +497,7 @@
         if (!picker) return;
         picker.pending = {filters, policy, allPolicy, action, remaining};
         const preview = document.getElementById('exin-bf-selection-preview');
-        preview.innerHTML = `<section class="exin-bf-card"><h3>پیش‌نمایش انتخاب گروهی</h3><p>محصول مشمول: <strong>${helpers.persianDigits(result.count ?? result.total ?? 0)}</strong>${remaining.length ? ' · ادامهٔ انتخاب‌های دستی در دسته‌های بعدی ثبت می‌شود.' : ''}</p>${simulationMarkup(result)}${button(action === 'remove' ? 'تأیید حذف و بازیابی امن' : 'ثبت این محدوده در پیش‌نویس', 'selection-confirm', action === 'remove' ? 'exin-bf-danger' : 'exin-bf-primary')}</section>`;
+        preview.innerHTML = `<section class="exin-bf-card"><h3>پیش‌نمایش انتخاب گروهی</h3><p>محصول مشمول: <strong>${helpers.persianDigits(result.count ?? result.total ?? 0)}</strong>${remaining.length ? ' · ادامهٔ انتخاب‌های دستی در دسته‌های بعدی ثبت می‌شود.' : ''}</p>${simulationMarkup(result)}${button(action === 'remove' ? 'تأیید حذف و بازیابی امن' : state.campaign.status === 'active' ? 'افزودن فقط محصولات جدید با تخفیف مرحلهٔ فعلی' : 'ثبت این محدوده در پیش‌نویس', 'selection-confirm', action === 'remove' ? 'exin-bf-danger' : 'exin-bf-primary')}</section>`;
         preview.scrollIntoView({block: 'nearest', behavior: 'smooth'});
     }
     function jobProgress(job) {
@@ -532,9 +536,9 @@
         for (const filters of [pending.filters, ...pending.remaining]) {
             const policy = {...pending.allPolicy};
             if (filters.ids && policy.floors) policy.floors = Object.fromEntries(filters.ids.map(id => [id, policy.floors[id]]).filter(([, value]) => value !== undefined));
-            const job = await processJob(null, {...pending, filters, policy}); failures += Number(job.failed || 0);
+            const job = await processJob(null, {...pending, filters, policy}); failures += Number(job.failed || 0) + Number(job.rejected || 0);
         }
-        if (!failures) { closeModal(true); await navigate('products'); notice('انتخاب گروهی ثبت شد؛ قیمت واقعی فروشگاه تغییر نکرد.'); }
+        if (!failures) { closeModal(true); await navigate('products'); notice(state.campaign.status === 'active' ? 'محصولات جدید با کف معتبر و تخفیف مرحلهٔ فعلی اضافه شدند؛ محصولات قبلی تغییر نکردند.' : 'انتخاب گروهی ثبت شد؛ قیمت واقعی فروشگاه تغییر نکرد.'); }
         else { await load(); notice('پردازش تمام شد؛ برخی محصولات به علت قیمت یا تداخل ثبت نشدند. خطاهای نمونه را در پنجره بررسی کنید.', true); }
     }
     function pickerQuery(searchPage) {
@@ -563,14 +567,15 @@
     function renderPickerSelection() {
         const selected = document.getElementById('exin-bf-picker-selected');
         const independent = picker.floorPolicy.mode === 'independent';
+        const individual = independent || state.campaign.status === 'active';
         document.getElementById('exin-bf-selection-count').textContent = helpers.persianDigits(picker.selected.size);
-        selected.innerHTML = [...picker.selected.values()].map(row => `<div class="exin-bf-selected-row" data-selected-row="${row.product.id}"><strong>${esc(row.product.name)}</strong>${independent ? `<label>${esc(labels.floor)} (${esc(cfg.currency)})<input type="text" data-exin-money data-picker-floor="${row.product.id}" value="${esc(row.floor)}" inputmode="decimal" aria-label="${esc(labels.floor + ' ' + row.product.name)}"></label>` : '<span class="exin-bf-note">کف طبق روش گروهی محاسبه می‌شود.</span>'}<div>${independent ? button(labels.preview, 'picker-preview', '', `data-id="${row.product.id}"`) : ''}<button type="button" class="exin-bf-button" data-picker-remove="${row.product.id}">حذف از انتخاب</button></div><div class="exin-bf-preview" id="exin-bf-preview-${row.product.id}"></div></div>`).join('') || `<p>${esc(labels.selectFirst)}</p>`;
+        selected.innerHTML = [...picker.selected.values()].map(row => `<div class="exin-bf-selected-row" data-selected-row="${row.product.id}"><strong>${esc(row.product.name)}</strong>${individual ? `<label>${esc(labels.floor)} (${esc(cfg.currency)})<input type="text" data-exin-money data-picker-floor="${row.product.id}" value="${esc(row.floor)}" inputmode="decimal" aria-label="${esc(labels.floor + ' ' + row.product.name)}"></label>` : '<span class="exin-bf-note">کف طبق روش گروهی محاسبه می‌شود.</span>'}<div>${independent ? button(labels.preview, 'picker-preview', '', `data-id="${row.product.id}"`) : ''}<button type="button" class="exin-bf-button" data-picker-remove="${row.product.id}">حذف از انتخاب</button></div><div class="exin-bf-preview" id="exin-bf-preview-${row.product.id}"></div></div>`).join('') || `<p>${esc(labels.selectFirst)}</p>`;
         helpers.attach(selected);
     }
     function chooseProduct(product, selected) {
         if (!product || !product.selectable || product.included || knownMember(product.id)) return;
         if (selected) {
-            if (!picker.selected.has(product.id)) picker.selected.set(product.id, {product, floor: state.campaign.settings.discount_plan ? '0' : ''});
+            if (!picker.selected.has(product.id)) picker.selected.set(product.id, {product, floor: state.campaign.status === 'active' ? '' : state.campaign.settings.discount_plan ? '0' : ''});
         } else picker.selected.delete(product.id);
     }
     function checkedFloor(row) {
@@ -578,7 +583,7 @@
             const canonical = helpers.toStore(row.floor, cfg.display_unit, cfg.currency_code, cfg.precision);
             const base = helpers.toStore(row.product.regular_price || row.product.price, 'store', cfg.currency_code, cfg.precision);
             const minor = BigInt(canonical.replace('.', '')), baseMinor = BigInt(base.replace('.', ''));
-            if (minor < 0n || minor > baseMinor || (!state.campaign.settings.discount_plan && minor === 0n)) throw new Error(labels.invalidMoney);
+            if (minor < 0n || minor > baseMinor || ((state.campaign.status === 'active' || !state.campaign.settings.discount_plan) && minor === 0n)) throw new Error(labels.invalidMoney);
             return canonical;
         } catch (_) { throw new Error(labels.invalidMoney + ' ' + row.product.name); }
     }
@@ -637,7 +642,7 @@
         if (name === 'history-prev' || name === 'history-next') { historyPage += name === 'history-next' ? 1 : -1; await renderHistory(); return; }
         if (name === 'new-prev' || name === 'new-next') { pendingPage += name === 'new-next' ? 1 : -1; await loadPending(); return; }
         if (name === 'new-approve' || name === 'new-reject') { const ids = [...root.querySelectorAll('.exin-bf-new-select:checked')].map(node => Number(node.value)); if (!ids.length) throw new Error('محصولی انتخاب نشده است.'); const result = await api(campaignPath('new-products'), {ids,action:name === 'new-approve' ? 'approve' : 'reject',confirm_enroll:name === 'new-approve'}); await loadPending(); notice(result.results.some(row => !row.ok) ? 'برخی محصولات به دلیل قیمت، قواعد کف یا تداخل وارد نشدند؛ تاریخچه را بررسی کنید.' : 'بررسی محصولات ثبت شد.'); return; }
-        if (name === 'scope-all' || name === 'scope-instock') { await openPicker(); await prepareSelection(name === 'scope-instock' ? {stock: 'instock'} : {}); return; }
+        if (name === 'scope-all' || name === 'scope-instock') { await openPicker(); if (state.campaign.status === 'active') { notice('ابتدا کف گروهی یا کف اختصاصی محصولات جدید را تعیین کنید؛ سپس محدوده را پیش‌نمایش و تأیید کنید.'); return; } await prepareSelection(name === 'scope-instock' ? {stock: 'instock'} : {}); return; }
         if (name === 'picker-select-all' || name === 'picker-select-instock') { await prepareSelection(name === 'picker-select-instock' ? {stock: 'instock'} : {}); return; }
         if (name === 'picker-clear') { picker.selected.clear(); invalidateSelectionPreview(); renderPickerResults(); renderPickerSelection(); return; }
         if (name === 'selection-confirm') { await confirmSelection(); return; }
@@ -646,8 +651,8 @@
             await processJob(token); await load(); notice('پردازش گروهی به پایان رسید.'); return;
         }
         if (name === 'selection-remove-all') {
-            if (!window.confirm('تمام محصولات از این پیش‌نویس حذف شوند؟ اطلاعات کمپین‌های دیگر حفظ می‌شود.')) return;
-            await requireDraft();
+            if (!window.confirm('تمام محصولات این کمپین حذف و قیمت‌های تحت کنترل با رعایت تعارض بازیابی شوند؟')) return;
+            await requireSelection();
             const result = await processJob(null, {filters: {campaign_only: true}, policy: {mode: 'none'}, action: 'remove'});
             await load(); notice(result.failed ? 'برخی ردیف‌ها حذف نشدند؛ خطاها را بررسی کنید.' : 'انتخاب‌های کمپین حذف شدند.', !!result.failed); return;
         }

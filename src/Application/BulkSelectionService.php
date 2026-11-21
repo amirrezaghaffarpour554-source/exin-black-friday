@@ -1,6 +1,6 @@
 <?php
 /**
- * Resumable, bounded draft selection without changing WooCommerce prices.
+ * Resumable, bounded campaign selection with ownership-aware live enrollment.
  *
  * @package ExinBlackFriday
  */
@@ -23,12 +23,12 @@ final class BulkSelectionService {
 	public function __construct( private CampaignRepository $repo ) {}
 
 	/**
-	 * Start an explicitly requested draft-selection job.
+	 * Start an explicitly requested draft or active campaign selection job.
 	 *
-	 * @param int    $campaign_id Editable draft identifier.
+	 * @param int    $campaign_id Editable campaign identifier.
 	 * @param array  $filters Frozen product scope and catalog filters.
 	 * @param array  $policy Canonical store-unit floor policy.
-	 * @param string $action Add/update floors or remove draft membership.
+	 * @param string $action Add new live items, edit draft floors, or safely remove membership.
 	 * @return array Small resumable progress document.
 	 * @throws \DomainException When another job runs or the draft is not editable.
 	 */
@@ -36,7 +36,7 @@ final class BulkSelectionService {
 		return ( new LockManager() )->run(
 			'campaign:' . $campaign_id,
 			function () use ( $campaign_id, $filters, $policy, $action ): array {
-				$campaign = $this->draft( $campaign_id );
+				$campaign = $this->editable( $campaign_id );
 				if ( ! in_array( $action, array( 'add', 'remove' ), true ) ) {
 					throw new \InvalidArgumentException( 'invalid_selection_action' );
 				}
@@ -61,29 +61,31 @@ final class BulkSelectionService {
 				$upper = $remove_all ? $this->repo->item_ceiling( $campaign_id ) : $query->ceiling();
 				$total = $remove_all ? $this->repo->count_items( $campaign_id ) : $query->count_candidates( $filters, $upper );
 				$job   = array(
-					'token'       => wp_generate_uuid4(),
-					'campaign_id' => $campaign_id,
-					'version'     => (int) $campaign['version'],
-					'owner'       => get_current_user_id(),
-					'action'      => $action,
-					'filters'     => $filters,
-					'policy'      => $this->policy( $policy ),
-					'after'       => 0,
-					'upper'       => $upper,
-					'total'       => $total,
-					'processed'   => 0,
-					'added'       => 0,
-					'updated'     => 0,
-					'removed'     => 0,
-					'skipped'     => 0,
-					'failed'      => 0,
-					'rejected'    => 0,
-					'errors'      => array(),
-					'complete'    => 0 === $total,
-					'status'      => 0 === $total ? 'completed' : 'running',
-					'started_at'  => time(),
+					'token'           => wp_generate_uuid4(),
+					'campaign_id'     => $campaign_id,
+					'version'         => (int) $campaign['version'],
+					'owner'           => get_current_user_id(),
+					'action'          => $action,
+					'filters'         => $filters,
+					'policy'          => $this->policy( $policy ),
+					'after'           => 0,
+					'upper'           => $upper,
+					'total'           => $total,
+					'processed'       => 0,
+					'added'           => 0,
+					'updated'         => 0,
+					'removed'         => 0,
+					'skipped'         => 0,
+					'failed'          => 0,
+					'rejected'        => 0,
+					'errors'          => array(),
+					'complete'        => 0 === $total,
+					'status'          => 0 === $total ? 'completed' : 'running',
+					'started_at'      => time(),
+					'live'            => 'active' === $campaign['status'],
+					'pending_product' => 0,
 				);
-				if ( 'add' === $action ) {
+				if ( 'add' === $action && 'draft' === $campaign['status'] ) {
 					$settings                    = $campaign['settings'];
 					$settings['selection_rules'] = array(
 						'filters' => $filters,
@@ -98,9 +100,9 @@ final class BulkSelectionService {
 	}
 
 	/**
-	 * Process at most twenty-five stable candidates and persist the next cursor.
+	 * Process a bounded stable batch: ten live candidates or twenty-five draft candidates.
 	 *
-	 * @param int    $campaign_id Job's draft campaign identifier.
+	 * @param int    $campaign_id Job's campaign identifier.
 	 * @param string $token Unpredictable token returned by start/status.
 	 * @return array Progress, bounded errors and completion state.
 	 */
@@ -112,25 +114,26 @@ final class BulkSelectionService {
 				if ( $job['complete'] ) {
 					return $this->summary( $job );
 				}
-				$campaign = $this->draft( $campaign_id );
-				if ( (int) $campaign['version'] !== (int) $job['version'] ) {
+				$campaign = $this->editable( $campaign_id );
+				if ( (int) $campaign['version'] !== (int) $job['version'] || (bool) ( $job['live'] ?? false ) !== ( 'active' === $campaign['status'] ) ) {
 					$job['complete'] = true;
 					$job['status']   = 'failed';
 					$this->error( $job, 0, 'selection_campaign_changed' );
 					$this->persist( $campaign_id, $job );
 					return $this->summary( $job );
 				}
+				$limit           = ! empty( $job['live'] ) ? 10 : 25;
 				$membership_only = 'remove' === $job['action'] && ! empty( $job['filters']['campaign_only'] );
 				if ( $membership_only ) {
-					$rows  = $this->repo->batch( $campaign_id, (int) $job['after'], 25 );
+					$rows  = $this->repo->batch( $campaign_id, (int) $job['after'], $limit );
 					$ids   = array_values( array_filter( array_map( static fn( $row ) => (int) $row['product_id'], $rows ), static fn( $id ) => $id <= (int) $job['upper'] ) );
 					$batch = array(
 						'ids'   => $ids,
 						'after' => $ids ? max( $ids ) : (int) $job['upper'],
-						'done'  => count( $rows ) < 25 || count( $ids ) !== count( $rows ) || ( $ids && max( $ids ) >= (int) $job['upper'] ),
+						'done'  => count( $rows ) < $limit || count( $ids ) !== count( $rows ) || ( $ids && max( $ids ) >= (int) $job['upper'] ),
 					);
 				} else {
-					$batch = ( new CatalogProductQuery() )->scan( $job['filters'], (int) $job['after'], (int) $job['upper'] );
+					$batch = ( new CatalogProductQuery() )->scan( $job['filters'], (int) $job['after'], (int) $job['upper'], $limit );
 				}
 				$selection = new ProductSelectionService( $this->repo );
 				foreach ( $batch['ids'] as $product_id ) {
@@ -138,6 +141,10 @@ final class BulkSelectionService {
 					if ( $membership_only && ( ! $item || 'removed' === $item['status'] ) ) {
 						continue;
 					}
+					$live_new = ! empty( $job['live'] ) && 'add' === $job['action'] && ( ! $item || 'removed' === $item['status'] || (int) ( $job['pending_product'] ?? 0 ) === $product_id );
+					if ( $live_new ) {
+						$job['pending_product'] = $product_id;
+						$this->persist( $campaign_id, $job ); }
 					++$job['processed'];
 					try {
 						if ( 'remove' === $job['action'] ) {
@@ -147,8 +154,11 @@ final class BulkSelectionService {
 								$selection->remove( $campaign_id, $product_id );
 								++$job['removed'];
 							}
+						} elseif ( $live_new && $item && 'removed' !== $item['status'] ) {
+							$selection->apply_current( $campaign_id, $product_id );
+							++$job['added'];
 						} elseif ( $item && 'removed' !== $item['status'] ) {
-							if ( 'none' === $job['policy']['mode'] || ( ! empty( $item['floor_override'] ) && ! array_key_exists( $product_id, $job['policy']['floors'] ?? array() ) ) ) {
+							if ( ! empty( $job['live'] ) || 'none' === $job['policy']['mode'] || ( ! empty( $item['floor_override'] ) && ! array_key_exists( $product_id, $job['policy']['floors'] ?? array() ) ) ) {
 								++$job['skipped'];
 							} else {
 								$selection->update(
@@ -171,11 +181,23 @@ final class BulkSelectionService {
 									'source_campaign_id' => (int) ( $job['filters']['source_campaign_id'] ?? 0 ),
 								)
 							);
+							if ( ! empty( $job['live'] ) ) {
+								$selection->apply_current( $campaign_id, $product_id ); }
 							++$job['added'];
 						}
 					} catch ( \Throwable $error ) {
 						$this->error( $job, $product_id, $error->getMessage(), $error instanceof \DomainException || $error instanceof \InvalidArgumentException );
+						if ( $live_new && ! ( $error instanceof \DomainException ) && ! ( $error instanceof \InvalidArgumentException ) ) {
+							--$job['processed'];
+							$job['status'] = 'failed';
+							$this->persist( $campaign_id, $job );
+							return $this->summary( $job );
+						}
 					}
+					if ( ! empty( $job['live'] ) ) {
+						$job['pending_product'] = 0;
+						$job['after']           = $product_id;
+						$this->persist( $campaign_id, $job ); }
 				}
 				$job['after']    = $batch['after'];
 				$job['complete'] = (bool) $batch['done'];
@@ -228,13 +250,15 @@ final class BulkSelectionService {
 	/**
 	 * Count the scope and simulate five representative rows without enrollment.
 	 *
+	 * @throws \DomainException When a live sample has no positive floor.
+	 *
 	 * @param int   $campaign_id Draft identifier.
 	 * @param array $filters Product scope and filters.
 	 * @param array $policy Canonical floor policy.
 	 * @return array Counts, current timing, sample schedules and safe warnings.
 	 */
 	public function preview( int $campaign_id, array $filters, array $policy ): array {
-		$campaign  = $this->draft( $campaign_id );
+		$campaign  = $this->editable( $campaign_id );
 		$filters   = $this->filters( $filters );
 		$policy    = $this->policy( $policy );
 		$query     = new CatalogProductQuery();
@@ -252,14 +276,16 @@ final class BulkSelectionService {
 			'total'     => $count,
 			'in_stock'  => $query->count_candidates( $available, $upper ),
 			'start_utc' => $campaign['start_utc'],
-			'end_utc'   => DiscountPlan::end( $campaign ),
+			'end_utc'   => $campaign['end_utc'],
 			'samples'   => array(),
 			'warnings'  => array(),
 		);
 		$selection = new ProductSelectionService( $this->repo );
 		foreach ( $query->scan( $filters, 0, $upper, 5 )['ids'] as $product_id ) {
 			try {
-				$result['samples'][] = $selection->preview(
+				if ( 'active' === $campaign['status'] && $this->repo->item( $campaign_id, $product_id ) ) {
+					continue; }
+				$sample = $selection->preview(
 					$campaign_id,
 					$product_id,
 					'0',
@@ -268,6 +294,9 @@ final class BulkSelectionService {
 						'source_campaign_id' => (int) ( $filters['source_campaign_id'] ?? 0 ),
 					)
 				);
+				if ( 'active' === $campaign['status'] && Money::parse( $sample['floor_price'], wc_get_price_decimals() ) <= 0 ) {
+					throw new \DomainException( 'product_floor_required' ); }
+				$result['samples'][] = $sample;
 			} catch ( \Throwable $error ) {
 				$result['warnings'][] = array(
 					'product_id' => $product_id,
@@ -293,7 +322,7 @@ final class BulkSelectionService {
 	public static function resolve_floor( CampaignRepository $repo, array $campaign, int $product_id, string $base, array $policy, int $source_id = 0 ): string {
 		$precision  = (int) ( $campaign['settings']['precision'] ?? wc_get_price_decimals() );
 		$base_minor = Money::parse( $base, $precision );
-		$mode       = $policy['mode'] ?? 'none';
+		$mode       = isset( $policy['floors'][ $product_id ] ) ? 'independent' : ( $policy['mode'] ?? 'none' );
 		$value      = (string) ( $policy['value'] ?? '0' );
 		switch ( $mode ) {
 			case 'none':
@@ -347,16 +376,16 @@ final class BulkSelectionService {
 	}
 
 	/**
-	 * Load an editable, never-started draft with no outstanding price ownership.
+	 * Load an unowned draft or a still-live active campaign.
 	 *
 	 * @param int $campaign_id Campaign identifier.
-	 * @return array Durable draft record.
-	 * @throws \DomainException When a job could change a started campaign.
+	 * @return array Durable editable campaign record.
+	 * @throws \DomainException When the campaign is expired, restoring, or otherwise not editable.
 	 */
-	private function draft( int $campaign_id ): array {
+	private function editable( int $campaign_id ): array {
 		$campaign = $this->repo->get( $campaign_id );
-		if ( ! $campaign || 'draft' !== $campaign['status'] || ! empty( $campaign['settings']['started_at'] ) || ! empty( $campaign['settings']['restoring'] ) || $this->repo->has_ownership( $campaign_id ) ) {
-			throw new \DomainException( 'selection_requires_unowned_draft' );
+		if ( ! $campaign || ! in_array( $campaign['status'], array( 'draft', 'active' ), true ) || ! empty( $campaign['settings']['restoring'] ) || ( 'active' === $campaign['status'] ? ! \Exin\BlackFriday\Integration\CampaignContext::is_live( $campaign ) : ( ! empty( $campaign['settings']['started_at'] ) || $this->repo->has_ownership( $campaign_id ) ) ) ) {
+			throw new \DomainException( 'selection_requires_editable_campaign' );
 		}
 		if ( isset( $campaign['settings']['currency'] ) && ( get_woocommerce_currency() !== $campaign['settings']['currency'] || wc_get_price_decimals() !== (int) $campaign['settings']['precision'] ) ) {
 			throw new \DomainException( 'store_currency_or_precision_changed' );
