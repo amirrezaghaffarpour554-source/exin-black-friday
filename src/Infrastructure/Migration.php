@@ -13,7 +13,7 @@ use Exin\BlackFriday\Domain\CurrencyDisplay;
 
 /** Creates and upgrades durable campaign database tables. */
 final class Migration {
-	public const VERSION = '5';
+	public const VERSION = '6';
 
 	/**
 	 * Create the current schema and record its independent migration version.
@@ -106,7 +106,7 @@ final class Migration {
 			"CREATE TABLE {$prefix}turns (
             campaign_id bigint unsigned NOT NULL,
             version bigint unsigned NOT NULL,
-            stage smallint unsigned NOT NULL,
+            stage int unsigned NOT NULL,
             product_id bigint unsigned NOT NULL,
             applied tinyint NOT NULL DEFAULT 0,
             PRIMARY KEY  (campaign_id,version,stage,product_id),
@@ -129,6 +129,10 @@ final class Migration {
 				if ( $column !== $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', $prefix . $table, $column ) ) ) {
 					throw new \RuntimeException( 'schema_campaign_extension_missing' ); }
 			}
+		}
+		$stage = $wpdb->get_row( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', $prefix . 'turns', 'stage' ), ARRAY_A );
+		if ( ! $stage || ! preg_match( '/^int(?:\(\d+\))? unsigned$/', $stage['Type'] ) ) {
+			throw new \RuntimeException( 'schema_automatic_stage_capacity_missing' );
 		}
 		if ( version_compare( (string) get_option( 'exin_bf_schema_version', '0' ), '3', '<' ) ) {
 			self::upgrade_settings( $prefix . 'campaigns' ); }

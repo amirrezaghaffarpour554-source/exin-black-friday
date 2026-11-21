@@ -50,8 +50,14 @@ const item = id => ({product_id:id, product:row(id), base_price:'1000000', floor
   check(await page.locator('[data-step]').count()===5,'Five automatic setup steps are presented');
   check(await page.locator('[data-step="3"]').getAttribute('aria-current')==='step','Method step is correctly highlighted');
   await page.locator('#bf-discount_mode').selectOption('auto_random');
+  await page.locator('#bf-auto_duration_days').fill('۷');
+  check(await page.locator('#bf-auto_steps').inputValue()==='7','Seven days derives seven daily stages');
+  await page.locator('#bf-interval').selectOption('hourly');
+  check(await page.locator('#bf-auto_steps').inputValue()==='168','Duration stays seven days for hourly stages');
   await page.locator('#bf-interval').selectOption('flash');
   check(await page.locator('#bf-interval_minutes').inputValue()==='5','Flash switches to a safe five-minute default');
+  check(await page.locator('#bf-auto_steps').inputValue()==='2016','Seven days derives 2016 five-minute stages');
+  check(await page.locator('#bf-auto_steps').getAttribute('readonly')!==null,'Stage count is computed, not editable');
   await page.locator('#bf-auto_min').fill('۲۰');await page.locator('#bf-auto_max').fill('۸۰');
   await page.locator('[name="auto_selection_mode"]').evaluate(el=>el.closest('details').open=true);
   await page.locator('[name="auto_selection_mode"]').selectOption('count');
@@ -60,6 +66,8 @@ const item = id => ({product_id:id, product:row(id), base_price:'1000000', floor
   await page.locator('#exin-bf-confirm-activate').waitFor();
   const payload=calls.filter(c=>c.endpoint==='campaign').at(-1).body.settings.discount_plan;
   check(payload.mode==='auto_random'&&payload.interval==='flash'&&payload.interval_minutes===5,'Automatic mode and timing reach REST');
+  check(payload.duration_minutes===10080&&payload.steps===2016,'Independent duration and derived stages reach REST');
+  check(calls.filter(c=>c.endpoint==='campaign').at(-1).body.days===7,'Campaign days do not become stage count');
   check(payload.selection_mode==='count'&&payload.selection_value===2,'Cohort count is normalized');
   check(payload.seed==='exin-ui-seed','Stored seed persists through an ordinary save');
   check(payload.last_day==='disabled','No implicit final-day override');

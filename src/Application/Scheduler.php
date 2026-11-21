@@ -160,7 +160,7 @@ final class Scheduler {
 						if ( DiscountPlan::index( $campaign, time() ) < 0 ) {
 							throw new \DomainException( 'campaign_start_is_in_future' );
 						}
-						if ( DiscountPlan::index( $campaign, time() ) >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+						if ( DiscountPlan::index( $campaign, time() ) >= DiscountPlan::stage_count( $campaign ) ) {
 							throw new \DomainException( 'campaign_already_ended' );
 						}
 						$status                 = 'active';
@@ -173,7 +173,7 @@ final class Scheduler {
 						$status = 'paused';
 						break;
 					case 'resume':
-						if ( 'paused' !== $status || DiscountPlan::index( $campaign, time() ) >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+						if ( 'paused' !== $status || DiscountPlan::index( $campaign, time() ) >= DiscountPlan::stage_count( $campaign ) ) {
 							throw new \DomainException( 'campaign_cannot_resume' );
 						}
 						$status = DiscountPlan::index( $campaign, time() ) < 0 ? 'scheduled' : 'active';
@@ -289,7 +289,7 @@ final class Scheduler {
 						return;
 					}
 					$index = DiscountPlan::index( $campaign, time() );
-					if ( $index >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+					if ( $index >= DiscountPlan::stage_count( $campaign ) ) {
 						$settings['restoring'] = true;
 						$this->repo->save(
 							$campaign_id,
@@ -320,7 +320,7 @@ final class Scheduler {
 							do_action( 'exin_bf_stage_started', $campaign_id, $version, $index );
 						} catch ( \Throwable $ignored ) {
 							update_option( 'exin_bf_notification_error', 'provider_hook_failed', false ); }
-						$due = strtotime( DiscountPlan::boundaries( $campaign )[ $index ] . ' UTC' );
+						$due = strtotime( DiscountPlan::stage_start( $campaign, $index ) . ' UTC' );
 						if ( time() - $due > 120 && add_option( 'exin_bf_late_' . $campaign_id . '_' . $version . '_' . $index, time(), '', false ) ) {
 							$this->logger->log(
 								'warning',
@@ -442,7 +442,12 @@ final class Scheduler {
 		}
 		$now  = time();
 		$next = strtotime( $campaign['end_utc'] . ' UTC' );
-		if ( 'paused' !== $campaign['status'] ) {
+		if ( 'paused' !== $campaign['status'] && DiscountPlan::automatic( $campaign ) ) {
+			$index = DiscountPlan::index( $campaign, $now ) + 1;
+			if ( $index < DiscountPlan::stage_count( $campaign ) ) {
+				$next = strtotime( DiscountPlan::stage_start( $campaign, $index ) . ' UTC' );
+			}
+		} elseif ( 'paused' !== $campaign['status'] ) {
 			foreach ( DiscountPlan::boundaries( $campaign ) as $start ) {
 				$at = strtotime( $start . ' UTC' );
 				if ( $at > $now ) {

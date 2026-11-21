@@ -6,8 +6,9 @@
   "automatic_opt_in_required": true,
   "schema": {
     "from": "4",
-    "to": "5",
-    "change": "Additive turn ledger only; existing campaign settings and financial rows are not migrated or repriced"
+    "to": "6",
+    "also_upgrades_schema_5": true,
+    "change": "Add turn ledger and widen its stage to int unsigned; no migration or repricing of existing campaign settings, items, snapshots or prices"
   },
   "runtime": {
     "wordpress": "7.1.4",
@@ -18,9 +19,9 @@
   },
   "suites": {
     "automatic_domain": {
-      "cases": 17,
-      "assertions": 279,
-      "passed": 17,
+      "cases": 29,
+      "assertions": 531,
+      "passed": 29,
       "failed": 0
     },
     "reused_legacy_domain": {
@@ -32,35 +33,24 @@
       "failed": 0,
       "failures": []
     },
-    "financial_primary": {
+    "duration_financial": {
       "suite": "v130-financial-integration",
-      "tests": 7,
-      "assertions": 118,
-      "passed": 7,
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "database": "11.8.6",
+      "hpos": true,
+      "tests": 3,
+      "assertions": 53,
+      "passed": 3,
       "failed": 0,
       "results": [
         {
-          "test": "Automatic progressive descending and wave use regular-price headroom and floor; late and duplicate writes do not compound",
+          "test": "Seven-day Flash derives 2016 stages; paged preview, bounded scheduler, late pricing and final restore",
           "status": "passed"
         },
         {
-          "test": "Rotation is balanced and featured-first; an expired special turn clears the old sale and returns to regular",
-          "status": "passed"
-        },
-        {
-          "test": "Random preview equals real pricing, seed and cohort survive replay, and delayed scheduler skips missed stages",
-          "status": "passed"
-        },
-        {
-          "test": "Hybrid specials replace the progressive base and rotate back to the current base without stacking",
-          "status": "passed"
-        },
-        {
-          "test": "Flash is capacity guarded and last-day policies default off, apply only to allowed floors, and retain turn history",
-          "status": "passed"
-        },
-        {
-          "test": "Bulk floors and exceptions work with automatic stages; stock withdrawal and restock coalesce through existing scheduler",
+          "test": "Long automatic plans enforce capacity and exact last-day policy without building all stages",
           "status": "passed"
         },
         {
@@ -69,44 +59,10 @@
         }
       ]
     },
-    "focused_followups": [
-      {
-        "file": "variation-stock.txt",
-        "tests": 1,
-        "assertions": 11,
-        "passed": 1,
-        "failed": 0,
-        "scenario": "Bulk floors and exceptions work with automatic stages; stock withdrawal and restock coalesce through existing scheduler"
-      },
-      {
-        "file": "last-day-followup.txt",
-        "tests": 1,
-        "assertions": 10,
-        "passed": 1,
-        "failed": 0,
-        "scenario": "Flash is capacity guarded and last-day policies default off, apply only to allowed floors, and retain turn history"
-      },
-      {
-        "file": "activation-followup.txt",
-        "tests": 1,
-        "assertions": 17,
-        "passed": 1,
-        "failed": 0,
-        "scenario": "Schema 4 upgrade preserves an active manual plan and its prices byte-for-byte; automatic seed is saved only on explicit opt-in"
-      },
-      {
-        "file": "rotation-followup.txt",
-        "tests": 1,
-        "assertions": 51,
-        "passed": 1,
-        "failed": 0,
-        "scenario": "Rotation is balanced and featured-first; an expired special turn clears the old sale and returns to regular"
-      }
-    ],
     "one_admin_smoke": {
       "suite": "v130-automatic-admin-smoke",
-      "checks": 27,
-      "passed": 27,
+      "checks": 33,
+      "passed": 33,
       "failed": 0,
       "boundary": "One Chromium and real shipped JavaScript; mocked REST. Real services and migration are tested separately."
     }
@@ -124,15 +80,19 @@
     "Six explicit auto modes added to existing DiscountPlan/PriceProcessor/Scheduler; no independent price or snapshot engine",
     "Exact regular-to-floor headroom arithmetic and immutable original sale schedule",
     "Transactional stage cohorts, persistent seed, least-served rotation and no special slots for zero-headroom products",
-    "Daily/hourly/Flash boundaries, capacity budgets and current-time catch-up",
+    "Independent duration, derived automatic stages, scalar UTC boundaries and current-time catch-up",
     "Optional final-day floor policies, disabled by default; stable remaining set before the final day",
     "Bounded 10-product/12-stage read-only previews; automatic prices evaluated on demand",
     "Stock eligibility changes coalesced into existing watchdog/batches; positive-to-positive quantity changes do not rescan campaigns",
-    "Additive schema upgrade preserves a live synthetic Manual campaign byte-for-byte; real Production campaign 2 not accessed"
+    "Schema 6 adds/widens only turn metadata; live synthetic Manual settings, dates, version, item ownership, snapshot and price preserved byte-for-byte; real Production campaign 2 not accessed",
+    "Seven days yields 7 daily, 168 hourly or 2016 five-minute stages; manual 366-stage behavior stays unchanged",
+    "Only the next stage action is scheduled, with existing 25-product batches; late execution creates no missed-stage jobs or cohorts",
+    "Both member preview and selection preview return at most 12 stage starts/prices per sample; automatic item schedules remain empty",
+    "Exact last-day boundary and frozen remaining set work above stage 366; cohort budget includes stage markers"
   ],
   "artifact": {
     "file": "exin-black-friday-v1.3.0.zip",
-    "sha256": "f55fd9fc60d7bf6bcba52e55d5ae9741cca0442cbab4ac1d6c19138f0417e0fe"
+    "sha256": "9e6459baa18aafe61f278848bba1dbb49aac0492a961f120b911c5d04a067ec0"
   },
   "guide": "../../docs/automatic-v1.3.0.md",
   "limits": [
@@ -141,8 +101,106 @@
     "Future cohort preview assumes current membership/stock and continued turns; changed inputs or skipped turns can change future selections; executed cohorts are immutable",
     "Flash capacity is a conservative configurable budget, not a measurement of target PHP-FPM/Redis capacity",
     "Stock eligibility refresh depends on the existing watchdog and batch completion, usually at least one minute",
-    "Maximum 366 primary stages and 250000 special-turn entries per campaign; an enabled final-day policy may insert one boundary",
+    "Automatic duration at most 366 days, up to 105408 primary stages and one exact final-day boundary; 250000 total turn-ledger rows including stage markers; Manual retains its 366-stage limit",
     "No full E2E matrix, large benchmark or full CI run"
   ],
-  "production_actions": []
+  "production_actions": [],
+  "previous_pr6_validation": {
+    "source_commit": "115c91bee218c6527b90be1354354c7e0f99c929",
+    "scope": "Historical validation before the independent-duration correction; these groups were not rerun in this correction",
+    "suites": {
+      "financial_primary": {
+        "suite": "v130-financial-integration",
+        "tests": 7,
+        "assertions": 118,
+        "passed": 7,
+        "failed": 0,
+        "results": [
+          {
+            "test": "Automatic progressive descending and wave use regular-price headroom and floor; late and duplicate writes do not compound",
+            "status": "passed"
+          },
+          {
+            "test": "Rotation is balanced and featured-first; an expired special turn clears the old sale and returns to regular",
+            "status": "passed"
+          },
+          {
+            "test": "Random preview equals real pricing, seed and cohort survive replay, and delayed scheduler skips missed stages",
+            "status": "passed"
+          },
+          {
+            "test": "Hybrid specials replace the progressive base and rotate back to the current base without stacking",
+            "status": "passed"
+          },
+          {
+            "test": "Flash is capacity guarded and last-day policies default off, apply only to allowed floors, and retain turn history",
+            "status": "passed"
+          },
+          {
+            "test": "Bulk floors and exceptions work with automatic stages; stock withdrawal and restock coalesce through existing scheduler",
+            "status": "passed"
+          },
+          {
+            "test": "Schema 4 upgrade preserves an active manual plan and its prices byte-for-byte; automatic seed is saved only on explicit opt-in",
+            "status": "passed"
+          }
+        ]
+      },
+      "focused_followups": [
+        {
+          "file": "variation-stock.txt",
+          "tests": 1,
+          "assertions": 11,
+          "passed": 1,
+          "failed": 0,
+          "scenario": "Bulk floors and exceptions work with automatic stages; stock withdrawal and restock coalesce through existing scheduler"
+        },
+        {
+          "file": "last-day-followup.txt",
+          "tests": 1,
+          "assertions": 10,
+          "passed": 1,
+          "failed": 0,
+          "scenario": "Flash is capacity guarded and last-day policies default off, apply only to allowed floors, and retain turn history"
+        },
+        {
+          "file": "activation-followup.txt",
+          "tests": 1,
+          "assertions": 17,
+          "passed": 1,
+          "failed": 0,
+          "scenario": "Schema 4 upgrade preserves an active manual plan and its prices byte-for-byte; automatic seed is saved only on explicit opt-in"
+        },
+        {
+          "file": "rotation-followup.txt",
+          "tests": 1,
+          "assertions": 51,
+          "passed": 1,
+          "failed": 0,
+          "scenario": "Rotation is balanced and featured-first; an expired special turn clears the old sale and returns to regular"
+        }
+      ]
+    }
+  },
+  "duration_correction": {
+    "reviewed_parent_commit": "115c91bee218c6527b90be1354354c7e0f99c929",
+    "duration_minutes": 10080,
+    "cadences": {
+      "daily": 7,
+      "hourly": 168,
+      "flash_5_minutes": 2016
+    },
+    "maximum_primary_stages": 105408,
+    "high_stage_persistence_tested": 100000,
+    "late_stage_tested": 1500,
+    "pending_stage_jobs_for_2016_stage_fixture": 1,
+    "preview_tail_start": 2004,
+    "preview_tail_count": 12,
+    "partial_interval_last_day_stages": 918,
+    "manual_upgrade_preserved_byte_for_byte": true,
+    "production_campaign_2_accessed": false,
+    "extra_agents_used": false,
+    "full_ci_run": false,
+    "merge_performed": false
+  }
 }

@@ -117,7 +117,7 @@
         return {
             id: campaign?.id || null, title: campaign?.title || 'کمپین جدید اکسین',
             start_jalali: helpers.persianDigits(starts.date), start_time: starts.time,
-            timezone: campaign?.timezone || 'Asia/Tehran', days: String(campaign?.days || 7),
+            timezone: campaign?.timezone || 'Asia/Tehran', days: String(plan?.mode?.startsWith('auto_') && plan.duration_minutes ? Math.ceil(plan.duration_minutes / 1440) : campaign?.days || 7),
             strategy: campaign?.strategy || 'linear', power: String(campaign?.power || 2), rounding: campaign?.rounding || 'half_up',
             campaign_type: settings.campaign_type || (campaign ? 'black_friday' : 'general'), priority: String(settings.priority || 0),
             discount_mode: plan?.mode || (campaign ? 'legacy' : 'fixed_percent'), interval: plan?.interval || 'daily',
@@ -184,7 +184,7 @@
         const fields = new FormData(form);
         const next = {
             ...draft, title: fields.get('title'), start_jalali: fields.get('start_jalali'), start_time: fields.get('start_time'),
-            timezone: fields.get('timezone'), days: fields.get('days'), strategy: fields.get('strategy'), power: fields.get('power'), rounding: fields.get('rounding'),
+            timezone: fields.get('timezone'), days: fields.has('auto_duration_days') ? fields.get('auto_duration_days') : fields.get('days'), strategy: fields.get('strategy'), power: fields.get('power'), rounding: fields.get('rounding'),
             free_shipping: fields.has('free_shipping'), shipping_threshold: fields.get('shipping_threshold'), shipping_subsidy_cap: fields.get('shipping_subsidy_cap'),
             shipping_instances: fields.getAll('shipping_instance').map(Number), inactive_output: fields.get('inactive_output'), retention_days: fields.get('retention_days'),
             campaign_type: fields.get('campaign_type'), priority: fields.get('campaign_priority'), discount_mode: fields.get('discount_mode'),
@@ -196,6 +196,8 @@
             points: form.querySelector('[data-plan-point-row]') ? [...form.querySelectorAll('[data-plan-point-row]')].map(row => ({offset_minutes: row.querySelector('[data-point-offset]').value, kind: row.querySelector('[data-point-kind]').value, value: row.querySelector('[data-point-value]').value})) : draft.points
         };
         for (const key of ['auto_min','auto_max','auto_base_max','auto_curve','auto_bands','auto_wave_period','auto_selection_mode','auto_selection_value','auto_selector','auto_last_day','auto_descending_end','auto_seed']) { if (fields.has(key)) next[key] = fields.get(key); }
+        const stageCount = form.querySelector('[name="auto_steps"]');
+        if (stageCount) stageCount.value = automaticSteps(next);
         if (JSON.stringify(next) !== JSON.stringify(draft)) { draft = next; editRevision++; draftNotice(labels.dirty, 'dirty'); }
     }
     function draftPayload() {
@@ -219,15 +221,16 @@
                 existing_sale_policy: draft.existing_sale_policy}
         };
         if (draft.discount_mode !== 'legacy') {
-            const steps = integer(draft.steps), intervalMinutes = integer(draft.interval_minutes);
-            if (!Number.isInteger(steps) || steps < 1 || steps > 366) throw new Error('تعداد مراحل باید بین ۱ تا ۳۶۶ باشد.');
+            const automatic = draft.discount_mode.startsWith('auto_'), intervalMinutes = automatic && draft.interval === 'daily' ? 1440 : integer(draft.interval_minutes);
+            const steps = automatic ? automaticSteps(draft) : integer(draft.steps);
+            if (!automatic && (!Number.isInteger(steps) || steps < 1 || steps > 366)) throw new Error('تعداد مراحل باید بین ۱ تا ۳۶۶ باشد.');
             const plan = {mode: draft.discount_mode, interval: draft.interval, steps, interval_minutes: intervalMinutes,
                 initial_discount: draft.initial_discount, final_discount: draft.final_discount, reach_floor: draft.reach_floor};
             if (draft.discount_mode === 'custom') {
                 plan.points = draft.points.map(point => ({offset_minutes: integer(point.offset_minutes), kind: point.kind, value: point.value}));
                 plan.duration_minutes = integer(draft.duration_minutes);
             }
-            if (draft.discount_mode.startsWith('auto_')) Object.assign(plan,{intensity_min:draft.auto_min,intensity_max:draft.auto_max,base_max:draft.auto_base_max,curve:draft.auto_curve,bands:integer(draft.auto_bands),wave_period:integer(draft.auto_wave_period),selection_mode:draft.auto_selection_mode,selection_value:integer(draft.auto_selection_value),selector:draft.auto_selector,last_day:draft.auto_last_day,descending_end:draft.auto_descending_end,seed:draft.auto_seed});
+            if (automatic) Object.assign(plan,{duration_minutes:days * 1440,intensity_min:draft.auto_min,intensity_max:draft.auto_max,base_max:draft.auto_base_max,curve:draft.auto_curve,bands:integer(draft.auto_bands),wave_period:integer(draft.auto_wave_period),selection_mode:draft.auto_selection_mode,selection_value:integer(draft.auto_selection_value),selector:draft.auto_selector,last_day:draft.auto_last_day,descending_end:draft.auto_descending_end,seed:draft.auto_seed});
             payload.settings.discount_plan = plan;
         }
         if (draft.id) payload.id = Number(draft.id);
@@ -334,9 +337,14 @@
         content.innerHTML = `${steps(1)}<section class="exin-bf-card exin-bf-empty"><h2>کمپین تخفیف جدید</h2><p>محدوده محصولات را انتخاب کنید، تخفیف و زمان‌بندی را تعیین کنید و پس از پیش‌نمایش فعال کنید.</p>${button('شروع ساخت کمپین', 'new-campaign', 'exin-bf-primary')}</section>`;
     }
     function options(values, selected) { return values.map(([key, label]) => `<option value="${esc(key)}" ${key === selected ? 'selected' : ''}>${esc(label)}</option>`).join(''); }
+    function automaticSteps(value) {
+        const days = integer(value.days), minutes = value.interval === 'daily' ? 1440 : integer(value.interval_minutes);
+        return Number.isInteger(days) && days > 0 && Number.isInteger(minutes) && minutes > 0 ? Math.ceil(days * 1440 / minutes) : '';
+    }
     function automaticSettings(value) {
-        return `<div class="exin-bf-field"><label>زمان‌بندی خودکار<select id="bf-interval" name="interval">${options([['daily','روزانه در ساعت شروع'],['hourly','ساعتی با فاصلهٔ قابل تنظیم'],['flash','Flash؛ حداقل ۵ دقیقه و وابسته به ظرفیت']],value.interval)}</select></label></div>
-        ${field('تعداد مراحل','steps',value.steps,{required:true,extra:'inputmode="numeric" min="1" max="366"'})}
+        return `<div class="exin-bf-field"><label>زمان‌بندی خودکار<select id="bf-interval" name="interval">${options([['daily','روزانه؛ هر ۲۴ ساعت'],['hourly','ساعتی با فاصلهٔ قابل تنظیم'],['flash','Flash؛ حداقل ۵ دقیقه و وابسته به ظرفیت']],value.interval)}</select></label></div>
+        ${field('مدت کمپین (روز)','auto_duration_days',value.days,{required:true,extra:'inputmode="numeric" min="1" max="366"',help:'مدت کمپین مستقل از فاصلهٔ تغییر تخفیف است.'})}
+        ${field('تعداد مراحل خودکار','auto_steps',automaticSteps(value),{extra:'readonly',help:'از مدت و فاصله محاسبه می‌شود؛ سیاست روز آخر ممکن است یک مرز اضافه کند.'})}
         ${value.interval !== 'daily' ? field(value.interval === 'hourly' ? 'فاصلهٔ ساعتی (دقیقه؛ مضرب ۶۰)' : 'فاصلهٔ Flash (دقیقه)','interval_minutes',value.interval_minutes,{required:true,extra:'inputmode="numeric"',help:'فاصلهٔ Flash هنگام فعال‌سازی متناسب با تعداد محصولات و بودجهٔ پردازش بررسی می‌شود.'}) : ''}
         <p class="exin-bf-note">شدت، درصدی از فاصلهٔ قیمت اصلی تا کف همان محصول است؛ درصد تخفیف واقعی هر محصول خودکار محاسبه می‌شود. ابتدا کف مثبت محصولات را در «محصولات» تعیین کنید. Regular Price و Snapshot اصلی حفظ می‌شوند.</p>
         ${field('کمترین شدت (% از سقف مجاز)','auto_min',value.auto_min,{money:true})}${field('بیشترین شدت (% از سقف مجاز)','auto_max',value.auto_max,{money:true})}
@@ -380,7 +388,7 @@
     function renderReview() {
         const campaign = state.campaign, simulation = state.simulation;
         const allowed = campaign.status === 'draft' && state.count > 0 && simulation && !simulation.blocked;
-        content.innerHTML = `${steps(3)}<section class="exin-bf-card"><h2>${esc(labels.review)}</h2><dl class="exin-bf-review"><dt>نام کمپین</dt><dd>${esc(campaign.title)}</dd><dt>شروع و پایان ایران</dt><dd>${esc(localDate(simulation?.start_utc || campaign.start_utc, campaign.timezone))} ← ${esc(localDate(simulation?.end_utc || campaign.end_utc, campaign.timezone))}</dd><dt>محصولات مشمول / موجود</dt><dd>${helpers.persianDigits(simulation?.count ?? state.count)} / ${helpers.persianDigits(simulation?.in_stock ?? '—')}</dd><dt>روش تخفیف</dt><dd>${esc(planModes[campaign.settings.discount_plan?.mode] || 'برنامهٔ قبلی کمپین')}</dd></dl>${simulationMarkup(simulation)}${simulation?.page ? `<p>صفحهٔ محصولات ${helpers.persianDigits(simulation.page)} · ردشده در این صفحه ${helpers.persianDigits(simulation.rejected_on_page || 0)}</p><div class="exin-bf-actions">${simulation.page > 1 ? button('محصولات قبلی','auto-preview-prev') : ''}${simulation.has_more ? button('محصولات بعدی','auto-preview-next') : ''}${simulation.next_stage !== null ? button('مرحله‌های بعدی','auto-preview-stages') : ''}${simulation.stage_start ? button('از مرحلهٔ نخست','auto-preview-first') : ''}</div>` : ''}<div class="exin-bf-actions">${button(labels.products, 'products')}${button(labels.settings, 'settings')}</div></section>
+        content.innerHTML = `${steps(3)}<section class="exin-bf-card"><h2>${esc(labels.review)}</h2><dl class="exin-bf-review"><dt>نام کمپین</dt><dd>${esc(campaign.title)}</dd><dt>شروع و پایان ایران</dt><dd>${esc(localDate(simulation?.start_utc || campaign.start_utc, campaign.timezone))} ← ${esc(localDate(simulation?.end_utc || campaign.end_utc, campaign.timezone))}</dd><dt>محصولات مشمول / موجود</dt><dd>${helpers.persianDigits(simulation?.count ?? state.count)} / ${helpers.persianDigits(simulation?.in_stock ?? '—')}</dd><dt>روش تخفیف</dt><dd>${esc(planModes[campaign.settings.discount_plan?.mode] || 'برنامهٔ قبلی کمپین')}</dd></dl>${simulationMarkup(simulation)}${simulation?.page ? `<p>صفحهٔ محصولات ${helpers.persianDigits(simulation.page)} · کل مراحل ${helpers.persianDigits(simulation.total_stages || 0)} · ردشده در این صفحه ${helpers.persianDigits(simulation.rejected_on_page || 0)}</p><div class="exin-bf-actions">${simulation.page > 1 ? button('محصولات قبلی','auto-preview-prev') : ''}${simulation.has_more ? button('محصولات بعدی','auto-preview-next') : ''}${simulation.next_stage !== null ? button('مرحله‌های بعدی','auto-preview-stages') : ''}${simulation.stage_start ? button('از مرحلهٔ نخست','auto-preview-first') : ''}</div>` : ''}<div class="exin-bf-actions">${button(labels.products, 'products')}${button(labels.settings, 'settings')}</div></section>
             <section class="exin-bf-card"><h2>تأیید نهایی مدیر</h2><p>${esc(labels.activation)}</p><label class="exin-bf-check"><input type="checkbox" id="exin-bf-confirm-activate" ${!allowed ? 'disabled' : ''}>محصولات، قیمت روز اول، مراحل بعد و زمان شروع را بررسی کردم و فعال‌سازی را تأیید می‌کنم.</label>${button('تأیید و فعال‌سازی کمپین', 'activate', 'exin-bf-primary', 'id="exin-bf-activate" disabled')}${!state.count ? '<p class="exin-bf-warning">ابتدا محصولات مشمول را انتخاب کنید.</p>' : ''}${!simulation ? '<p class="exin-bf-warning">پیش‌نمایش معتبر دریافت نشده است؛ پیش از فعال‌سازی دوباره بررسی کنید.</p>' : ''}</section>`;
     }
     function simulationMarkup(simulation) {

@@ -59,7 +59,7 @@ Text Domain: exin-black-friday
 == Changelog ==
 
 = 1.3.0 =
-Explicit automatic progressive, descending, rotation, seeded random, wave and hybrid profiles. Regular-to-floor arithmetic, immutable turn cohorts, Flash capacity guard, last-day policies and paged previews reuse the existing price/restore/scheduler paths. Additive schema 5 leaves existing manual campaigns untouched.
+Explicit automatic progressive, descending, rotation, seeded random, wave and hybrid profiles. Regular-to-floor arithmetic, immutable turn cohorts, Flash capacity guard, last-day policies and paged previews reuse the existing price/restore/scheduler paths. Independent automatic duration derives stage counts (7 days / 5 minutes = 2016). Lazy next-boundary scheduling and bounded previews avoid prebuilt stage/product jobs. Schema 6 widens the turn stage column and leaves existing manual campaigns untouched.
 
 
 = 1.2.2 =

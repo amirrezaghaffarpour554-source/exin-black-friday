@@ -102,7 +102,7 @@ final class PriceProcessor {
 				if ( null !== $stage && $stage !== $day ) {
 					return 'stage_changed';
 				}
-				if ( $day < 0 || $day >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+				if ( $day < 0 || $day >= DiscountPlan::stage_count( $campaign ) ) {
 					return 'skipped';
 				}
 				$item = $this->repo->item( $campaign_id, $product_id );

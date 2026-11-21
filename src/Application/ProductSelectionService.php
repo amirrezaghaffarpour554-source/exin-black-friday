@@ -82,7 +82,15 @@ final class ProductSelectionService {
 				? $existing['floor_price']
 				: BulkSelectionService::resolve_floor( $this->repo, $campaign, $product_id, $base, $options['floor_policy'], (int) ( $options['source_campaign_id'] ?? 0 ) );
 		}
-		$schedule = DiscountPlan::schedule( $base, $floor, $campaign );
+		$schedule = array();
+		if ( DiscountPlan::automatic( $campaign ) ) {
+			$count = min( 12, DiscountPlan::stage_count( $campaign ) );
+			for ( $stage = 0; $stage < $count; ++$stage ) {
+				$schedule[] = DiscountPlan::automatic_price( $base, $floor, $campaign, $stage, $product_id );
+			}
+		} else {
+			$schedule = DiscountPlan::schedule( $base, $floor, $campaign );
+		}
 		return array_merge(
 			$this->presentation( $product ),
 			array(
@@ -290,7 +298,7 @@ final class ProductSelectionService {
 							}
 							$preview                   = $this->preview( $campaign_id, $product_id, (string) ( $data['floor_price'] ?? $item['floor_price'] ), $data );
 							$changes['floor_price']    = $preview['floor_price'];
-							$changes['schedule']       = $preview['schedule'];
+							$changes['schedule']       = DiscountPlan::automatic( $campaign ) ? array() : $preview['schedule'];
 							$changes['floor_override'] = isset( $data['floor_override'] ) ? (int) (bool) $data['floor_override'] : ( isset( $data['floor_price'] ) || array_key_exists( $product_id, $data['floor_policy']['floors'] ?? array() ) ? 1 : (int) ( $item['floor_override'] ?? 0 ) );
 						}
 						if ( isset( $changes['priority'] ) ) {

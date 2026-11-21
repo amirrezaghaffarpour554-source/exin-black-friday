@@ -18,6 +18,9 @@ final class DiscountPlan {
 	/** Maximum supported span in minutes, matching 366 campaign days. */
 	private const MAX_MINUTES = 527040;
 
+	/** Maximum automatic starts, including an exact last-day boundary. */
+	public const MAX_AUTO_STAGES = 105409;
+
 	/**
 	 * Bounded configuration cache; never product prices.
 	 *
@@ -125,7 +128,8 @@ final class DiscountPlan {
 		}
 		if ( self::automatic( $campaign ) ) {
 			$result = array();
-			foreach ( self::boundaries( $campaign ) as $step => $boundary ) {
+			$count  = self::stage_count( $campaign );
+			for ( $step = 0; $step < $count; ++$step ) {
 				$result[] = self::automatic_price( $base, $floor, $campaign, $step );
 			} return $result;
 		}
@@ -167,10 +171,18 @@ final class DiscountPlan {
 		if ( ! isset( $campaign['settings']['discount_plan'] ) ) {
 			return Timeline::boundaries( $campaign['start_utc'], (int) $campaign['days'], $campaign['timezone'] );
 		}
+		if ( self::automatic( $campaign ) ) {
+			$result = array();
+			$count  = self::stage_count( $campaign );
+			for ( $stage = 0; $stage < $count; ++$stage ) {
+				$result[] = self::stage_start( $campaign, $stage );
+			}
+			return $result;
+		}
 		$plan = self::plan( $campaign );
 		if ( 'daily' === $plan['interval'] ) {
 			$result = Timeline::boundaries( $campaign['start_utc'], $plan['steps'], $campaign['timezone'] );
-			return self::last_boundary( $campaign, $result );
+			return $result;
 		}
 		// Validate the same IANA timezone and canonical start as legacy campaigns.
 		Timeline::boundaries( $campaign['start_utc'], 1, $campaign['timezone'] );
@@ -180,11 +192,11 @@ final class DiscountPlan {
 			$minutes  = 'custom' === $plan['mode'] ? $plan['points'][ $step ]['offset_minutes'] : $step * $plan['interval_minutes'];
 			$result[] = $start->add( new DateInterval( 'PT' . $minutes . 'M' ) )->format( 'Y-m-d H:i:s' );
 		}
-		return self::last_boundary( $campaign, $result );
+		return $result;
 	}
 
 	/**
-	 * Compute the end after the final stage's configured interval.
+	 * Compute the independent automatic end or the existing manual plan end.
 	 *
 	 * @param array $campaign Campaign record.
 	 * @return string Canonical UTC end.
@@ -194,7 +206,7 @@ final class DiscountPlan {
 			return Timeline::end( $campaign['start_utc'], (int) $campaign['days'], $campaign['timezone'] );
 		}
 		$plan = self::plan( $campaign );
-		if ( 'daily' === $plan['interval'] ) {
+		if ( ! self::automatic( $campaign ) && 'daily' === $plan['interval'] ) {
 			return Timeline::end( $campaign['start_utc'], $plan['steps'], $campaign['timezone'] );
 		}
 		Timeline::boundaries( $campaign['start_utc'], 1, $campaign['timezone'] );
@@ -213,6 +225,17 @@ final class DiscountPlan {
 		if ( ! isset( $campaign['settings']['discount_plan'] ) ) {
 			return Timeline::day_index( $campaign, $now );
 		}
+		if ( self::automatic( $campaign ) ) {
+			$context = self::automatic_context( $campaign );
+			if ( $now < $context['start'] ) {
+				return -1;
+			}
+			if ( $now >= $context['end'] ) {
+				return $context['count'];
+			}
+			$index = min( $context['plan']['steps'] - 1, intdiv( $now - $context['start'], $context['seconds'] ) );
+			return $index + ( null !== $context['extra'] && $now >= $context['start'] + $context['extra'] ? 1 : 0 );
+		}
 		$boundaries = self::boundaries( $campaign );
 		$last       = count( $boundaries ) - 1;
 		$end        = Timeline::parse_utc( $campaign['end_utc'] ?? self::end( $campaign ) )->getTimestamp();
@@ -228,6 +251,40 @@ final class DiscountPlan {
 			}
 		}
 		return -1;
+	}
+
+	/**
+	 * Count stages without materializing automatic boundaries.
+	 *
+	 * @param array $campaign Campaign.
+	 * @return int Stage count, including an enabled last-day start.
+	 */
+	public static function stage_count( array $campaign ): int {
+		return self::automatic( $campaign ) ? self::automatic_context( $campaign )['count'] : count( self::boundaries( $campaign ) );
+	}
+
+	/**
+	 * Resolve one UTC start with constant memory for automatic plans.
+	 *
+	 * @param array $campaign Campaign.
+	 * @param int   $stage Zero-based stage.
+	 * @return string Canonical UTC start.
+	 * @throws InvalidArgumentException When the stage is out of range.
+	 */
+	public static function stage_start( array $campaign, int $stage ): string {
+		if ( ! self::automatic( $campaign ) ) {
+			$boundaries = self::boundaries( $campaign );
+			if ( ! isset( $boundaries[ $stage ] ) ) {
+				throw new InvalidArgumentException( 'invalid_discount_stage' );
+			}
+			return $boundaries[ $stage ];
+		}
+		$c = self::automatic_context( $campaign );
+		if ( $stage < 0 || $stage >= $c['count'] ) {
+			throw new InvalidArgumentException( 'invalid_discount_stage' );
+		}
+		$offset = null !== $c['extra'] && $stage === $c['extra_index'] ? $c['extra'] : ( $stage - ( null !== $c['extra'] && $stage > $c['extra_index'] ? 1 : 0 ) ) * $c['seconds'];
+		return gmdate( 'Y-m-d H:i:s', $c['start'] + $offset );
 	}
 
 	/**
@@ -252,10 +309,13 @@ final class DiscountPlan {
 		$interval = $input['interval'] ?? 'daily';
 		if ( ! in_array( $interval, array( 'daily', 'hourly', 'flash' ), true ) ) {
 			throw new InvalidArgumentException( 'invalid_automatic_interval' ); }
-		$steps   = self::integer( $input['steps'] ?? 7, 1, 366 );
 		$minutes = 'daily' === $interval ? 1440 : self::integer( $input['interval_minutes'] ?? ( 'hourly' === $interval ? 60 : 5 ), 'flash' === $interval ? 5 : 60, 1440 );
 		if ( 'hourly' === $interval && 0 !== $minutes % 60 ) {
 			throw new InvalidArgumentException( 'automatic_hour_interval_must_be_whole_hours' ); }
+		// Previously saved automatic plans without a duration retain their span.
+		$duration = $input['duration_minutes'] ?? ( isset( $input['duration_days'] ) ? self::integer( $input['duration_days'], 1, 366 ) * 1440 : ( isset( $input['steps'] ) ? self::integer( $input['steps'], 1, self::MAX_AUTO_STAGES ) * $minutes : 10080 ) );
+		$duration = self::integer( $duration, 1, self::MAX_MINUTES );
+		$steps    = intdiv( $duration + $minutes - 1, $minutes );
 		$min      = self::amount( $input['intensity_min'] ?? '10', 2 );
 		$max      = self::amount( $input['intensity_max'] ?? '100', 2 );
 		$base_max = self::amount( $input['base_max'] ?? '40', 2 );
@@ -278,7 +338,7 @@ final class DiscountPlan {
 			'interval'         => $interval,
 			'steps'            => $steps,
 			'interval_minutes' => $minutes,
-			'duration_minutes' => $steps * $minutes,
+			'duration_minutes' => $duration,
 			'initial_discount' => '0.00',
 			'final_discount'   => '0.00',
 			'reach_floor'      => false,
@@ -287,8 +347,8 @@ final class DiscountPlan {
 			'intensity_max'    => $max,
 			'base_max'         => $base_max,
 			'curve'            => $curve,
-			'bands'            => self::integer( $input['bands'] ?? 3, 2, 366 ),
-			'wave_period'      => self::integer( $input['wave_period'] ?? 4, 2, 366 ),
+			'bands'            => self::integer( $input['bands'] ?? 3, 2, self::MAX_AUTO_STAGES ),
+			'wave_period'      => self::integer( $input['wave_period'] ?? 4, 2, self::MAX_AUTO_STAGES ),
 			'selector'         => $selector,
 			'selection_mode'   => $size_mode,
 			'selection_value'  => self::integer( $input['selection_value'] ?? 25, 1, 'percent' === $size_mode ? 100 : 50000 ),
@@ -313,12 +373,12 @@ final class DiscountPlan {
 	 * @throws InvalidArgumentException When the financial inputs are invalid.
 	 */
 	public static function automatic_price( string $base, string $floor, array $campaign, int $stage, int $product_id = 0, bool $selected = true, bool $remaining = true, bool $in_stock = true ): string {
-		$p          = self::automatic_context( $campaign )['plan'];
-		$precision  = self::precision( $campaign );
-		$b          = Money::parse( $base, $precision );
-		$f          = Money::parse( $floor, $precision );
-		$boundaries = self::automatic_context( $campaign )['boundaries'];
-		$steps      = count( $boundaries );
+		$context   = self::automatic_context( $campaign );
+		$p         = $context['plan'];
+		$precision = self::precision( $campaign );
+		$b         = Money::parse( $base, $precision );
+		$f         = Money::parse( $floor, $precision );
+		$steps     = $context['count'];
 		if ( $b <= 0 || $f <= 0 || $f > $b || $stage < 0 || $stage >= $steps ) {
 			throw new InvalidArgumentException( 'invalid_automatic_base_floor_or_stage' ); }
 		if ( ! $in_stock ) {
@@ -356,8 +416,8 @@ final class DiscountPlan {
 			default:
 				$intensity = $progress;
 		}
-		$last_start = max( Timeline::parse_utc( $campaign['start_utc'] )->getTimestamp(), Timeline::parse_utc( $campaign['end_utc'] )->getTimestamp() - 86400 );
-		if ( Timeline::parse_utc( $boundaries[ $stage ] )->getTimestamp() >= $last_start && ( 'all_floor' === $p['last_day'] || ( 'remaining_floor' === $p['last_day'] && $remaining ) ) ) {
+		$last_start = max( $context['start'], $context['end'] - 86400 );
+		if ( Timeline::parse_utc( self::stage_start( $campaign, $stage ) )->getTimestamp() >= $last_start && ( 'all_floor' === $p['last_day'] || ( 'remaining_floor' === $p['last_day'] && $remaining ) ) ) {
 			$intensity = 10000; }
 		$price = self::subtract_ratio( $b, IntegerMath::multiply( (string) ( $b - $f ), (string) $intensity ), '10000', $campaign['rounding'] ?? 'half_up' );
 		return Money::format( max( $f, min( $b, $price ) ), $precision );
@@ -368,7 +428,8 @@ final class DiscountPlan {
 	 * Cache only immutable per-request plan context, never mutable stock or prices.
 	 *
 	 * @param array $campaign Campaign.
-	 * @return array Validated plan and boundaries.
+	 * @return array Validated plan and scalar timing context.
+	 * @throws InvalidArgumentException When the stored end precedes a stage.
 	 */
 	private static function automatic_context( array $campaign ): array {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Pure domain also runs outside WordPress.
@@ -376,30 +437,27 @@ final class DiscountPlan {
 		if ( ! isset( self::$automatic_cache[ $key ] ) ) {
 			if ( count( self::$automatic_cache ) >= 8 ) {
 				self::$automatic_cache = array(); }
+			$plan = self::plan( $campaign );
+			Timeline::boundaries( $campaign['start_utc'], 1, $campaign['timezone'] );
+			$start   = Timeline::parse_utc( $campaign['start_utc'] )->getTimestamp();
+			$end     = isset( $campaign['end_utc'] ) ? Timeline::parse_utc( $campaign['end_utc'] )->getTimestamp() : $start + $plan['duration_minutes'] * 60;
+			$seconds = $plan['interval_minutes'] * 60;
+			if ( $end <= $start + ( $plan['steps'] - 1 ) * $seconds ) {
+				throw new InvalidArgumentException( 'discount_end_must_follow_final_stage' );
+			}
+			$last                          = $end - 86400 - $start;
+			$extra                         = in_array( $plan['last_day'], array( 'all_floor', 'remaining_floor' ), true ) && $last > 0 && 0 !== $last % $seconds ? $last : null;
 			self::$automatic_cache[ $key ] = array(
-				'plan'       => self::plan( $campaign ),
-				'boundaries' => self::boundaries( $campaign ),
+				'plan'        => $plan,
+				'start'       => $start,
+				'end'         => $end,
+				'seconds'     => $seconds,
+				'extra'       => $extra,
+				'extra_index' => null === $extra ? null : intdiv( $extra + $seconds - 1, $seconds ),
+				'count'       => $plan['steps'] + ( null === $extra ? 0 : 1 ),
 			);
 		}
 		return self::$automatic_cache[ $key ];
-	}
-
-	/**
-	 * Add an exact last-day boundary only for explicitly enabled automatic policies.
-	 *
-	 * @param array $campaign Campaign record.
-	 * @param array $boundaries Normal stage starts.
-	 * @return array Sorted, unique stage starts.
-	 */
-	private static function last_boundary( array $campaign, array $boundaries ): array {
-		if ( self::automatic( $campaign ) && in_array( $campaign['settings']['discount_plan']['last_day'] ?? 'disabled', array( 'all_floor', 'remaining_floor' ), true ) ) {
-			$last = Timeline::parse_utc( self::end( $campaign ) )->getTimestamp() - 86400;
-			if ( $last > Timeline::parse_utc( $campaign['start_utc'] )->getTimestamp() ) {
-				$boundaries[] = gmdate( 'Y-m-d H:i:s', $last );
-				$boundaries   = array_values( array_unique( $boundaries ) );
-				sort( $boundaries ); }
-		}
-		return $boundaries;
 	}
 
 	/**

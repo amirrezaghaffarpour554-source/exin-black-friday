@@ -293,7 +293,7 @@ final class AdminController {
 		$campaign = $this->required_campaign( $id );
 		$data     = $this->body( $request );
 		if ( DiscountPlan::automatic( $campaign ) && ! isset( $data['filters'] ) ) {
-			return ( new \Exin\BlackFriday\Application\AutomaticSelection( $this->repository ) )->preview( $campaign, $this->integer( $data['page'] ?? 1, 1, 100000 ), $this->integer( $data['stage_start'] ?? 0, 0, 366 ) ); }
+			return ( new \Exin\BlackFriday\Application\AutomaticSelection( $this->repository ) )->preview( $campaign, $this->integer( $data['page'] ?? 1, 1, 100000 ), $this->integer( $data['stage_start'] ?? 0, 0, DiscountPlan::MAX_AUTO_STAGES - 1 ) ); }
 		if ( isset( $data['filters'] ) ) {
 			$result = ( new BulkSelectionService( $this->repository ) )->preview( $id, $this->selection_filters( $data['filters'] ), $this->floor_policy( $data['floor_policy'] ?? array( 'mode' => 'none' ), $this->amount_unit( $data ) ) );
 		} else {
@@ -331,12 +331,23 @@ final class AdminController {
 			} while ( 100 === $row_count );
 			$result['warnings'] = array_values( array_unique( $result['warnings'] ) );
 		}
+		if ( DiscountPlan::automatic( $campaign ) ) {
+			$result['stage_start']  = 0;
+			$result['total_stages'] = DiscountPlan::stage_count( $campaign );
+			$stages                 = array();
+			$stage_end              = min( 12, $result['total_stages'] );
+			for ( $stage = 0; $stage < $stage_end; ++$stage ) {
+				$stages[] = DiscountPlan::stage_start( $campaign, $stage );
+			}
+		} else {
+			$stages = DiscountPlan::boundaries( $campaign );
+		}
 		return array_merge(
 			$result,
 			array(
 				'start_utc' => $campaign['start_utc'],
 				'end_utc'   => $campaign['end_utc'],
-				'stages'    => DiscountPlan::boundaries( $campaign ),
+				'stages'    => $stages,
 			)
 		);
 	}
@@ -1108,18 +1119,21 @@ final class AdminController {
 				unset( $point );
 			}
 			if ( DiscountPlan::automatic( array( 'settings' => array( 'discount_plan' => $plan ) ) ) ) {
+				if ( ! isset( $plan['duration_minutes'] ) && ! isset( $plan['duration_days'] ) ) {
+					$plan['duration_minutes'] = $days * 1440;
+				}
 				foreach ( array( 'intensity_min', 'intensity_max', 'base_max' ) as $field ) {
 					if ( isset( $plan[ $field ] ) ) {
 						$plan[ $field ] = MoneyInput::normalize( $this->text( $plan[ $field ] ), 2 ); }
 				}
-				foreach ( array( 'steps', 'interval_minutes', 'selection_value', 'bands', 'wave_period' ) as $field ) {
+				foreach ( array( 'steps', 'duration_minutes', 'duration_days', 'interval_minutes', 'selection_value', 'bands', 'wave_period' ) as $field ) {
 					if ( isset( $plan[ $field ] ) ) {
 						$plan[ $field ] = $this->integer( MoneyInput::normalize( $this->text( $plan[ $field ] ), 0 ), 1, 527040 ); }
 				}
 			}
 			$valid['settings']['discount_plan']        = DiscountPlan::normalize( $plan, wc_get_price_decimals() );
 			$valid['settings']['existing_sale_policy'] = $this->choice( $settings['existing_sale_policy'] ?? 'preserve', array( 'reject', 'preserve' ) );
-			$valid['days']                             = $valid['settings']['discount_plan']['steps'];
+			$valid['days']                             = DiscountPlan::automatic( $valid ) ? (int) ceil( $valid['settings']['discount_plan']['duration_minutes'] / 1440 ) : $valid['settings']['discount_plan']['steps'];
 			$valid['end_utc']                          = DiscountPlan::end( $valid );
 		}
 		return $valid;

@@ -103,11 +103,7 @@ final class AutomaticSelection {
 		// The remaining set is fixed at the beginning of the last day, not depleted
 		// differently depending on whether its floor price came from a special slot.
 		$start = max( strtotime( $campaign['start_utc'] . ' UTC' ), strtotime( $campaign['end_utc'] . ' UTC' ) - DAY_IN_SECONDS );
-		foreach ( DiscountPlan::boundaries( $campaign ) as $index => $boundary ) {
-			if ( strtotime( $boundary . ' UTC' ) >= $start ) {
-				$stage = min( $stage, $index );
-				break; }
-		}
+		$stage = min( $stage, DiscountPlan::index( $campaign, $start ) );
 		return ! $wpdb->get_var( $wpdb->prepare( 'SELECT product_id FROM %i WHERE campaign_id=%d AND version=%d AND product_id=%d AND stage<%d AND applied=1 LIMIT 1', $wpdb->prefix . 'exin_bf_turns', $campaign['id'], $campaign['version'], $product_id, $stage ) );
 	}
 
@@ -151,7 +147,7 @@ final class AutomaticSelection {
 		if ( 'flash' === $p['interval'] && $p['interval_minutes'] < $minimum ) {
 			throw new \DomainException( 'automatic_flash_capacity_exceeded' ); }
 		$size = 'count' === $p['selection_mode'] ? min( $count, $p['selection_value'] ) : (int) ceil( $count * $p['selection_value'] / 100 );
-		if ( in_array( $p['mode'], array( 'auto_rotation', 'auto_random', 'auto_hybrid' ), true ) && $size * count( DiscountPlan::boundaries( $campaign ) ) > 250000 ) {
+		if ( in_array( $p['mode'], array( 'auto_rotation', 'auto_random', 'auto_hybrid' ), true ) && ( $size + 1 ) * DiscountPlan::stage_count( $campaign ) > 250000 ) {
 			throw new \DomainException( 'automatic_cohort_capacity_exceeded' ); }
 	}
 
@@ -165,15 +161,17 @@ final class AutomaticSelection {
 	 */
 	public function preview( array $campaign, int $page, int $stage_start ): array {
 		global $wpdb;
-		$boundaries  = DiscountPlan::boundaries( $campaign );
+		$count       = DiscountPlan::stage_count( $campaign );
+		$boundaries  = array();
 		$page        = max( 1, $page );
-		$stage_start = max( 0, min( count( $boundaries ) - 1, $stage_start ) );
+		$stage_start = max( 0, min( $count - 1, $stage_start ) );
 		$rows        = $this->repo->items( $campaign['id'], 10, ( $page - 1 ) * 10 );
 		$ids         = array_column( $rows, 'product_id' );
 		$samples     = array();
 		$selections  = array();
-		$stage_end   = min( count( $boundaries ), $stage_start + 12 );
+		$stage_end   = min( $count, $stage_start + 12 );
 		for ( $stage = $stage_start; $stage < $stage_end; ++$stage ) {
+			$boundaries[]         = DiscountPlan::stage_start( $campaign, $stage );
 			$selections[ $stage ] = array();
 			if ( ! $ids || ! in_array( $campaign['settings']['discount_plan']['mode'], array( 'auto_rotation', 'auto_random', 'auto_hybrid' ), true ) ) {
 				continue; }
@@ -203,7 +201,7 @@ final class AutomaticSelection {
 					$schedule[] = $price;
 					$details[]  = array(
 						'stage'            => $stage,
-						'starts_at'        => $boundaries[ $stage ],
+						'starts_at'        => DiscountPlan::stage_start( $campaign, $stage ),
 						'price'            => $price,
 						'discount_percent' => ( new \Exin\BlackFriday\Domain\PricingEngine() )->discount_percent( $item['base_price'], $price, (int) $campaign['settings']['precision'], 2 ),
 						'special'          => $selected,
@@ -227,7 +225,8 @@ final class AutomaticSelection {
 			'page'             => $page,
 			'has_more'         => $page * 10 < $total,
 			'stage_start'      => $stage_start,
-			'next_stage'       => $stage_start + 12 < count( $boundaries ) ? $stage_start + 12 : null,
+			'total_stages'     => $count,
+			'next_stage'       => $stage_start + 12 < $count ? $stage_start + 12 : null,
 			'samples'          => $samples,
 			'rejected_on_page' => $rejected,
 			'warnings'         => array( __( 'پیش‌نمایش بر پایهٔ موجودی و اعضای فعلی است؛ Seed ثابت است. تغییر موجودی یا اعضا می‌تواند نوبت‌های آینده را تغییر دهد؛ نوبت اجراشده دوباره قرعه‌کشی نمی‌شود.', 'exin-black-friday' ) ),
