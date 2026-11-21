@@ -58,8 +58,16 @@ final class Storefront {
 			array(
 				'methods'             => 'GET',
 				'permission_callback' => '__return_true',
-				'callback'            => function () {
-					$campaign = $this->repository->current();
+				'args'                => array(
+					'campaign_id' => array(
+						'type'     => 'integer',
+						'minimum'  => 1,
+						'required' => false,
+					),
+				),
+				'callback'            => function ( \WP_REST_Request $request ) {
+					$requested = $request->get_param( 'campaign_id' );
+					$campaign = $this->repository->display_campaign( null === $requested ? null : (int) $requested );
 					$live = CampaignContext::is_live( $campaign );
 					$response = new \WP_REST_Response(
 						array(
@@ -117,7 +125,19 @@ final class Storefront {
 	 * @return string Escaped presentation markup or component metadata.
 	 */
 	private function render_output( string $kind, array $attributes ): string {
-		$campaign = $this->repository->current();
+		$id = $attributes['campaign_id'] ?? null;
+		if ( null !== $id && ! is_scalar( $id ) ) {
+			return '';
+		}
+		if ( null !== $id && '' !== (string) $id && '0' !== (string) $id ) {
+			if ( ! is_scalar( $id ) || ! ctype_digit( (string) $id ) || false === filter_var( $id, FILTER_VALIDATE_INT, array( 'options' => array( 'min_range' => 1 ) ) ) ) {
+				return '';
+			}
+			$id = (int) $id;
+		} else {
+			$id = null;
+		}
+		$campaign = $this->repository->display_campaign( $id );
 		if ( ! $campaign ) {
 			return '';
 		}
@@ -213,10 +233,10 @@ final class Storefront {
 		$old_post    = $GLOBALS['post'] ?? null;
 		$had_loop    = array_key_exists( 'woocommerce_loop', $GLOBALS );
 		$old_loop    = $GLOBALS['woocommerce_loop'] ?? null;
-		$badge_hook  = function () {
+		$badge_hook  = function () use ( $campaign ) {
 			global $product;
 			if ( $product instanceof \WC_Product ) {
-				echo $this->product_badge( $product ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+				echo $this->product_badge( $product, $campaign ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			}
 		};
 		$stock_hook  = static function () {
@@ -253,7 +273,7 @@ final class Storefront {
 				if ( $product->is_type( 'simple' ) ) {
 					wc_get_template_part( 'content', 'product' );
 				} else {
-					$this->variation_card( $product, $loop['item_tag'] );
+					$this->variation_card( $product, $loop['item_tag'], $campaign );
 				}
 			}
 			woocommerce_product_loop_end();
@@ -326,13 +346,14 @@ final class Storefront {
 	 *
 	 * @param \WC_Product $product Optional WooCommerce product object.
 	 * @param string      $item_tag List-item or div container selected from loop markup.
+	 * @param array       $campaign Campaign whose selected variation is rendered.
 	 * @return void
 	 */
-	private function variation_card( \WC_Product $product, string $item_tag = 'li' ): void {
+	private function variation_card( \WC_Product $product, string $item_tag = 'li', array $campaign = array() ): void {
 		echo 'li' === $item_tag ? '<li ' : '<div ';
 		wc_product_class( 'exin-bf-variation', $product->get_id() );
 		echo '><a href="' . esc_url( $product->get_permalink() ) . '" class="woocommerce-LoopProduct-link woocommerce-loop-product__link">';
-		echo $this->product_badge( $product ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo $this->product_badge( $product, $campaign ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo wp_kses_post( $product->get_image( 'woocommerce_thumbnail', array( 'loading' => 'lazy' ) ) );
 		echo '<h2 class="woocommerce-loop-product__title">' . esc_html( $product->get_name() ) . '</h2><span class="price">' . wp_kses_post( $product->get_price_html() ) . '</span></a>';
 		echo wp_kses_post( wc_get_stock_html( $product ) );
@@ -377,6 +398,7 @@ final class Storefront {
 			'active'    => __( 'کمپین فعال است.', 'exin-black-friday' ),
 			'paused'    => __( 'تغییر قیمت‌ها متوقف شده است.', 'exin-black-friday' ),
 			'completed' => __( 'کمپین پایان یافته است.', 'exin-black-friday' ),
+			'archived'  => __( 'کمپین بایگانی شده است.', 'exin-black-friday' ),
 			'failed'    => __( 'کمپین در حال حاضر فعال نیست.', 'exin-black-friday' ),
 		);
 		$label  = $labels[ $campaign['status'] ] ?? $labels['failed'];
@@ -394,26 +416,28 @@ final class Storefront {
 	 * @return string Escaped presentation markup or component metadata.
 	 */
 	private function badge( array $campaign, int $product_id ): string {
-		if ( ! CampaignContext::eligible_item( $this->repository->item( (int) $campaign['id'], $product_id ) ) ) {
+		if ( ! ( new Eligibility( $this->repository ) )->enrolled( $campaign, $product_id ) ) {
 			return '';
 		}
 		$product = wc_get_product( $product_id );
 		if ( ! $product || ! CampaignContext::purchasable_product( $product ) ) {
 			return '';
 		}
-		return $this->product_badge( $product );
+		return $this->product_badge( $product, $campaign );
 	}
 
 	/**
 	 * Render the current discount percentage for one WooCommerce product.
 	 *
 	 * @param \WC_Product $product Optional WooCommerce product object.
+	 * @param array       $campaign Campaign whose badge is rendered.
 	 * @return string Escaped presentation markup or component metadata.
 	 */
-	private function product_badge( \WC_Product $product ): string {
-		$label   = __( 'بلک فرایدی EXIN', 'exin-black-friday' );
-		$regular = $product->get_regular_price();
-		$current = $product->get_price();
+	private function product_badge( \WC_Product $product, array $campaign = array() ): string {
+		$label         = 'general' === ( $campaign['settings']['campaign_type'] ?? '' ) ? __( 'تخفیف EXIN', 'exin-black-friday' ) : __( 'بلک فرایدی EXIN', 'exin-black-friday' );
+		$default_label = $label;
+		$regular       = $product->get_regular_price();
+		$current       = $product->get_price();
 		try {
 			if ( '' !== $regular && '' !== $current && $product->is_on_sale() ) {
 				$percent = ( new PricingEngine() )->discount_percent( (string) $regular, (string) $current, wc_get_price_decimals(), 0 );
@@ -421,7 +445,7 @@ final class Storefront {
 			}
 		} catch ( \Throwable $error ) {
 			// Invalid external display-price filters cannot create a fabricated percentage.
-			$label = __( 'بلک فرایدی EXIN', 'exin-black-friday' );
+			$label = $default_label;
 		}
 		return '<span class="exin-bf-badge">' . esc_html( $label ) . '</span>';
 	}

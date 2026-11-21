@@ -61,7 +61,7 @@ final class Shipping {
 	 * @return array Packages with nonpublic cache-version and allocation context.
 	 */
 	public function packages( array $packages ): array {
-		$campaign = $this->repository->current();
+		$campaign = $this->select_campaign( $packages );
 		$stamp    = $this->stamp( $campaign );
 		$entries  = array();
 		try {
@@ -92,8 +92,9 @@ final class Shipping {
 		// old full-cap rate cannot coexist with a newly calculated shared rate.
 		$allocation               = hash( 'sha256', wp_json_encode( array( $stamp, $entries ) ) );
 		self::$contexts[ $stamp ] = array(
-			'allocation' => $allocation,
-			'entries'    => $entries,
+			'campaign_id' => $campaign ? (int) $campaign['id'] : 0,
+			'allocation'  => $allocation,
+			'entries'     => $entries,
 		);
 		foreach ( $packages as $key => &$package ) {
 			$package['exin_bf_rate_version']       = $stamp;
@@ -113,7 +114,11 @@ final class Shipping {
 	 */
 	public function rates( array $rates, array $package ): array {
 		$rates    = $this->original_rates( $rates );
-		$campaign = $this->repository->current();
+		$stamp    = (string) ( $package['exin_bf_rate_version'] ?? '' );
+		$context  = self::$contexts[ $stamp ] ?? null;
+		$campaign = is_array( $context ) && ! empty( $context['campaign_id'] )
+			? $this->repository->get( (int) $context['campaign_id'] )
+			: $this->select_campaign( array( $package ) );
 		if ( ! CampaignContext::is_live( $campaign ) || empty( $campaign['settings']['free_shipping'] ) ) {
 			return $rates;
 		}
@@ -183,10 +188,36 @@ final class Shipping {
 	/**
 	 * Return clear administrative warnings without exposing customer information.
 	 *
+	 * @param int|null $campaign_id Optional selected campaign ID.
 	 * @return string[] Localized warnings for the authenticated diagnostics screen.
 	 */
-	public function warnings(): array {
-		$campaign = $this->repository->current();
+	public function warnings( ?int $campaign_id = null ): array {
+		$campaigns = null === $campaign_id ? $this->repository->live_campaigns() : array( $this->repository->get( $campaign_id ) );
+		if ( null === $campaign_id ) {
+			$current = $this->repository->current();
+			if ( $current ) {
+				$campaigns[] = $current;
+			}
+		}
+		$warnings = array();
+		$seen     = array();
+		foreach ( $campaigns as $campaign ) {
+			if ( ! $campaign || isset( $seen[ $campaign['id'] ] ) || empty( $campaign['settings']['free_shipping'] ) ) {
+				continue;
+			}
+			$seen[ $campaign['id'] ] = true;
+			$warnings                = array_merge( $warnings, $this->campaign_warnings( $campaign ) );
+		}
+		return array_values( array_unique( $warnings ) );
+	}
+
+	/**
+	 * Read policy warnings for one explicitly selected campaign.
+	 *
+	 * @param array $campaign Server-loaded campaign.
+	 * @return string[] Localized warning messages.
+	 */
+	private function campaign_warnings( array $campaign ): array {
 		if ( ! $campaign || empty( $campaign['settings']['free_shipping'] ) ) {
 			return array();
 		}
@@ -231,6 +262,31 @@ final class Shipping {
 			'warnings' => $this->warnings(),
 			'policy'   => 'cart_cap_equal_package_shares_ex_tax',
 		);
+	}
+
+	/**
+	 * Select one qualifying policy for the entire cart, never one cap per campaign.
+	 *
+	 * @param array $packages All current server-owned cart packages.
+	 * @return array|null Highest-priority eligible shipping campaign.
+	 */
+	private function select_campaign( array $packages ): ?array {
+		foreach ( $this->repository->live_campaigns() as $campaign ) {
+			if ( empty( $campaign['settings']['free_shipping'] ) ) {
+				continue;
+			}
+			try {
+				$config = $this->configuration( $campaign );
+				foreach ( $packages as $package ) {
+					if ( is_array( $package ) && $this->qualifies( $campaign, $package, $config['threshold'], $config['precision'] ) ) {
+						return $campaign;
+					}
+				}
+			} catch ( \Throwable $error ) {
+				$this->record_warning( $campaign, 'configuration_invalid' );
+			}
+		}
+		return null;
 	}
 
 	/**

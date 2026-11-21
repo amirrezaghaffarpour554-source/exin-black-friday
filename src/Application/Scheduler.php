@@ -7,12 +7,12 @@
 
 namespace Exin\BlackFriday\Application;
 
-use Exin\BlackFriday\Domain\Timeline;
+use Exin\BlackFriday\Domain\DiscountPlan;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
 use Exin\BlackFriday\Infrastructure\LockManager;
 use Exin\BlackFriday\Infrastructure\Logger;
 
-/** Action Scheduler orchestration; every job recalculates the current calendar day. */
+/** Action Scheduler stage jobs with a watchdog for delayed-operation recovery. */
 final class Scheduler {
 	public const GROUP    = 'exin-black-friday';
 	private const BATCH   = 25;
@@ -34,7 +34,9 @@ final class Scheduler {
 	 */
 	public function register(): void {
 		add_action( 'exin_bf_tick', array( $this, 'tick' ) );
-		add_action( 'exin_bf_batch', array( $this, 'batch' ), 10, 4 );
+		add_action( 'exin_bf_stage', array( $this, 'stage' ), 10, 3 );
+		add_action( 'exin_bf_price_released', array( $this, 'released' ) );
+		add_action( 'exin_bf_batch', array( $this, 'batch' ), 10, 5 );
 		add_action( 'exin_bf_retry', array( $this, 'retry' ), 10, 5 );
 		$this->processor->register();
 	}
@@ -45,7 +47,11 @@ final class Scheduler {
 	 * @return void Operation result.
 	 */
 	public function recover(): void {
-		if ( ! function_exists( 'as_schedule_recurring_action' ) ) {
+		if ( ! function_exists( 'as_schedule_recurring_action' ) || ! function_exists( 'as_has_scheduled_action' ) ) {
+			return;
+		}
+		if ( class_exists( \ActionScheduler::class ) && method_exists( \ActionScheduler::class, 'is_initialized' ) && ! \ActionScheduler::is_initialized() ) {
+			add_action( 'action_scheduler_init', array( $this, 'recover' ), 20 );
 			return;
 		}
 		try {
@@ -53,7 +59,9 @@ final class Scheduler {
 				'scheduler-recover',
 				function () {
 					if ( ! as_has_scheduled_action( 'exin_bf_tick', array(), self::GROUP ) ) {
-						as_schedule_recurring_action( time() + 5, 60, 'exin_bf_tick', array(), self::GROUP, true );
+						if ( ! as_schedule_recurring_action( time() + 5, 60, 'exin_bf_tick', array(), self::GROUP, true ) ) {
+							throw new \RuntimeException( 'action_scheduler_watchdog_schedule_failed' );
+						}
 					}
 				}
 			);
@@ -80,7 +88,7 @@ final class Scheduler {
 		if ( ! function_exists( 'as_unschedule_all_actions' ) ) {
 			return;
 		}
-		foreach ( array( 'exin_bf_tick', 'exin_bf_batch', 'exin_bf_retry' ) as $hook ) {
+		foreach ( array( 'exin_bf_tick', 'exin_bf_stage', 'exin_bf_batch', 'exin_bf_retry' ) as $hook ) {
 			as_unschedule_all_actions( $hook, null, self::GROUP );
 		}
 	}
@@ -122,10 +130,10 @@ final class Scheduler {
 						if ( ! in_array( $status, array( 'draft', 'scheduled' ), true ) || $this->repo->count_items( $campaign_id ) < 1 ) {
 							throw new \DomainException( 'campaign_cannot_start' );
 						}
-						if ( ( new Timeline() )->day_index( $campaign, time() ) < 0 ) {
+						if ( DiscountPlan::index( $campaign, time() ) < 0 ) {
 							throw new \DomainException( 'campaign_start_is_in_future' );
 						}
-						if ( ( new Timeline() )->day_index( $campaign, time() ) >= $campaign['days'] ) {
+						if ( DiscountPlan::index( $campaign, time() ) >= count( DiscountPlan::boundaries( $campaign ) ) ) {
 							throw new \DomainException( 'campaign_already_ended' );
 						}
 						$status                 = 'active';
@@ -138,10 +146,10 @@ final class Scheduler {
 						$status = 'paused';
 						break;
 					case 'resume':
-						if ( 'paused' !== $status || ( new Timeline() )->day_index( $campaign, time() ) >= $campaign['days'] ) {
+						if ( 'paused' !== $status || DiscountPlan::index( $campaign, time() ) >= count( DiscountPlan::boundaries( $campaign ) ) ) {
 							throw new \DomainException( 'campaign_cannot_resume' );
 						}
-						$status = ( new Timeline() )->day_index( $campaign, time() ) < 0 ? 'scheduled' : 'active';
+						$status = DiscountPlan::index( $campaign, time() ) < 0 ? 'scheduled' : 'active';
 						break;
 					case 'restore':
 						$status                = 'paused';
@@ -167,6 +175,7 @@ final class Scheduler {
 					)
 				);
 				$this->recover();
+				$this->plan_next( $this->repo->get( $campaign_id ) );
 				if ( 'active' === $status || ! empty( $settings['restoring'] ) ) {
 					$this->enqueue_batch( $campaign_id, $version, 0, ! empty( $settings['restoring'] ) ? 'restore' : 'apply' );
 				}
@@ -185,60 +194,7 @@ final class Scheduler {
 				'watchdog',
 				function () {
 					foreach ( $this->repo->runnable() as $campaign ) {
-						$id = $campaign['id'];
-						try {
-							( new LockManager() )->run(
-								'campaign:' . $id,
-								function () use ( $id ) {
-									$campaign = $this->repo->get( $id );
-									$settings = $campaign['settings'];
-									if ( ! empty( $settings['restoring'] ) ) {
-										$this->enqueue_batch( $id, $campaign['version'], 0, 'restore' );
-										return;
-									}
-									if ( ! in_array( $campaign['status'], array( 'active', 'scheduled', 'paused' ), true ) ) {
-										return;
-									}
-									$day = ( new Timeline() )->day_index( $campaign, time() );
-									if ( $day >= $campaign['days'] ) {
-										// Natural end restores even a paused campaign's already owned prices.
-										$settings['restoring'] = true;
-										$version               = $campaign['version'] + 1;
-										$this->repo->save(
-											$id,
-											array(
-												'status'   => 'paused',
-												'version'  => $version,
-												'settings' => $settings,
-											)
-										);
-										$this->enqueue_batch( $id, $version, 0, 'restore' );
-									} elseif ( 'scheduled' === $campaign['status'] && $day >= 0 ) {
-										$settings['started_at'] = $settings['started_at'] ?? gmdate( 'Y-m-d H:i:s' );
-										$this->repo->save(
-											$id,
-											array(
-												'status'   => 'active',
-												'settings' => $settings,
-											)
-										);
-										$this->enqueue_batch( $id, $campaign['version'], 0, 'apply' );
-									} elseif ( 'active' === $campaign['status'] && $day >= 0 ) {
-										$this->enqueue_batch( $id, $campaign['version'], 0, 'apply' );
-									}
-								}
-							);
-						} catch ( \Throwable $error ) {
-							$this->logger->log(
-								'error',
-								'watchdog_campaign',
-								array(
-									'campaign_id' => $id,
-									'error_code'  => $this->code( $error ),
-									'result'      => 'retry_next_tick',
-								)
-							);
-						}
+						$this->stage( $campaign['id'], $campaign['version'] );
 					}
 					$current = $this->repo->current();
 					$this->logger->prune( (int) ( $current['settings']['retention_days'] ?? 90 ) );
@@ -258,38 +214,268 @@ final class Scheduler {
 	}
 
 	/**
+	 * Supervise one campaign at an exact stage boundary or during catch-up.
+	 *
+	 * @param int $campaign_id Campaign identifier.
+	 * @param int $version Expected settings version.
+	 * @param int $boundary Scheduled timestamp, included in action uniqueness.
+	 * @return void
+	 */
+	public function stage( int $campaign_id, int $version, int $boundary = 0 ): void {
+		if ( $boundary > time() ) {
+			return;
+		}
+		try {
+			( new LockManager() )->run(
+				'campaign:' . $campaign_id,
+				function () use ( $campaign_id, $version ): void {
+					$campaign = $this->repo->get( $campaign_id );
+					if ( ! $campaign || $campaign['version'] !== $version ) {
+						return;
+					}
+					$settings = $campaign['settings'];
+					if ( ! empty( $settings['restoring'] ) ) {
+						$this->recover_pending( $campaign );
+						$this->enqueue_batch( $campaign_id, $version, 0, 'restore' );
+						return;
+					}
+					if ( ! in_array( $campaign['status'], array( 'active', 'scheduled', 'paused' ), true ) ) {
+						return;
+					}
+					$index = DiscountPlan::index( $campaign, time() );
+					if ( $index >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+						$settings['restoring'] = true;
+						$this->repo->save(
+							$campaign_id,
+							array(
+								'status'   => 'paused',
+								'version'  => $version + 1,
+								'settings' => $settings,
+							)
+						);
+						$this->enqueue_batch( $campaign_id, $version + 1, 0, 'restore' );
+						return;
+					}
+					if ( 'scheduled' === $campaign['status'] && $index >= 0 ) {
+						$settings['started_at'] = $settings['started_at'] ?? gmdate( 'Y-m-d H:i:s' );
+						$this->repo->save(
+							$campaign_id,
+							array(
+								'status'   => 'active',
+								'settings' => $settings,
+							)
+						);
+						$campaign = $this->repo->get( $campaign_id );
+					}
+					$this->plan_next( $campaign );
+					$this->recover_pending( $campaign );
+					if ( 'active' === $campaign['status'] && $index >= 0 ) {
+						$this->enqueue_batch( $campaign_id, $version, 0, 'apply' );
+					}
+				}
+			);
+		} catch ( \Throwable $error ) {
+			$this->logger->log(
+				'error',
+				'watchdog_campaign',
+				array(
+					'campaign_id' => $campaign_id,
+					'error_code'  => $this->code( $error ),
+					'result'      => 'retry_next_tick',
+				)
+			);
+		}
+	}
+
+	/**
+	 * Wake only the winning product after its previous owner releases it.
+	 *
+	 * @param int $product_id Released sellable product identifier.
+	 * @return void
+	 */
+	public function released( int $product_id ): void {
+		try {
+			$winner = $this->repo->winner_for_product( $product_id, time() );
+			if ( ! $winner || 'active' !== $winner['status'] || ! function_exists( 'as_enqueue_async_action' ) ) {
+				return;
+			}
+			$args = array( (int) $winner['id'], $product_id, (int) $winner['version'], 'apply', 0 );
+			if ( ! as_has_scheduled_action( 'exin_bf_retry', $args, self::GROUP ) ) {
+				as_enqueue_async_action( 'exin_bf_retry', $args, self::GROUP, true );
+			}
+		} catch ( \Throwable $error ) {
+			// A wake-up failure must not turn a completed financial restore into a retry.
+			try {
+				$this->logger->log(
+					'warning',
+					'release_wakeup',
+					array(
+						'product_id' => $product_id,
+						'error_code' => $this->code( $error ),
+						'result'     => 'watchdog_recovery',
+					)
+				);
+			} catch ( \Throwable $audit_error ) {
+				return;
+			}
+		}
+	}
+
+	/**
+	 * Recreate a missing retry after a worker died with a reserved attempt.
+	 *
+	 * @param array $campaign Current durable campaign state.
+	 * @return void
+	 */
+	private function recover_pending( array $campaign ): void {
+		$run = $campaign['settings']['last_run'] ?? array();
+		if ( ( $run['version'] ?? null ) !== $campaign['version'] ) {
+			return;
+		}
+		$pending = (array) ( $run['pending_results'] ?? array() );
+		$ids     = array_map( 'intval', array_keys( $pending ) );
+		sort( $ids, SORT_NUMERIC );
+		$after = (int) ( $run['wake_after'] ?? 0 );
+		$next  = array_values( array_filter( $ids, static fn( int $id ): bool => $id > $after ) );
+		$ids   = array_merge( $next, array_values( array_diff( $ids, $next ) ) );
+		foreach ( array_slice( $ids, 0, self::BATCH ) as $product_id ) {
+			$run['wake_after'] = $product_id;
+			$item              = $this->repo->item( $campaign['id'], $product_id );
+			if ( ! $item || in_array( $item['status'], array( 'conflict', 'paused', 'completed', 'removed' ), true ) ) {
+				continue;
+			}
+			if ( 'skipped' === $pending[ $product_id ] ) {
+				$winner = $this->repo->winner_for_product( $product_id, time() );
+				if ( $winner && (int) $winner['id'] === $campaign['id'] && 'active' === $winner['status'] && ! $this->repo->owned_elsewhere( $campaign['id'], $product_id ) ) {
+					$this->released( $product_id );
+				}
+				continue;
+			}
+			$retry = $item['retry_state'] ?? null;
+			if ( ! is_array( $retry ) || ! empty( $retry['exhausted'] ) || ( $retry['version'] ?? null ) !== $campaign['version'] ) {
+				continue;
+			}
+			$attempt = (int) $retry['attempt'] < self::RETRIES ? (int) $retry['attempt'] + 1 : 0;
+			$args    = array( (int) $campaign['id'], $product_id, (int) $campaign['version'], $retry['mode'], $attempt );
+			if ( ! as_has_scheduled_action( 'exin_bf_retry', $args, self::GROUP ) ) {
+				as_schedule_single_action( max( time(), (int) $retry['next_at'] ), 'exin_bf_retry', $args, self::GROUP, true );
+			}
+		}
+		if ( $ids ) {
+			$settings             = $campaign['settings'];
+			$settings['last_run'] = $run;
+			$this->repo->save( $campaign['id'], array( 'settings' => $settings ) );
+		}
+	}
+
+	/**
+	 * Queue the next real UTC boundary; a paused campaign needs only its end.
+	 *
+	 * @param array $campaign Current durable campaign record.
+	 * @return void
+	 * @throws \RuntimeException When Action Scheduler rejects a boundary.
+	 */
+	private function plan_next( array $campaign ): void {
+		if ( ! in_array( $campaign['status'], array( 'active', 'scheduled', 'paused' ), true ) || ! empty( $campaign['settings']['restoring'] ) ) {
+			return;
+		}
+		$now  = time();
+		$next = strtotime( $campaign['end_utc'] . ' UTC' );
+		if ( 'paused' !== $campaign['status'] ) {
+			foreach ( DiscountPlan::boundaries( $campaign ) as $start ) {
+				$at = strtotime( $start . ' UTC' );
+				if ( $at > $now ) {
+					$next = $at;
+					break;
+				}
+			}
+		}
+		if ( $next <= $now ) {
+			return;
+		}
+		$args = array( (int) $campaign['id'], (int) $campaign['version'], $next );
+		if ( ! as_has_scheduled_action( 'exin_bf_stage', $args, self::GROUP ) && ! as_schedule_single_action( $next, 'exin_bf_stage', $args, self::GROUP, true ) ) {
+			throw new \RuntimeException( 'action_scheduler_stage_schedule_failed' );
+		}
+	}
+
+	/**
 	 * Traverse campaign products with a stable product identifier cursor.
 	 *
-	 * @param int    $campaign_id Campaign identifier.
-	 * @param int    $version Expected campaign settings version.
-	 * @param int    $after Exclusive product identifier cursor.
-	 * @param string $mode Apply or restore operation mode.
+	 * @param int      $campaign_id Campaign identifier.
+	 * @param int      $version Expected campaign settings version.
+	 * @param int      $after Exclusive product identifier cursor.
+	 * @param string   $mode Apply or restore operation mode.
+	 * @param int|null $queued_stage Stage included in new action uniqueness; old jobs remain valid.
 	 *
 	 * @return void Operation result.
 	 */
-	public function batch( int $campaign_id, int $version, int $after = 0, string $mode = 'apply' ): void {
+	public function batch( int $campaign_id, int $version, int $after = 0, string $mode = 'apply', ?int $queued_stage = null ): void {
 		$campaign = $this->repo->get( $campaign_id );
 		if ( ! $this->valid( $campaign, $version, $mode ) ) {
 			return;
 		}
-		// One batch chain per campaign/version/mode; workers cannot race its cursor.
 		try {
 			( new LockManager() )->run(
 				'batch:' . $campaign_id . ':' . $version . ':' . $mode,
-				function () use ( $campaign_id, $version, $after, $mode ) {
-					$rows = $this->repo->batch( $campaign_id, $after, self::BATCH );
+				function () use ( $campaign_id, $version, $mode, $queued_stage ): void {
+					$campaign = $this->repo->get( $campaign_id );
+					if ( ! $this->valid( $campaign, $version, $mode ) ) {
+						return;
+					}
+					$stage = 'restore' === $mode ? -1 : DiscountPlan::index( $campaign, time() );
+					if ( null !== $queued_stage && $queued_stage > $stage ) {
+						return;
+					}
+					$run     = $campaign['settings']['last_run'] ?? array();
+					$matches = $this->same_run( $run, $version, $stage, $mode );
+					if ( $matches && ! empty( $run['complete'] ) ) {
+						return;
+					}
+					// The durable cursor, not an old callback payload, resumes a batch.
+					$after = $matches ? (int) $run['after'] : 0;
+					$rows  = $this->repo->batch( $campaign_id, $after, self::BATCH );
 					foreach ( $rows as $item ) {
+						$result = $this->perform( $campaign_id, $item['product_id'], $version, $mode, 0, $stage, true );
+						if ( 'stage_changed' === $result ) {
+							$this->enqueue_batch( $campaign_id, $version, 0, $mode );
+							return;
+						}
 						$after = $item['product_id'];
-						$this->perform( $campaign_id, $after, $version, $mode, 0 );
 					}
 					$campaign = $this->repo->get( $campaign_id );
 					if ( ! $this->valid( $campaign, $version, $mode ) ) {
 						return;
 					}
+					if ( 'apply' === $mode && DiscountPlan::index( $campaign, time() ) !== $stage ) {
+						$this->enqueue_batch( $campaign_id, $version, 0, $mode );
+						return;
+					}
 					if ( count( $rows ) === self::BATCH ) {
 						$this->enqueue_batch( $campaign_id, $version, $after, $mode );
 					} else {
-						$this->repo->save( $campaign_id, array( 'last_success' => gmdate( 'Y-m-d H:i:s' ) ) );
+						( new LockManager() )->run(
+							'campaign:' . $campaign_id,
+							function () use ( $campaign_id, $version, $stage, $mode ): void {
+								$campaign = $this->repo->get( $campaign_id );
+								if ( ! $this->valid( $campaign, $version, $mode ) ) {
+									return;
+								}
+								$settings = $campaign['settings'];
+								$run      = $settings['last_run'] ?? array();
+								if ( $this->same_run( $run, $version, $stage, $mode ) ) {
+									$run['complete']      = true;
+									$settings['last_run'] = $run;
+									$this->repo->save(
+										$campaign_id,
+										array(
+											'settings'     => $settings,
+											'last_success' => gmdate( 'Y-m-d H:i:s' ),
+										)
+									);
+								}
+							}
+						);
 						if ( 'restore' === $mode ) {
 							$this->finish_restore( $campaign_id, $version );
 						}
@@ -321,7 +507,7 @@ final class Scheduler {
 	 * @return void Operation result.
 	 */
 	public function retry( int $campaign_id, int $product_id, int $version, string $mode, int $attempt ): void {
-		$this->perform( $campaign_id, $product_id, $version, $mode, $attempt );
+		$this->perform( $campaign_id, $product_id, $version, $mode, $attempt, null, false );
 		if ( 'restore' === $mode ) {
 			$this->finish_restore( $campaign_id, $version );
 		}
@@ -330,43 +516,58 @@ final class Scheduler {
 	/**
 	 * Execute a product operation and schedule bounded exponential retries.
 	 *
-	 * @param int    $campaign_id Campaign identifier.
-	 * @param int    $product_id Sellable product or variation identifier.
-	 * @param int    $version Expected campaign settings version.
-	 * @param string $mode Apply or restore operation mode.
-	 * @param int    $attempt Current bounded retry attempt.
+	 * @param int      $campaign_id Campaign identifier.
+	 * @param int      $product_id Sellable product or variation identifier.
+	 * @param int      $version Expected campaign settings version.
+	 * @param string   $mode Apply or restore operation mode.
+	 * @param int      $attempt Current bounded retry attempt.
+	 * @param int|null $expected_stage Optional stage of the active batch.
+	 * @param bool     $cursor Whether this operation advances its batch cursor.
 	 *
-	 * @return void Operation result.
+	 * @return string Financial result or skipped operation.
 	 */
-	private function perform( int $campaign_id, int $product_id, int $version, string $mode, int $attempt ): void {
+	private function perform( int $campaign_id, int $product_id, int $version, string $mode, int $attempt, ?int $expected_stage = null, bool $cursor = true ): string {
 		if ( $attempt < 0 || $attempt > self::RETRIES ) {
-			return;
+			return 'skipped';
 		}
-		( new LockManager() )->run(
+		return ( new LockManager() )->run(
 			'campaign:' . $campaign_id,
-			function () use ( $campaign_id, $product_id, $version, $mode, $attempt ) {
-				( new LockManager() )->run(
+			function () use ( $campaign_id, $product_id, $version, $mode, $attempt, $expected_stage, $cursor ): string {
+				return ( new LockManager() )->run(
 					'product:' . $product_id,
-					function () use ( $campaign_id, $product_id, $version, $mode, $attempt ) {
+					function () use ( $campaign_id, $product_id, $version, $mode, $attempt, $expected_stage, $cursor ): string {
 						$campaign = $this->repo->get( $campaign_id );
 						$item     = $this->repo->item( $campaign_id, $product_id );
 						if ( ! $this->valid( $campaign, $version, $mode ) || ! $item ) {
-							return;
+							return 'skipped';
+						}
+						$stage = 'restore' === $mode ? -1 : DiscountPlan::index( $campaign, time() );
+						if ( null !== $expected_stage && $stage !== $expected_stage ) {
+							return 'stage_changed';
+						}
+						$run = $campaign['settings']['last_run'] ?? array();
+						if ( ! $cursor && 0 === $attempt && $this->same_run( $run, $version, $stage, $mode )
+							&& $product_id <= (int) $run['after'] && ! isset( $run['pending_results'][ $product_id ] ) ) {
+							return 'skipped';
 						}
 						if ( in_array( $item['status'], array( 'removed', 'completed' ), true ) ) {
 							if ( $item['retry_state'] ) {
 								$this->save_retry( $campaign_id, $product_id, array( 'retry_state' => null ) );
 							}
-							return;
+							$this->record_result( $campaign_id, $version, $stage, $mode, $product_id, 'skipped', $cursor );
+							return 'skipped';
 						}
 						if ( 'apply' === $mode && in_array( $item['status'], array( 'paused', 'conflict' ), true ) ) {
-							return;
+							$result = 'conflict' === $item['status'] ? 'error' : 'skipped';
+							$this->record_result( $campaign_id, $version, $stage, $mode, $product_id, $result, $cursor );
+							return $result;
 						}
 						$state   = $item['retry_state'];
 						$matches = is_array( $state ) && (int) ( $state['version'] ?? -1 ) === $version && ( $state['mode'] ?? '' ) === $mode;
 						if ( $matches ) {
 							if ( ! empty( $state['exhausted'] ) || (int) $state['next_at'] > time() ) {
-								return;
+								$this->record_result( $campaign_id, $version, $stage, $mode, $product_id, 'error', $cursor );
+								return 'skipped';
 							}
 							$next_attempt = (int) $state['attempt'] + 1;
 							if ( $next_attempt > self::RETRIES ) {
@@ -381,15 +582,15 @@ final class Scheduler {
 										'conflict'    => 'retry_exhausted_interrupted_operation',
 									)
 								);
-								return;
+								return 'skipped';
 							}
 							if ( 0 !== $attempt && $attempt !== $next_attempt ) {
-								return;
+								return 'skipped';
 							}
 							$attempt = $next_attempt;
 						} elseif ( 0 !== $attempt ) {
 							// Completed operations and old versions cannot be restarted by duplicate callbacks.
-							return;
+							return 'skipped';
 						}
 						$state = array(
 							'version'   => $version,
@@ -403,11 +604,15 @@ final class Scheduler {
 						$this->save_retry( $campaign_id, $product_id, array( 'retry_state' => $state ) );
 						try {
 							if ( 'restore' === $mode ) {
-								$this->processor->restore( $campaign_id, $product_id );
+								$result = $this->processor->restore( $campaign_id, $product_id );
 							} else {
-								$this->processor->apply( $campaign_id, $product_id, $version );
+								$result = $this->processor->apply( $campaign_id, $product_id, $version, $stage );
 							}
 							$this->save_retry( $campaign_id, $product_id, array( 'retry_state' => null ) );
+							if ( 'stage_changed' !== $result ) {
+								$this->record_result( $campaign_id, $version, $stage, $mode, $product_id, $result, $cursor );
+							}
+							return $result;
 						} catch ( \Throwable $error ) {
 							$code               = $this->code( $error );
 							$state['running']   = false;
@@ -424,6 +629,7 @@ final class Scheduler {
 								as_schedule_single_action( $state['next_at'], 'exin_bf_retry', array( $campaign_id, $product_id, $version, $mode, $attempt + 1 ), self::GROUP, true );
 							}
 							$this->repo->save( $campaign_id, array( 'last_error' => $code ) );
+							$this->record_result( $campaign_id, $version, $stage, $mode, $product_id, 'error', $cursor );
 							$this->logger->log(
 								'error',
 								'job_' . $mode,
@@ -434,6 +640,7 @@ final class Scheduler {
 									'result'      => $state['exhausted'] ? 'retry_exhausted' : 'retry_scheduled',
 								)
 							);
+							return 'error';
 						}
 					}
 				);
@@ -540,10 +747,100 @@ final class Scheduler {
 	 * @return void Operation result.
 	 */
 	private function enqueue_batch( int $campaign_id, int $version, int $after, string $mode ): void {
-		$args = array( $campaign_id, $version, $after, $mode );
+		$campaign = $this->repo->get( $campaign_id );
+		if ( ! $this->valid( $campaign, $version, $mode ) ) {
+			return;
+		}
+		$stage = 'restore' === $mode ? -1 : DiscountPlan::index( $campaign, time() );
+		$run   = $campaign['settings']['last_run'] ?? array();
+		if ( $this->same_run( $run, $version, $stage, $mode ) && ! empty( $run['complete'] ) ) {
+			return;
+		}
+		$args = array( $campaign_id, $version, $after, $mode, $stage );
 		if ( ! as_has_scheduled_action( 'exin_bf_batch', $args, self::GROUP ) ) {
 			as_enqueue_async_action( 'exin_bf_batch', $args, self::GROUP, true );
 		}
+	}
+
+	/**
+	 * Compare the identity of one campaign's stage report.
+	 *
+	 * @param array  $run Saved operation summary.
+	 * @param int    $version Settings version.
+	 * @param int    $stage Current stage or minus one for restore.
+	 * @param string $mode Operation mode.
+	 * @return bool Whether this report describes the same operation.
+	 */
+	private function same_run( array $run, int $version, int $stage, string $mode ): bool {
+		return ( $run['version'] ?? null ) === $version && ( $run['stage'] ?? null ) === $stage && ( $run['mode'] ?? null ) === $mode;
+	}
+
+	/**
+	 * Count each product once, replacing a failed result when its retry succeeds.
+	 *
+	 * Normal products use the keyset cursor. Only failures, skipped ownership and
+	 * retries ahead of that cursor need individual entries, keeping reports small.
+	 * Caller already holds this campaign's lock.
+	 *
+	 * @param int    $campaign_id Campaign identifier.
+	 * @param int    $version Settings version.
+	 * @param int    $stage Current stage or minus one for restore.
+	 * @param string $mode Operation mode.
+	 * @param int    $product_id Product whose operation completed.
+	 * @param string $result Changed, unchanged, skipped or error.
+	 * @param bool   $cursor Whether this result advances the main batch cursor.
+	 * @return void
+	 */
+	private function record_result( int $campaign_id, int $version, int $stage, string $mode, int $product_id, string $result, bool $cursor ): void {
+		$campaign = $this->repo->get( $campaign_id );
+		if ( ! $campaign || $campaign['version'] !== $version ) {
+			return;
+		}
+		( new LockManager() )->assert_held( 'campaign:' . $campaign_id );
+		$settings = $campaign['settings'];
+		$run      = $settings['last_run'] ?? array();
+		if ( ! $this->same_run( $run, $version, $stage, $mode ) ) {
+			$run = array(
+				'version'         => $version,
+				'stage'           => $stage,
+				'mode'            => $mode,
+				'changed'         => 0,
+				'unchanged'       => 0,
+				'skipped'         => 0,
+				'errors'          => 0,
+				'after'           => 0,
+				'complete'        => false,
+				'pending_results' => array(),
+			);
+		}
+		$pending  = $run['pending_results'] ?? array();
+		$previous = $pending[ $product_id ] ?? null;
+		$key      = 'error' === $result ? 'errors' : $result;
+		if ( ! in_array( $key, array( 'changed', 'unchanged', 'skipped', 'errors' ), true ) ) {
+			return;
+		}
+		if ( null !== $previous ) {
+			if ( in_array( $previous, array( 'errors', 'skipped' ), true ) && $previous !== $key ) {
+				$run[ $previous ] = max( 0, (int) $run[ $previous ] - 1 );
+				++$run[ $key ];
+			} else {
+				$key = $previous;
+			}
+		} elseif ( $product_id > (int) $run['after'] ) {
+			++$run[ $key ];
+		}
+		if ( ! $cursor || in_array( $key, array( 'errors', 'skipped' ), true ) ) {
+			$pending[ $product_id ] = $key;
+		} else {
+			unset( $pending[ $product_id ] );
+		}
+		if ( $cursor ) {
+			$run['after'] = max( (int) $run['after'], $product_id );
+		}
+		$run['pending_results'] = $pending;
+		$run['at']              = gmdate( 'Y-m-d H:i:s' );
+		$settings['last_run']   = $run;
+		$this->repo->save( $campaign_id, array( 'settings' => $settings ) );
 	}
 
 	/**
@@ -555,6 +852,11 @@ final class Scheduler {
 	 */
 	private function code( \Throwable $error ): string {
 		$message = $error->getMessage();
-		return preg_match( '/^[a-z][a-z0-9_]{0,79}$/', $message ) ? $message : 'internal_operation_error';
+		if ( preg_match( '/^[a-z][a-z0-9_]{0,79}$/', $message ) ) {
+			return $message;
+		}
+		// A stable class/fingerprint identifies the failure without logging SQL or secrets.
+		$parts = explode( '\\', get_class( $error ) );
+		return 'internal_' . substr( strtolower( (string) end( $parts ) ), 0, 32 ) . '_' . substr( hash( 'sha256', $message ), 0, 12 );
 	}
 }

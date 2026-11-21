@@ -68,6 +68,118 @@ final class CatalogProductQuery {
 	}
 
 	/**
+	 * Freeze the maximum published catalog identifier for a resumable selection.
+	 *
+	 * @return int Highest candidate identifier, or zero for an empty catalog.
+	 */
+	public function ceiling(): int {
+		$query = new \WP_Query(
+			array(
+				'post_type'              => array( 'product', 'product_variation' ),
+				'post_status'            => 'publish',
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'orderby'                => 'ID',
+				'order'                  => 'DESC',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			)
+		);
+		return (int) ( $query->posts[0] ?? 0 );
+	}
+
+	/**
+	 * Read one stable ID-cursor batch without loading the full filtered catalog.
+	 *
+	 * @param array $filters Validated product scope and filters.
+	 * @param int   $after Exclusive identifier cursor.
+	 * @param int   $upper Inclusive catalog ceiling captured when the job starts.
+	 * @param int   $limit Maximum products returned.
+	 * @return array Bounded identifiers, next cursor and completion flag.
+	 */
+	public function scan( array $filters, int $after, int $upper, int $limit = 25 ): array {
+		$limit = min( 25, max( 1, $limit ) );
+		$query = $this->bulk_query( $filters, $after, $upper, $limit, true );
+		$ids   = array_map( 'intval', $query->posts );
+		return array(
+			'ids'   => $ids,
+			'after' => $ids ? max( $ids ) : $after,
+			'done'  => count( $ids ) < $limit,
+		);
+	}
+
+	/**
+	 * Count the same frozen candidate scope without hydrating product objects.
+	 *
+	 * @param array $filters Validated product scope and filters.
+	 * @param int   $upper Frozen inclusive catalog ceiling.
+	 * @return int Matching simple products and individual variations.
+	 */
+	public function count_candidates( array $filters, int $upper ): int {
+		return (int) $this->bulk_query( $filters, 0, $upper, 1, false )->found_posts;
+	}
+
+	/**
+	 * Use the existing prepared taxonomy filters with stable, sellable ID paging.
+	 *
+	 * @param array $filters Validated product scope and filters.
+	 * @param int   $after Exclusive ID cursor.
+	 * @param int   $upper Frozen catalog ceiling.
+	 * @param int   $limit Bounded page size.
+	 * @param bool  $no_count Skip the count query during processing.
+	 * @return \WP_Query Bounded WordPress catalog query.
+	 */
+	private function bulk_query( array $filters, int $after, int $upper, int $limit, bool $no_count ): \WP_Query {
+		global $wpdb;
+		$scope = $filters['scope'] ?? 'filtered';
+		if ( in_array( $scope, array( 'all', 'instock' ), true ) ) {
+			$filters = array( 'stock' => 'instock' === $scope ? 'instock' : 'all' );
+		}
+		if ( 'variable' === ( $filters['type'] ?? '' ) ) {
+			$filters['type'] = 'variation';
+		}
+		$clauses  = $this->conditions( sanitize_text_field( (string) ( $filters['search'] ?? '' ) ), $filters );
+		$clauses .= $wpdb->prepare( ' AND %i.ID>%d AND %i.ID<=%d AND (%i.post_type=%s OR NOT EXISTS (SELECT 1 FROM %i exin_bulk_rel INNER JOIN %i exin_bulk_tax ON exin_bulk_tax.term_taxonomy_id=exin_bulk_rel.term_taxonomy_id INNER JOIN %i exin_bulk_term ON exin_bulk_term.term_id=exin_bulk_tax.term_id WHERE exin_bulk_rel.object_id=%i.ID AND exin_bulk_tax.taxonomy=%s AND exin_bulk_term.slug=%s))', $wpdb->posts, max( 0, $after ), $wpdb->posts, max( 0, $upper ), $wpdb->posts, 'product_variation', $wpdb->term_relationships, $wpdb->term_taxonomy, $wpdb->terms, $wpdb->posts, 'product_type', 'variable' );
+		if ( ! empty( $filters['ids'] ) ) {
+			$ids      = array_values( array_unique( array_filter( array_map( 'absint', (array) $filters['ids'] ) ) ) );
+			$holders  = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+			$clauses .= $ids ? $wpdb->prepare( " AND (%i.ID IN ({$holders}) OR %i.post_parent IN ({$holders}))", array_merge( array( $wpdb->posts ), $ids, array( $wpdb->posts ), $ids ) ) : ' AND 1=0'; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Placeholders are generated exclusively from bounded validated IDs.
+		} elseif ( 'selected' === $scope ) {
+			$clauses .= ' AND 1=0';
+		}
+		if ( ! empty( $filters['source_campaign_id'] ) ) {
+			$clauses .= $wpdb->prepare( ' AND EXISTS (SELECT 1 FROM %i exin_bulk_source WHERE exin_bulk_source.product_id=%i.ID AND exin_bulk_source.campaign_id=%d AND exin_bulk_source.status<>%s)', $wpdb->prefix . 'exin_bf_items', $wpdb->posts, absint( $filters['source_campaign_id'] ), 'removed' );
+		}
+		if ( 'instock' === ( $filters['stock'] ?? '' ) ) {
+			$owner    = $wpdb->prepare( 'CASE WHEN %i.post_type=%s AND NOT EXISTS (SELECT 1 FROM %i exin_bulk_child WHERE exin_bulk_child.post_id=%i.ID AND exin_bulk_child.meta_key=%s AND exin_bulk_child.meta_value=%s) AND EXISTS (SELECT 1 FROM %i exin_bulk_parent WHERE exin_bulk_parent.post_id=%i.post_parent AND exin_bulk_parent.meta_key=%s AND exin_bulk_parent.meta_value=%s) THEN %i.post_parent ELSE %i.ID END', $wpdb->posts, 'product_variation', $wpdb->postmeta, $wpdb->posts, '_manage_stock', 'yes', $wpdb->postmeta, $wpdb->posts, '_manage_stock', 'yes', $wpdb->posts, $wpdb->posts );
+			$clauses .= $wpdb->prepare( " AND (NOT EXISTS (SELECT 1 FROM %i exin_bulk_manage WHERE exin_bulk_manage.post_id=({$owner}) AND exin_bulk_manage.meta_key=%s AND exin_bulk_manage.meta_value=%s) OR EXISTS (SELECT 1 FROM %i exin_bulk_qty WHERE exin_bulk_qty.post_id=({$owner}) AND exin_bulk_qty.meta_key=%s AND CAST(exin_bulk_qty.meta_value AS DECIMAL(30,8))>0))", $wpdb->postmeta, '_manage_stock', 'yes', $wpdb->postmeta, '_stock' ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The stock-owner expression is fully prepared from trusted identifiers and literals above.
+		}
+		$where = static function ( string $sql, \WP_Query $query ) use ( $clauses ): string {
+			return $query->get( 'exin_bf_bulk_query' ) ? $sql . $clauses : $sql;
+		};
+		add_filter( 'posts_where', $where, 20, 2 );
+		try {
+			return new \WP_Query(
+				array(
+					'post_type'              => array( 'product', 'product_variation' ),
+					'post_status'            => 'publish',
+					'posts_per_page'         => $limit,
+					'fields'                 => 'ids',
+					'orderby'                => 'ID',
+					'order'                  => 'ASC',
+					'no_found_rows'          => $no_count,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+					'exin_bf_bulk_query'     => true,
+				)
+			);
+		} finally {
+			remove_filter( 'posts_where', $where, 20 );
+		}
+	}
+
+	/**
 	 * Return bounded registered category, brand and attribute choices.
 	 *
 	 * @return array Catalog filter metadata, without campaign financial data.

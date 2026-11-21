@@ -44,7 +44,7 @@ final class Dashboard {
 		add_action(
 			'admin_menu',
 			function (): void {
-				$this->hook = add_menu_page( __( 'بلک فرایدی اکسین', 'exin-black-friday' ), __( 'بلک فرایدی اکسین', 'exin-black-friday' ), 'manage_woocommerce', 'exin-black-friday', array( $this, 'render' ), 'dashicons-tickets-alt', 56 );
+				$this->hook = add_menu_page( __( 'مدیریت کمپین اکسین', 'exin-black-friday' ), __( 'کمپین‌های اکسین', 'exin-black-friday' ), 'manage_woocommerce', 'exin-black-friday', array( $this, 'render' ), 'dashicons-tickets-alt', 56 );
 			}
 		);
 		add_action(
@@ -89,14 +89,15 @@ final class Dashboard {
 		?>
 		<div class="exin-bf" id="exin-bf-admin" dir="rtl">
 			<header class="exin-bf-header">
-				<div class="exin-bf-brand"><span class="exin-bf-monogram" aria-hidden="true">EX</span><div><span class="exin-bf-kicker">EXIN · BLACK FRIDAY</span><h1><?php esc_html_e( 'بلک فرایدی اکسین', 'exin-black-friday' ); ?></h1></div></div>
-				<button type="button" class="exin-bf-button exin-bf-primary" data-command="add"><?php esc_html_e( 'افزودن محصول', 'exin-black-friday' ); ?> <span aria-hidden="true">＋</span></button>
+				<div class="exin-bf-brand"><span class="exin-bf-monogram" aria-hidden="true">EX</span><div><span class="exin-bf-kicker">EXIN · CAMPAIGNS</span><h1><?php esc_html_e( 'کمپین‌های تخفیف اکسین', 'exin-black-friday' ); ?></h1></div></div>
+				<button type="button" class="exin-bf-button exin-bf-primary" data-command="new-campaign"><?php esc_html_e( 'کمپین جدید', 'exin-black-friday' ); ?> <span aria-hidden="true">＋</span></button>
 			</header>
+			<section id="exin-bf-campaigns" class="exin-bf-campaigns" aria-label="<?php esc_attr_e( 'انتخاب کمپین و تاریخچه', 'exin-black-friday' ); ?>"></section>
 			<div id="exin-bf-draft-status" class="exin-bf-draft-status" role="status" aria-live="polite"></div>
 			<nav class="exin-bf-nav" aria-label="<?php esc_attr_e( 'بخش‌های مدیریت کمپین', 'exin-black-friday' ); ?>">
 				<button type="button" data-view="dashboard" aria-current="page"><?php esc_html_e( 'نمای کلی', 'exin-black-friday' ); ?></button>
-				<button type="button" data-view="products"><?php esc_html_e( 'محصولات', 'exin-black-friday' ); ?></button>
-				<button type="button" data-view="settings"><?php esc_html_e( 'تنظیمات و راه‌اندازی', 'exin-black-friday' ); ?></button>
+				<button type="button" data-view="products"><?php esc_html_e( 'محدوده محصولات', 'exin-black-friday' ); ?></button>
+				<button type="button" data-view="settings"><?php esc_html_e( 'تخفیف و زمان‌بندی', 'exin-black-friday' ); ?></button>
 				<button type="button" data-view="diagnostics"><?php esc_html_e( 'گزارش و عیب‌یابی', 'exin-black-friday' ); ?></button>
 			</nav>
 			<div id="exin-bf-message" class="exin-bf-message" role="status" aria-live="polite" hidden></div>

@@ -7,8 +7,7 @@
 
 namespace Exin\BlackFriday\Application;
 
-use Exin\BlackFriday\Domain\PricingEngine;
-use Exin\BlackFriday\Domain\Timeline;
+use Exin\BlackFriday\Domain\DiscountPlan;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
 use Exin\BlackFriday\Infrastructure\LockManager;
 use Exin\BlackFriday\Infrastructure\Logger;
@@ -46,10 +45,10 @@ final class DraftCampaignService {
 				$updates         = array_intersect_key( $data, array_flip( $allowed ) );
 				$new             = array_replace( $old, $updates );
 				$new['settings'] = array_replace( $old['settings'], (array) ( $updates['settings'] ?? array() ) );
-				$new['end_utc']  = Timeline::end( $new['start_utc'], (int) $new['days'], $new['timezone'] );
+				$new['end_utc']  = DiscountPlan::end( $new );
 				$new['version']  = (int) $old['version'] + 1;
 				$new['status']   = 'draft';
-				$replan          = false;
+				$replan          = ( $new['settings']['discount_plan'] ?? null ) !== ( $old['settings']['discount_plan'] ?? null );
 				foreach ( array( 'days', 'strategy', 'power', 'rounding' ) as $field ) {
 					$replan = $replan || $new[ $field ] !== $old[ $field ];
 				}
@@ -70,7 +69,7 @@ final class DraftCampaignService {
 							throw new \DomainException( 'store_currency_or_precision_changed' );
 						}
 						if ( $replan ) {
-							$plans[ $item['product_id'] ] = ( new PricingEngine() )->schedule( $item['base_price'], $item['floor_price'], (int) $new['days'], $new['strategy'], wc_get_price_decimals(), (int) $new['power'], $new['rounding'] );
+							$plans[ $item['product_id'] ] = DiscountPlan::schedule( $item['base_price'], $item['floor_price'], $new );
 						}
 					}
 					$count = count( $items );
