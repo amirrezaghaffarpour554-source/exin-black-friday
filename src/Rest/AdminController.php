@@ -255,15 +255,19 @@ final class AdminController {
 	}
 
 	/**
-	 * Start a bounded resumable selection operation; never save product prices.
+	 * Start a bounded resumable selection operation; live steps apply current prices.
+	 *
+	 * @throws InvalidArgumentException When removal is not explicitly confirmed.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return array Operation result.
 	 */
 	public function selection_job( WP_REST_Request $request ): array {
 		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
-		$this->editable_campaign( $id );
+		$this->required_campaign( $id );
 		$data = $this->body( $request );
+		if ( 'remove' === ( $data['action'] ?? '' ) && true !== ( $data['confirm_remove'] ?? false ) ) {
+			throw new InvalidArgumentException( esc_html__( 'حذف و بازیابی قیمت محصول را تأیید کنید.', 'exin-black-friday' ) ); }
 		return array( 'job' => ( new BulkSelectionService( $this->repository ) )->start( $id, $this->selection_filters( $data['filters'] ?? array() ), $this->floor_policy( $data['floor_policy'] ?? array( 'mode' => 'none' ), $this->amount_unit( $data ) ), $this->choice( $data['action'] ?? 'add', array( 'add', 'remove' ) ) ) );
 	}
 
@@ -779,6 +783,8 @@ final class AdminController {
 			$this->selection->remove( $id, $product );
 		} elseif ( in_array( $action, array( 'pause', 'resume' ), true ) ) {
 			$this->selection->update( $id, $product, array( 'status' => 'pause' === $action ? 'paused' : 'included' ) );
+			if ( 'resume' === $action && 'active' === $this->required_campaign( $id )['status'] ) {
+				$this->selection->apply_current( $id, $product ); }
 		} elseif ( in_array( $action, array( 'retry', 'keep_external' ), true ) ) {
 			if ( 'keep_external' === $action && true !== ( $data['confirm_release'] ?? false ) ) {
 				throw new InvalidArgumentException( esc_html__( 'حفظ قیمت بیرونی و واگذاری کنترل را تأیید کنید.', 'exin-black-friday' ) );
@@ -1200,6 +1206,7 @@ final class AdminController {
 	 */
 	private function domain_message( string $code ): string {
 		$messages = array(
+			'selection_requires_editable_campaign'        => __( 'انتخاب گروهی فقط برای پیش‌نویس بدون مالکیت قیمت یا کمپین فعال و منقضی‌نشده مجاز است.', 'exin-black-friday' ),
 			'invalid_money_input'                         => __( 'مبلغ معتبر با ارقام فارسی یا انگلیسی وارد کنید؛ گروه‌بندی هزارگان باید صحیح باشد.', 'exin-black-friday' ),
 			'invalid_money_precision_or_length'           => __( 'طول مبلغ یا دقت ورودی معتبر نیست.', 'exin-black-friday' ),
 			'money_precision_exceeded'                    => __( 'تعداد رقم اعشار مبلغ از دقت مجاز بیشتر است.', 'exin-black-friday' ),

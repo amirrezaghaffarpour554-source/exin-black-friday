@@ -12,6 +12,7 @@ use Exin\BlackFriday\Domain\Money;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
 use Exin\BlackFriday\Infrastructure\LockManager;
 use Exin\BlackFriday\Infrastructure\Logger;
+use Exin\BlackFriday\Integration\CampaignContext;
 
 /** Validates campaign selections and preserves financial ownership. */
 final class ProductSelectionService {
@@ -113,6 +114,13 @@ final class ProductSelectionService {
 						if ( ! in_array( $campaign['status'], array( 'draft', 'scheduled', 'active', 'paused' ), true ) ) {
 							throw new \DomainException( 'campaign_not_editable' );
 						}
+						if ( 'active' === $campaign['status'] && ( ! CampaignContext::is_live( $campaign ) || ! empty( $campaign['settings']['restoring'] ) ) ) {
+							throw new \DomainException( 'campaign_not_editable' );
+						}
+						$winner = 'active' === $campaign['status'] ? $this->repo->winner_for_product( $product_id, time() ) : null;
+						if ( $winner && (int) $winner['id'] !== $campaign_id ) {
+							throw new \DomainException( 'product_owned_by_another_campaign' );
+						}
 						$previous = $this->repo->item( $campaign_id, $product_id );
 						if ( $previous && ( 'removed' !== $previous['status'] || $previous['expected'] || $previous['intent'] ) ) {
 							throw new \DomainException( 'product_already_included' );
@@ -130,10 +138,20 @@ final class ProductSelectionService {
 						$product  = $this->require_product( $product_id );
 						$snapshot = PriceState::capture( $product );
 						$this->eligible( $product, $snapshot, $campaign );
+						if ( 'active' === $campaign['status'] ) {
+							$owner_id = $product->get_stock_managed_by_id();
+							$owner    = $owner_id === $product_id ? $product : wc_get_product( $owner_id );
+							if ( 'instock' !== $product->get_stock_status() || ! $owner || ( $owner->managing_stock() && ( null === $owner->get_stock_quantity() || $owner->get_stock_quantity() <= 0 ) ) ) {
+								throw new \DomainException( 'product_not_in_stock' );
+							}
+						}
 						// Derive snapshot, base and schedule from the SAME captured object.
 						$base = $this->base_price( $snapshot, $campaign );
 						if ( isset( $options['floor_policy'] ) ) {
 							$floor = BulkSelectionService::resolve_floor( $this->repo, $campaign, $product_id, $base, $options['floor_policy'], (int) ( $options['source_campaign_id'] ?? 0 ) );
+						}
+						if ( 'active' === $campaign['status'] && Money::parse( $floor, wc_get_price_decimals() ) <= 0 ) {
+							throw new \DomainException( 'product_floor_required' );
 						}
 						$schedule                = DiscountPlan::schedule( $base, $floor, $campaign );
 						$preview                 = array(
@@ -184,6 +202,43 @@ final class ProductSelectionService {
 		);
 	}
 
+
+	/**
+	 * Apply one explicitly added/resumed live item through the existing retry engine.
+	 *
+	 * @param int $campaign_id Active campaign identifier.
+	 * @param int $product_id New or resumed member identifier.
+	 * @return void
+	 * @throws \DomainException When the live campaign or floor is invalid.
+	 * @throws \RuntimeException When pricing is deferred to its durable retry.
+	 */
+	public function apply_current( int $campaign_id, int $product_id ): void {
+		( new LockManager() )->run(
+			'campaign:' . $campaign_id,
+			function () use ( $campaign_id, $product_id ): void {
+				$campaign = $this->require_campaign( $campaign_id );
+				$item     = $this->repo->item( $campaign_id, $product_id );
+				if ( 'active' !== $campaign['status'] || ! CampaignContext::is_live( $campaign ) || ! empty( $campaign['settings']['restoring'] ) || ! $item || Money::parse( $item['floor_price'], wc_get_price_decimals() ) < 0 ) {
+					throw new \DomainException( 'product_floor_required' );
+				}
+				$settings = $campaign['settings'];
+				$run      = $settings['last_run'] ?? array();
+				if ( ( $run['version'] ?? null ) === $campaign['version'] && 'apply' === ( $run['mode'] ?? '' ) && ! isset( $run['pending_results'][ $product_id ] ) ) {
+					$run['pending_results'][ $product_id ] = 'skipped';
+					$run['skipped']                        = (int) ( $run['skipped'] ?? 0 ) + 1;
+					$settings['last_run']                  = $run;
+					$this->repo->save( $campaign_id, array( 'settings' => $settings ) );
+				}
+				// Persist the wake-up before attempting price writes; a request may die mid-batch.
+				as_enqueue_async_action( 'exin_bf_retry', array( $campaign_id, $product_id, $campaign['version'], 'apply', 0 ), Scheduler::GROUP, true );
+				( new Scheduler( $this->repo, new PriceProcessor( $this->repo, new Logger() ), new Logger() ) )->retry( $campaign_id, $product_id, $campaign['version'], 'apply', 0 );
+				$item = $this->repo->item( $campaign_id, $product_id );
+				if ( ! $item || ! $item['expected'] || $item['intent'] || 'active' !== $item['status'] ) {
+					throw new \RuntimeException( 'live_price_retry_pending' ); }
+			}
+		);
+	}
+
 	/**
 	 * Update allowed product controls and editable draft financial settings.
 	 *
@@ -209,6 +264,12 @@ final class ProductSelectionService {
 						if ( isset( $changes['status'] ) ) {
 							if ( ! in_array( $changes['status'], array( 'paused', 'included' ), true ) || in_array( $item['status'], array( 'conflict', 'completed' ), true ) ) {
 								throw new \DomainException( 'invalid_item_transition' );
+							}
+							if ( 'paused' === $changes['status'] && ( $item['expected'] || $item['intent'] ) ) {
+								( new PriceProcessor( $this->repo, new Logger() ) )->restore( $campaign_id, $product_id );
+								$item = $this->repo->item( $campaign_id, $product_id );
+								if ( $item['expected'] || $item['intent'] ) {
+									throw new \DomainException( 'restore_conflict_requires_resolution' ); }
 							}
 							if ( 'included' === $changes['status'] && $item['expected'] ) {
 								$changes['status'] = 'active';
