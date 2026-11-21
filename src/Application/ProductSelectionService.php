@@ -82,7 +82,15 @@ final class ProductSelectionService {
 				? $existing['floor_price']
 				: BulkSelectionService::resolve_floor( $this->repo, $campaign, $product_id, $base, $options['floor_policy'], (int) ( $options['source_campaign_id'] ?? 0 ) );
 		}
-		$schedule = DiscountPlan::schedule( $base, $floor, $campaign );
+		$schedule = array();
+		if ( DiscountPlan::automatic( $campaign ) ) {
+			$count = min( 12, DiscountPlan::stage_count( $campaign ) );
+			for ( $stage = 0; $stage < $count; ++$stage ) {
+				$schedule[] = DiscountPlan::automatic_price( $base, $floor, $campaign, $stage, $product_id );
+			}
+		} else {
+			$schedule = DiscountPlan::schedule( $base, $floor, $campaign );
+		}
 		return array_merge(
 			$this->presentation( $product ),
 			array(
@@ -121,6 +129,8 @@ final class ProductSelectionService {
 						if ( $winner && (int) $winner['id'] !== $campaign_id ) {
 							throw new \DomainException( 'product_owned_by_another_campaign' );
 						}
+						if ( 'active' === $campaign['status'] && DiscountPlan::automatic( $campaign ) ) {
+							( new AutomaticSelection( $this->repo ) )->capacity( $campaign, $this->repo->count_items( $campaign_id ) + 1 ); }
 						$previous = $this->repo->item( $campaign_id, $product_id );
 						if ( $previous && ( 'removed' !== $previous['status'] || $previous['expected'] || $previous['intent'] ) ) {
 							throw new \DomainException( 'product_already_included' );
@@ -153,12 +163,15 @@ final class ProductSelectionService {
 						if ( 'active' === $campaign['status'] && Money::parse( $floor, wc_get_price_decimals() ) <= 0 ) {
 							throw new \DomainException( 'product_floor_required' );
 						}
-						$schedule                = DiscountPlan::schedule( $base, $floor, $campaign );
-						$preview                 = array(
-							'base_price'  => $base,
-							'floor_price' => PriceState::money( $floor ),
-							'schedule'    => $schedule,
-						);
+						if ( DiscountPlan::automatic( $campaign ) ) {
+							DiscountPlan::automatic_price( $base, $floor, $campaign, 0 );
+							$schedule = array(); } else {
+							$schedule = DiscountPlan::schedule( $base, $floor, $campaign ); }
+							$preview             = array(
+								'base_price'  => $base,
+								'floor_price' => PriceState::money( $floor ),
+								'schedule'    => $schedule,
+							);
 						$snapshot['precision']   = wc_get_price_decimals();
 						$snapshot['currency']    = get_woocommerce_currency();
 						$snapshot['captured_at'] = gmdate( 'Y-m-d H:i:s' );
@@ -230,11 +243,13 @@ final class ProductSelectionService {
 					$this->repo->save( $campaign_id, array( 'settings' => $settings ) );
 				}
 				// Persist the wake-up before attempting price writes; a request may die mid-batch.
-				as_enqueue_async_action( 'exin_bf_retry', array( $campaign_id, $product_id, $campaign['version'], 'apply', 0 ), Scheduler::GROUP, true );
-				( new Scheduler( $this->repo, new PriceProcessor( $this->repo, new Logger() ), new Logger() ) )->retry( $campaign_id, $product_id, $campaign['version'], 'apply', 0 );
-				$item = $this->repo->item( $campaign_id, $product_id );
-				if ( ! $item || ! $item['expected'] || $item['intent'] || 'active' !== $item['status'] ) {
-					throw new \RuntimeException( 'live_price_retry_pending' ); }
+				if ( DiscountPlan::automatic( $campaign ) ) {
+					update_option( 'exin_bf_auto_stock_' . $campaign_id, 1, false ); } else {
+					as_enqueue_async_action( 'exin_bf_retry', array( $campaign_id, $product_id, $campaign['version'], 'apply', 0 ), Scheduler::GROUP, true ); }
+					( new Scheduler( $this->repo, new PriceProcessor( $this->repo, new Logger() ), new Logger() ) )->retry( $campaign_id, $product_id, $campaign['version'], 'apply', 0 );
+					$item = $this->repo->item( $campaign_id, $product_id );
+					if ( ! $item || ! $item['expected'] || $item['intent'] || 'active' !== $item['status'] ) {
+						throw new \RuntimeException( 'live_price_retry_pending' ); }
 			}
 		);
 	}
@@ -283,7 +298,7 @@ final class ProductSelectionService {
 							}
 							$preview                   = $this->preview( $campaign_id, $product_id, (string) ( $data['floor_price'] ?? $item['floor_price'] ), $data );
 							$changes['floor_price']    = $preview['floor_price'];
-							$changes['schedule']       = $preview['schedule'];
+							$changes['schedule']       = DiscountPlan::automatic( $campaign ) ? array() : $preview['schedule'];
 							$changes['floor_override'] = isset( $data['floor_override'] ) ? (int) (bool) $data['floor_override'] : ( isset( $data['floor_price'] ) || array_key_exists( $product_id, $data['floor_policy']['floors'] ?? array() ) ? 1 : (int) ( $item['floor_override'] ?? 0 ) );
 						}
 						if ( isset( $changes['priority'] ) ) {

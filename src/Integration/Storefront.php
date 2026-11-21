@@ -487,9 +487,8 @@ final class Storefront {
 	 * @param array $campaign Campaign.
 	 */
 	private function stage_end( array $campaign ): int {
-		$stages = \Exin\BlackFriday\Domain\DiscountPlan::boundaries( $campaign );
-		$index  = \Exin\BlackFriday\Domain\DiscountPlan::index( $campaign, time() );
-		return strtotime( ( $stages[ $index + 1 ] ?? $campaign['end_utc'] ) . ' UTC' );
+		$index = \Exin\BlackFriday\Domain\DiscountPlan::index( $campaign, time() );
+		return strtotime( ( $index + 1 < \Exin\BlackFriday\Domain\DiscountPlan::stage_count( $campaign ) ? \Exin\BlackFriday\Domain\DiscountPlan::stage_start( $campaign, $index + 1 ) : $campaign['end_utc'] ) . ' UTC' );
 	}
 
 	/**

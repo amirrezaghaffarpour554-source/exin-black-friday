@@ -38,7 +38,34 @@ final class Scheduler {
 		add_action( 'exin_bf_price_released', array( $this, 'released' ) );
 		add_action( 'exin_bf_batch', array( $this, 'batch' ), 10, 5 );
 		add_action( 'exin_bf_retry', array( $this, 'retry' ), 10, 5 );
+		foreach ( array( 'woocommerce_product_set_stock', 'woocommerce_variation_set_stock', 'woocommerce_product_set_stock_status', 'woocommerce_variation_set_stock_status' ) as $hook ) {
+			add_action( $hook, array( $this, 'stock_changed' ) ); }
 		$this->processor->register();
+	}
+
+
+	/**
+	 * Coalesce all stock changes into the existing watchdog and campaign batch.
+	 *
+	 * @param mixed $product Woo product or product identifier.
+	 * @return void
+	 */
+	public function stock_changed( $product ): void {
+		global $wpdb;
+		$id              = is_object( $product ) ? $product->get_id() : absint( $product );
+		$current_product = is_object( $product ) ? $product : wc_get_product( $id );
+		if ( ! $current_product ) {
+			return; }
+		$owner       = wc_get_product( $current_product->get_stock_managed_by_id() );
+		$unavailable = 'instock' !== $current_product->get_stock_status() || ! $owner || ( $owner->managing_stock() && ( null === $owner->get_stock_quantity() || $owner->get_stock_quantity() <= 0 ) );
+		foreach ( $this->repo->runnable() as $campaign ) {
+			if ( 'active' !== $campaign['status'] || ! DiscountPlan::automatic( $campaign ) ) {
+				continue; }
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Indexed, bounded membership existence check.
+			$member = $wpdb->get_var( $wpdb->prepare( "SELECT i.product_id FROM %i i INNER JOIN %i p ON p.ID=i.product_id WHERE i.campaign_id=%d AND (p.ID=%d OR p.post_parent=%d) AND (%d=1 OR i.status='sold_out') LIMIT 1", $wpdb->prefix . 'exin_bf_items', $wpdb->posts, $campaign['id'], $id, $id, $unavailable ? 1 : 0 ) );
+			if ( $member ) {
+				update_option( 'exin_bf_auto_stock_' . $campaign['id'], 1, false ); }
+		}
 	}
 
 	/**
@@ -133,7 +160,7 @@ final class Scheduler {
 						if ( DiscountPlan::index( $campaign, time() ) < 0 ) {
 							throw new \DomainException( 'campaign_start_is_in_future' );
 						}
-						if ( DiscountPlan::index( $campaign, time() ) >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+						if ( DiscountPlan::index( $campaign, time() ) >= DiscountPlan::stage_count( $campaign ) ) {
 							throw new \DomainException( 'campaign_already_ended' );
 						}
 						$status                 = 'active';
@@ -146,7 +173,7 @@ final class Scheduler {
 						$status = 'paused';
 						break;
 					case 'resume':
-						if ( 'paused' !== $status || DiscountPlan::index( $campaign, time() ) >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+						if ( 'paused' !== $status || DiscountPlan::index( $campaign, time() ) >= DiscountPlan::stage_count( $campaign ) ) {
 							throw new \DomainException( 'campaign_cannot_resume' );
 						}
 						$status = DiscountPlan::index( $campaign, time() ) < 0 ? 'scheduled' : 'active';
@@ -194,6 +221,25 @@ final class Scheduler {
 				'watchdog',
 				function () {
 					foreach ( $this->repo->runnable() as $campaign ) {
+						if ( DiscountPlan::automatic( $campaign ) && get_option( 'exin_bf_auto_stock_' . $campaign['id'] ) ) {
+							( new LockManager() )->run(
+								'batch:' . $campaign['id'] . ':' . $campaign['version'] . ':apply',
+								function () use ( $campaign ): void {
+									( new LockManager() )->run(
+										'campaign:' . $campaign['id'],
+										function () use ( $campaign ): void {
+											$current = $this->repo->get( $campaign['id'] );
+											$run     = $current['settings']['last_run'] ?? array();
+											if ( ! $run || ! empty( $run['complete'] ) ) {
+												$settings = $current['settings'];
+												unset( $settings['last_run'] );
+												$this->repo->save( $current['id'], array( 'settings' => $settings ) );
+												delete_option( 'exin_bf_auto_stock_' . $current['id'] ); }
+										}
+									);
+								}
+							);
+						}
 						$this->stage( $campaign['id'], $campaign['version'] );
 					}
 					$current = $this->repo->current();
@@ -243,7 +289,7 @@ final class Scheduler {
 						return;
 					}
 					$index = DiscountPlan::index( $campaign, time() );
-					if ( $index >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+					if ( $index >= DiscountPlan::stage_count( $campaign ) ) {
 						$settings['restoring'] = true;
 						$this->repo->save(
 							$campaign_id,
@@ -274,7 +320,7 @@ final class Scheduler {
 							do_action( 'exin_bf_stage_started', $campaign_id, $version, $index );
 						} catch ( \Throwable $ignored ) {
 							update_option( 'exin_bf_notification_error', 'provider_hook_failed', false ); }
-						$due = strtotime( DiscountPlan::boundaries( $campaign )[ $index ] . ' UTC' );
+						$due = strtotime( DiscountPlan::stage_start( $campaign, $index ) . ' UTC' );
 						if ( time() - $due > 120 && add_option( 'exin_bf_late_' . $campaign_id . '_' . $version . '_' . $index, time(), '', false ) ) {
 							$this->logger->log(
 								'warning',
@@ -396,7 +442,12 @@ final class Scheduler {
 		}
 		$now  = time();
 		$next = strtotime( $campaign['end_utc'] . ' UTC' );
-		if ( 'paused' !== $campaign['status'] ) {
+		if ( 'paused' !== $campaign['status'] && DiscountPlan::automatic( $campaign ) ) {
+			$index = DiscountPlan::index( $campaign, $now ) + 1;
+			if ( $index < DiscountPlan::stage_count( $campaign ) ) {
+				$next = strtotime( DiscountPlan::stage_start( $campaign, $index ) . ' UTC' );
+			}
+		} elseif ( 'paused' !== $campaign['status'] ) {
 			foreach ( DiscountPlan::boundaries( $campaign ) as $start ) {
 				$at = strtotime( $start . ' UTC' );
 				if ( $at > $now ) {

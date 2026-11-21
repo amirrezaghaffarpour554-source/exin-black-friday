@@ -102,7 +102,7 @@ final class PriceProcessor {
 				if ( null !== $stage && $stage !== $day ) {
 					return 'stage_changed';
 				}
-				if ( $day < 0 || $day >= count( DiscountPlan::boundaries( $campaign ) ) ) {
+				if ( $day < 0 || $day >= DiscountPlan::stage_count( $campaign ) ) {
 					return 'skipped';
 				}
 				$item = $this->repo->item( $campaign_id, $product_id );
@@ -140,7 +140,18 @@ final class PriceProcessor {
 					$this->conflict( $campaign_id, $product_id, 'dynamic_price_conflict' );
 					return 'error';
 				}
-				$price = $item['schedule'][ $day ] ?? null;
+				$automatic = DiscountPlan::automatic( $campaign );
+				$selection = null;
+				$selected  = false;
+				if ( $automatic ) {
+					$selection   = new AutomaticSelection( $this->repo );
+					$selected    = $selection->selected( $campaign, $product_id, $day );
+					$stock_owner = wc_get_product( $product->get_stock_managed_by_id() );
+					$in_stock    = 'instock' === $product->get_stock_status() && $stock_owner && ( ! $stock_owner->managing_stock() || ( null !== $stock_owner->get_stock_quantity() && $stock_owner->get_stock_quantity() > 0 ) );
+					$price       = DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, $day, $product_id, $selected, 'remaining_floor' === $campaign['settings']['discount_plan']['last_day'] ? $selection->remaining( $campaign, $product_id, $day ) : true, $in_stock );
+				} else {
+					$price = $item['schedule'][ $day ] ?? null; }
+
 				if ( ! is_string( $price ) ) {
 					$this->conflict( $campaign_id, $product_id, 'invalid_price_schedule' );
 					return 'error';
@@ -152,16 +163,22 @@ final class PriceProcessor {
 					$this->conflict( $campaign_id, $product_id, 'schedule_financial_bounds_failed' );
 					return 'error';
 				}
+				if ( $automatic && DiscountPlan::index( $campaign, time() ) !== $day ) {
+					return 'stage_changed'; }
 				$target          = $current;
 				$target['price'] = $price;
 				$target['sale']  = $price === $current['regular'] ? '' : $price;
 				$target['from']  = null;
 				$target['to']    = null;
-				$status          = $product->is_in_stock() ? 'active' : 'sold_out';
+				$status          = ( $automatic ? $in_stock : $product->is_in_stock() ) ? 'active' : 'sold_out';
 				if ( $item['expected'] && PriceState::same( $current, $target ) && $status === $item['status'] ) {
+					if ( $automatic && $selected && $minor < Money::parse( $basis, $precision ) ) {
+						$selection->applied( $campaign, $product_id, $day ); }
 					return $recovered ? 'changed' : 'unchanged';
 				}
 				$result = $this->write( $campaign_id, $product_id, $product, $current, $target, 'apply', $status, $version );
+				if ( $automatic && $selected && $minor < Money::parse( $basis, $precision ) && in_array( $result, array( 'changed', 'unchanged' ), true ) ) {
+					$selection->applied( $campaign, $product_id, $day ); }
 				return $recovered && 'unchanged' === $result ? 'changed' : $result;
 			}
 		);

@@ -18,6 +18,16 @@ final class DiscountPlan {
 	/** Maximum supported span in minutes, matching 366 campaign days. */
 	private const MAX_MINUTES = 527040;
 
+	/** Maximum automatic starts, including an exact last-day boundary. */
+	public const MAX_AUTO_STAGES = 105409;
+
+	/**
+	 * Bounded configuration cache; never product prices.
+	 *
+	 * @var array
+	 */
+	private static array $automatic_cache = array();
+
 	/**
 	 * Validate and canonicalize a new discount plan without touching products.
 	 *
@@ -28,7 +38,9 @@ final class DiscountPlan {
 	 */
 	public static function normalize( array $input, int $precision ): array {
 		Money::validate_precision( $precision );
-		$mode     = $input['mode'] ?? 'fixed_percent';
+		$mode = $input['mode'] ?? 'fixed_percent';
+		if ( self::automatic( array( 'settings' => array( 'discount_plan' => $input ) ) ) ) {
+			return self::normalize_automatic( $input ); }
 		$interval = $input['interval'] ?? 'daily';
 		if ( ! in_array( $mode, array( 'fixed_percent', 'fixed_amount', 'linear', 'stepped', 'custom' ), true )
 			|| ! in_array( $interval, array( 'daily', 'hourly', 'custom' ), true ) ) {
@@ -114,6 +126,13 @@ final class DiscountPlan {
 			|| ! in_array( $rounding, array( 'half_up', 'floor', 'ceil' ), true ) ) {
 			throw new InvalidArgumentException( 'invalid_discount_base_floor_or_rounding' );
 		}
+		if ( self::automatic( $campaign ) ) {
+			$result = array();
+			$count  = self::stage_count( $campaign );
+			for ( $step = 0; $step < $count; ++$step ) {
+				$result[] = self::automatic_price( $base, $floor, $campaign, $step );
+			} return $result;
+		}
 		$initial = Money::parse( $plan['initial_discount'], 'fixed_amount' === $plan['mode'] ? $precision : 2 );
 		$final   = Money::parse( $plan['final_discount'], 2 );
 		$start   = max( $floor_minor, self::subtract_ratio( $base_minor, IntegerMath::multiply( (string) $base_minor, (string) ( 'fixed_amount' === $plan['mode'] ? 0 : $initial ) ), '10000', $rounding ) );
@@ -152,9 +171,18 @@ final class DiscountPlan {
 		if ( ! isset( $campaign['settings']['discount_plan'] ) ) {
 			return Timeline::boundaries( $campaign['start_utc'], (int) $campaign['days'], $campaign['timezone'] );
 		}
+		if ( self::automatic( $campaign ) ) {
+			$result = array();
+			$count  = self::stage_count( $campaign );
+			for ( $stage = 0; $stage < $count; ++$stage ) {
+				$result[] = self::stage_start( $campaign, $stage );
+			}
+			return $result;
+		}
 		$plan = self::plan( $campaign );
 		if ( 'daily' === $plan['interval'] ) {
-			return Timeline::boundaries( $campaign['start_utc'], $plan['steps'], $campaign['timezone'] );
+			$result = Timeline::boundaries( $campaign['start_utc'], $plan['steps'], $campaign['timezone'] );
+			return $result;
 		}
 		// Validate the same IANA timezone and canonical start as legacy campaigns.
 		Timeline::boundaries( $campaign['start_utc'], 1, $campaign['timezone'] );
@@ -168,7 +196,7 @@ final class DiscountPlan {
 	}
 
 	/**
-	 * Compute the end after the final stage's configured interval.
+	 * Compute the independent automatic end or the existing manual plan end.
 	 *
 	 * @param array $campaign Campaign record.
 	 * @return string Canonical UTC end.
@@ -178,7 +206,7 @@ final class DiscountPlan {
 			return Timeline::end( $campaign['start_utc'], (int) $campaign['days'], $campaign['timezone'] );
 		}
 		$plan = self::plan( $campaign );
-		if ( 'daily' === $plan['interval'] ) {
+		if ( ! self::automatic( $campaign ) && 'daily' === $plan['interval'] ) {
 			return Timeline::end( $campaign['start_utc'], $plan['steps'], $campaign['timezone'] );
 		}
 		Timeline::boundaries( $campaign['start_utc'], 1, $campaign['timezone'] );
@@ -197,6 +225,17 @@ final class DiscountPlan {
 		if ( ! isset( $campaign['settings']['discount_plan'] ) ) {
 			return Timeline::day_index( $campaign, $now );
 		}
+		if ( self::automatic( $campaign ) ) {
+			$context = self::automatic_context( $campaign );
+			if ( $now < $context['start'] ) {
+				return -1;
+			}
+			if ( $now >= $context['end'] ) {
+				return $context['count'];
+			}
+			$index = min( $context['plan']['steps'] - 1, intdiv( $now - $context['start'], $context['seconds'] ) );
+			return $index + ( null !== $context['extra'] && $now >= $context['start'] + $context['extra'] ? 1 : 0 );
+		}
 		$boundaries = self::boundaries( $campaign );
 		$last       = count( $boundaries ) - 1;
 		$end        = Timeline::parse_utc( $campaign['end_utc'] ?? self::end( $campaign ) )->getTimestamp();
@@ -212,6 +251,213 @@ final class DiscountPlan {
 			}
 		}
 		return -1;
+	}
+
+	/**
+	 * Count stages without materializing automatic boundaries.
+	 *
+	 * @param array $campaign Campaign.
+	 * @return int Stage count, including an enabled last-day start.
+	 */
+	public static function stage_count( array $campaign ): int {
+		return self::automatic( $campaign ) ? self::automatic_context( $campaign )['count'] : count( self::boundaries( $campaign ) );
+	}
+
+	/**
+	 * Resolve one UTC start with constant memory for automatic plans.
+	 *
+	 * @param array $campaign Campaign.
+	 * @param int   $stage Zero-based stage.
+	 * @return string Canonical UTC start.
+	 * @throws InvalidArgumentException When the stage is out of range.
+	 */
+	public static function stage_start( array $campaign, int $stage ): string {
+		if ( ! self::automatic( $campaign ) ) {
+			$boundaries = self::boundaries( $campaign );
+			if ( ! isset( $boundaries[ $stage ] ) ) {
+				throw new InvalidArgumentException( 'invalid_discount_stage' );
+			}
+			return $boundaries[ $stage ];
+		}
+		$c = self::automatic_context( $campaign );
+		if ( $stage < 0 || $stage >= $c['count'] ) {
+			throw new InvalidArgumentException( 'invalid_discount_stage' );
+		}
+		$offset = null !== $c['extra'] && $stage === $c['extra_index'] ? $c['extra'] : ( $stage - ( null !== $c['extra'] && $stage > $c['extra_index'] ? 1 : 0 ) ) * $c['seconds'];
+		return gmdate( 'Y-m-d H:i:s', $c['start'] + $offset );
+	}
+
+	/**
+	 * Identify explicitly opted-in automatic plans; legacy modes are untouched.
+	 *
+	 * @param array $campaign Campaign record.
+	 * @return bool Whether an automatic mode was explicitly saved.
+	 */
+	public static function automatic( array $campaign ): bool {
+		return in_array( $campaign['settings']['discount_plan']['mode'] ?? '', array( 'auto_progressive', 'auto_descending', 'auto_rotation', 'auto_random', 'auto_wave', 'auto_hybrid' ), true );
+	}
+
+	/**
+	 * Validate automatic parameters within the existing stage plan.
+	 *
+	 * @param array $input Submitted plan.
+	 * @return array Validated automatic plan.
+	 * @throws InvalidArgumentException When a plan is unsafe.
+	 */
+	private static function normalize_automatic( array $input ): array {
+		$mode     = $input['mode'];
+		$interval = $input['interval'] ?? 'daily';
+		if ( ! in_array( $interval, array( 'daily', 'hourly', 'flash' ), true ) ) {
+			throw new InvalidArgumentException( 'invalid_automatic_interval' ); }
+		$minutes = 'daily' === $interval ? 1440 : self::integer( $input['interval_minutes'] ?? ( 'hourly' === $interval ? 60 : 5 ), 'flash' === $interval ? 5 : 60, 1440 );
+		if ( 'hourly' === $interval && 0 !== $minutes % 60 ) {
+			throw new InvalidArgumentException( 'automatic_hour_interval_must_be_whole_hours' ); }
+		// Previously saved automatic plans without a duration retain their span.
+		$duration = $input['duration_minutes'] ?? ( isset( $input['duration_days'] ) ? self::integer( $input['duration_days'], 1, 366 ) * 1440 : ( isset( $input['steps'] ) ? self::integer( $input['steps'], 1, self::MAX_AUTO_STAGES ) * $minutes : 10080 ) );
+		$duration = self::integer( $duration, 1, self::MAX_MINUTES );
+		$steps    = intdiv( $duration + $minutes - 1, $minutes );
+		$min      = self::amount( $input['intensity_min'] ?? '10', 2 );
+		$max      = self::amount( $input['intensity_max'] ?? '100', 2 );
+		$base_max = self::amount( $input['base_max'] ?? '40', 2 );
+		if ( Money::parse( $min, 2 ) > Money::parse( $max, 2 ) || Money::parse( $max, 2 ) > 10000 || Money::parse( $base_max, 2 ) > 10000 ) {
+			throw new InvalidArgumentException( 'invalid_automatic_intensity' ); }
+		if ( 'auto_hybrid' === $mode && ( Money::parse( $base_max, 2 ) < Money::parse( $min, 2 ) || Money::parse( $base_max, 2 ) > Money::parse( $max, 2 ) ) ) {
+			throw new InvalidArgumentException( 'invalid_automatic_base_intensity' ); }
+		$curve     = $input['curve'] ?? 'linear';
+		$selector  = $input['selector'] ?? 'priority';
+		$last      = $input['last_day'] ?? 'disabled';
+		$ending    = $input['descending_end'] ?? 'continue';
+		$size_mode = $input['selection_mode'] ?? 'percent';
+		if ( ! in_array( $curve, array( 'linear', 'stepped' ), true ) || ! in_array( $selector, array( 'priority', 'random' ), true ) || ! in_array( $last, array( 'disabled', 'continue', 'all_floor', 'remaining_floor' ), true ) || ! in_array( $ending, array( 'continue', 'regular', 'minimum' ), true ) || ! in_array( $size_mode, array( 'count', 'percent' ), true ) ) {
+			throw new InvalidArgumentException( 'invalid_automatic_option' ); }
+		$seed = $input['seed'] ?? 'exin-auto-130';
+		if ( ! is_string( $seed ) || ! preg_match( '/\A[A-Za-z0-9_-]{8,64}\z/D', $seed ) ) {
+			throw new InvalidArgumentException( 'invalid_automatic_seed' ); }
+		return array(
+			'mode'             => $mode,
+			'interval'         => $interval,
+			'steps'            => $steps,
+			'interval_minutes' => $minutes,
+			'duration_minutes' => $duration,
+			'initial_discount' => '0.00',
+			'final_discount'   => '0.00',
+			'reach_floor'      => false,
+			'points'           => array(),
+			'intensity_min'    => $min,
+			'intensity_max'    => $max,
+			'base_max'         => $base_max,
+			'curve'            => $curve,
+			'bands'            => self::integer( $input['bands'] ?? 3, 2, self::MAX_AUTO_STAGES ),
+			'wave_period'      => self::integer( $input['wave_period'] ?? 4, 2, self::MAX_AUTO_STAGES ),
+			'selector'         => $selector,
+			'selection_mode'   => $size_mode,
+			'selection_value'  => self::integer( $input['selection_value'] ?? 25, 1, 'percent' === $size_mode ? 100 : 50000 ),
+			'seed'             => $seed,
+			'last_day'         => $last,
+			'descending_end'   => $ending,
+		);
+	}
+
+	/**
+	 * Make one exact decision relative to the regular-to-floor headroom.
+	 *
+	 * @param string $base Immutable regular price.
+	 * @param string $floor Positive per-product floor.
+	 * @param array  $campaign Explicit automatic campaign.
+	 * @param int    $stage Actual stage index.
+	 * @param int    $product_id Product seed identity.
+	 * @param bool   $selected Whether the immutable stage cohort selected this item.
+	 * @param bool   $remaining Whether no previous special turn was recorded.
+	 * @param bool   $in_stock Current strict stock eligibility.
+	 * @return string One bounded price; discounts never stack.
+	 * @throws InvalidArgumentException When the financial inputs are invalid.
+	 */
+	public static function automatic_price( string $base, string $floor, array $campaign, int $stage, int $product_id = 0, bool $selected = true, bool $remaining = true, bool $in_stock = true ): string {
+		$context   = self::automatic_context( $campaign );
+		$p         = $context['plan'];
+		$precision = self::precision( $campaign );
+		$b         = Money::parse( $base, $precision );
+		$f         = Money::parse( $floor, $precision );
+		$steps     = $context['count'];
+		if ( $b <= 0 || $f <= 0 || $f > $b || $stage < 0 || $stage >= $steps ) {
+			throw new InvalidArgumentException( 'invalid_automatic_base_floor_or_stage' ); }
+		if ( ! $in_stock ) {
+			return Money::format( $b, $precision ); }
+		$lo       = Money::parse( $p['intensity_min'], 2 );
+		$hi       = Money::parse( $p['intensity_max'], 2 );
+		$den      = max( 1, $steps - 1 );
+		$position = $stage;
+		if ( 'stepped' === $p['curve'] ) {
+			$den      = max( 1, min( $p['bands'], $steps ) - 1 );
+			$position = intdiv( $stage * $den, max( 1, $steps - 1 ) ); }
+		$progress = $lo + intdiv( ( $hi - $lo ) * $position, $den );
+		$random   = $lo + (int) ( hexdec( substr( hash( 'sha256', $p['seed'] . ':' . $stage . ':' . $product_id . ':intensity' ), 0, 8 ) ) % ( $hi - $lo + 1 ) );
+		switch ( $p['mode'] ) {
+			case 'auto_descending':
+				$intensity = $hi - ( $progress - $lo );
+				if ( $stage === $steps - 1 && 'continue' !== $p['descending_end'] ) {
+					$intensity = 'regular' === $p['descending_end'] ? 0 : $lo;
+				} break;
+			case 'auto_rotation':
+				$intensity = $selected ? $hi : 0;
+				break;
+			case 'auto_random':
+				$intensity = $selected ? $random : 0;
+				break;
+			case 'auto_wave':
+				$phase     = $stage % $p['wave_period'];
+				$intensity = $lo + intdiv( ( $hi - $lo ) * min( $phase, $p['wave_period'] - $phase ), max( 1, intdiv( $p['wave_period'], 2 ) ) );
+				break;
+			case 'auto_hybrid':
+				$cap            = max( $lo, Money::parse( $p['base_max'], 2 ) );
+				$base_intensity = $lo + intdiv( ( $cap - $lo ) * $position, $den );
+				$intensity      = $selected ? max( $base_intensity, 'random' === $p['selector'] ? $random : $hi ) : $base_intensity;
+				break;
+			default:
+				$intensity = $progress;
+		}
+		$last_start = max( $context['start'], $context['end'] - 86400 );
+		if ( Timeline::parse_utc( self::stage_start( $campaign, $stage ) )->getTimestamp() >= $last_start && ( 'all_floor' === $p['last_day'] || ( 'remaining_floor' === $p['last_day'] && $remaining ) ) ) {
+			$intensity = 10000; }
+		$price = self::subtract_ratio( $b, IntegerMath::multiply( (string) ( $b - $f ), (string) $intensity ), '10000', $campaign['rounding'] ?? 'half_up' );
+		return Money::format( max( $f, min( $b, $price ) ), $precision );
+	}
+
+
+	/**
+	 * Cache only immutable per-request plan context, never mutable stock or prices.
+	 *
+	 * @param array $campaign Campaign.
+	 * @return array Validated plan and scalar timing context.
+	 * @throws InvalidArgumentException When the stored end precedes a stage.
+	 */
+	private static function automatic_context( array $campaign ): array {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Pure domain also runs outside WordPress.
+		$key = hash( 'sha256', json_encode( array( $campaign['settings']['discount_plan'], $campaign['start_utc'], $campaign['end_utc'] ?? null, $campaign['timezone'], self::precision( $campaign ) ), JSON_THROW_ON_ERROR ) );
+		if ( ! isset( self::$automatic_cache[ $key ] ) ) {
+			if ( count( self::$automatic_cache ) >= 8 ) {
+				self::$automatic_cache = array(); }
+			$plan = self::plan( $campaign );
+			Timeline::boundaries( $campaign['start_utc'], 1, $campaign['timezone'] );
+			$start   = Timeline::parse_utc( $campaign['start_utc'] )->getTimestamp();
+			$end     = isset( $campaign['end_utc'] ) ? Timeline::parse_utc( $campaign['end_utc'] )->getTimestamp() : $start + $plan['duration_minutes'] * 60;
+			$seconds = $plan['interval_minutes'] * 60;
+			if ( $end <= $start + ( $plan['steps'] - 1 ) * $seconds ) {
+				throw new InvalidArgumentException( 'discount_end_must_follow_final_stage' );
+			}
+			$last                          = $end - 86400 - $start;
+			$extra                         = in_array( $plan['last_day'], array( 'all_floor', 'remaining_floor' ), true ) && $last > 0 && 0 !== $last % $seconds ? $last : null;
+			self::$automatic_cache[ $key ] = array(
+				'plan'        => $plan,
+				'start'       => $start,
+				'end'         => $end,
+				'seconds'     => $seconds,
+				'extra'       => $extra,
+				'extra_index' => null === $extra ? null : intdiv( $extra + $seconds - 1, $seconds ),
+				'count'       => $plan['steps'] + ( null === $extra ? 0 : 1 ),
+			);
+		}
+		return self::$automatic_cache[ $key ];
 	}
 
 	/**

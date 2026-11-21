@@ -21,7 +21,7 @@ if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $it
 		return;
 	}
 }
-foreach ( array( 'campaigns', 'items', 'locks', 'audit' ) as $suffix ) {
+foreach ( array( 'campaigns', 'items', 'locks', 'audit', 'turns' ) as $suffix ) {
 	$table = $wpdb->prefix . 'exin_bf_' . $suffix;
 	$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $table ) );
 }
