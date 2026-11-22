@@ -437,7 +437,7 @@ final class AdminController {
 				$campaign = $this->required_campaign( $id );
 				$data     = $this->body( $request );
 				$updates  = array();
-				foreach ( array( 'badge_enabled', 'discount_badge', 'cashback_message_enabled', 'include_store_products', 'show_filters' ) as $key ) {
+				foreach ( array( 'badge_enabled', 'discount_badge', 'cashback_message_enabled', 'include_store_products', 'show_filters', 'manual_floor_catalog' ) as $key ) {
 					if ( array_key_exists( $key, $data ) ) {
 								$updates[ $key ] = $this->boolean( $data[ $key ] ); }
 				}
@@ -550,7 +550,7 @@ final class AdminController {
 		if ( strlen( $term ) > 100 || ( '' !== $term && strlen( $term ) < 2 ) ) {
 			throw new InvalidArgumentException( esc_html__( 'جست‌وجو را خالی بگذارید یا بین ۲ و ۱۰۰ نویسه وارد کنید.', 'exin-black-friday' ) );
 		}
-		$filters     = array(
+		$filters = array(
 			'category'    => sanitize_text_field( $this->text( $request->get_param( 'category' ) ?? '' ) ),
 			'stock'       => $this->choice( $request->get_param( 'stock' ) ?? 'all', array( 'all', 'instock', 'outofstock' ) ),
 			'publication' => $this->choice( $request->get_param( 'publication' ) ?? 'publish', array( 'publish', 'draft', 'pending', 'private' ) ),
@@ -560,6 +560,11 @@ final class AdminController {
 			'parent_id'   => $this->integer( $request->get_param( 'parent_id' ) ?? 0, 0, PHP_INT_MAX ),
 			'tax_filters' => $this->catalog_tax_filters( $request->get_param( 'tax_filters' ) ?? array() ),
 		);
+		if ( '1' === (string) $request->get_param( 'missing_floor' ) ) {
+			$missing_id = $this->integer( $request->get_param( 'campaign_id' ), 1, PHP_INT_MAX );
+			$this->required_campaign( $missing_id );
+			$filters['missing_floor_campaign'] = $missing_id;
+		}
 		$result      = $this->selection->search( $term, $this->integer( $request->get_param( 'page' ) ?? 1, 1, 10000 ), $filters );
 		$campaign_id = $this->integer( $request->get_param( 'campaign_id' ) ?? 0, 0, PHP_INT_MAX );
 		if ( $campaign_id ) {
