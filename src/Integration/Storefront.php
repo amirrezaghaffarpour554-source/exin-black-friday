@@ -214,7 +214,7 @@ final class Storefront {
 				'featured'       => false,
 				'pagination'     => 'yes',
 				'campaigns'      => $campaign['settings']['public_scope'] ?? 'single',
-				'include_store'  => ! empty( $campaign['settings']['include_store_products'] ),
+				'include_store'  => ( ! empty( $campaign['settings']['include_store_products'] ) || ! empty( $campaign['settings']['manual_floor_catalog'] ) ),
 				'filters'        => ! empty( $campaign['settings']['show_filters'] ),
 				'min_discount'   => '',
 				'max_discount'   => '',
