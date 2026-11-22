@@ -157,7 +157,8 @@ final class AdminController {
 		$requested = $this->integer( $request->get_param( 'campaign_id' ) ?? 0, 0, PHP_INT_MAX );
 		$campaign  = $requested ? $this->required_campaign( $requested ) : $this->repository->current();
 		$page      = $this->integer( $request->get_param( 'page' ) ?? 1, 1, 100000 );
-		$items     = $campaign ? $this->repository->items( (int) $campaign['id'], 25, ( $page - 1 ) * 25 ) : array();
+		$manager   = $campaign && 'products' === $request->get_param( 'view' ) ? $this->repository->manager_items( (int) $campaign['id'], $page, sanitize_text_field( (string) ( $request->get_param( 'search' ) ?? '' ) ) ) : null;
+		$items     = null !== $manager ? $manager['items'] : ( $campaign ? $this->repository->items( (int) $campaign['id'], 25, ( $page - 1 ) * 25 ) : array() );
 		foreach ( $items as &$item ) {
 			$product         = wc_get_product( (int) $item['product_id'] );
 			$image           = $product ? wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' ) : false;
@@ -166,7 +167,8 @@ final class AdminController {
 				'sku'           => $product->get_sku(),
 				'price'         => $product->get_price(),
 				'regular_price' => $product->get_regular_price(),
-				'stock'         => $product->get_stock_quantity(),
+				'stock'         => ( wc_get_product( $product->get_stock_managed_by_id() ) ?: $product )->get_stock_quantity(),
+				'color'         => $product->get_attribute( 'pa_color' ) ?: $product->get_attribute( 'color' ),
 				'stock_status'  => $product->get_stock_status(),
 				'image'         => false !== $image ? $image : '',
 				'type'          => $product->get_type(),
@@ -185,7 +187,7 @@ final class AdminController {
 			'campaigns'     => $this->repository->campaigns( 1, 50 )['campaigns'],
 			'selection_job' => $campaign ? ( new BulkSelectionService( $this->repository ) )->status( (int) $campaign['id'] ) : null,
 			'items'         => $items,
-			'count'         => $campaign ? $this->repository->count_items( (int) $campaign['id'] ) : 0,
+			'count'         => null !== $manager ? $manager['count'] : ( $campaign ? $this->repository->count_items( (int) $campaign['id'] ) : 0 ),
 			'page'          => $page,
 			'has_more'      => count( $items ) === 25,
 			'analytics'     => $analytics,
@@ -268,6 +270,13 @@ final class AdminController {
 		$data = $this->body( $request );
 		if ( 'remove' === ( $data['action'] ?? '' ) && true !== ( $data['confirm_remove'] ?? false ) ) {
 			throw new InvalidArgumentException( esc_html__( 'حذف و بازیابی قیمت محصول را تأیید کنید.', 'exin-black-friday' ) ); }
+		$data['filters'] = $this->selection_filters( $data['filters'] ?? array() );
+		if ( 'remove' !== ( $data['action'] ?? 'add' ) ) {
+			$data['filters']['stock'] = 'instock';
+			if ( in_array( $data['filters']['scope'] ?? '', array( 'all', 'instock' ), true ) ) {
+				$data['filters']['scope'] = 'instock';
+			}
+		}
 		return array( 'job' => ( new BulkSelectionService( $this->repository ) )->start( $id, $this->selection_filters( $data['filters'] ?? array() ), $this->floor_policy( $data['floor_policy'] ?? array( 'mode' => 'none' ), $this->amount_unit( $data ) ), $this->choice( $data['action'] ?? 'add', array( 'add', 'remove' ) ) ) );
 	}
 
@@ -850,12 +859,12 @@ final class AdminController {
 		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
 		$this->required_campaign( $id );
 		$data   = $this->body( $request );
-		$action = $this->choice( $data['action'] ?? '', array( 'add', 'remove' ) );
+		$action = $this->choice( $data['action'] ?? '', array( 'add', 'remove', 'floors' ) );
 		$rows   = $data['items'] ?? null;
 		if ( ! is_array( $rows ) || count( $rows ) < 1 || count( $rows ) > 25 ) {
 			throw new InvalidArgumentException( esc_html__( 'هر نوبت بین ۱ تا ۲۵ محصول مجاز است.', 'exin-black-friday' ) );
 		}
-		if ( 'add' === $action ) {
+		if ( in_array( $action, array( 'add', 'floors' ), true ) ) {
 			$this->editable_campaign( $id );
 		} elseif ( true !== ( $data['confirm_remove'] ?? false ) ) {
 			throw new InvalidArgumentException( esc_html__( 'حذف گروهی و بازیابی قیمت را تأیید کنید.', 'exin-black-friday' ) );
@@ -868,7 +877,16 @@ final class AdminController {
 					throw new InvalidArgumentException( esc_html__( 'ساختار محصول معتبر نیست.', 'exin-black-friday' ) );
 				}
 				$product = $this->integer( $row['product_id'] ?? 0, 1, PHP_INT_MAX );
-				if ( 'add' === $action ) {
+				if ( 'floors' === $action ) {
+					$this->selection->update(
+						$id,
+						$product,
+						array(
+							'floor_price'    => $this->decimal( $row['floor_price'] ?? '', $this->amount_unit( $data ) ),
+							'floor_override' => 1,
+						)
+					);
+				} elseif ( 'add' === $action ) {
 					$this->selection->add( $id, $product, $this->decimal( $row['floor_price'] ?? '', $this->amount_unit( $data ) ) );
 				} else {
 					if ( ! $this->repository->item( $id, $product ) ) {

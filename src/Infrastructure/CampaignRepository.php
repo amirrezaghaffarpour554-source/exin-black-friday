@@ -250,6 +250,28 @@ final class CampaignRepository {
 	}
 
 	/**
+	 * Read a stock-only manager page with matching SQL count and search.
+	 *
+	 * @param int    $id Campaign.
+	 * @param int    $page Page.
+	 * @param string $search Name, SKU or ID.
+	 * @return array Page and total.
+	 */
+	public function manager_items( int $id, int $page, string $search ): array {
+		global $wpdb;
+		$sql = $wpdb->prepare( " FROM %i i JOIN %i p ON p.ID=i.product_id JOIN %i l ON l.product_id=p.ID LEFT JOIN %i parent ON parent.product_id=CASE WHEN p.post_type='product_variation' AND NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} cm WHERE cm.post_id=p.ID AND cm.meta_key='_manage_stock' AND cm.meta_value='yes') AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id=p.post_parent AND pm.meta_key='_manage_stock' AND pm.meta_value='yes') THEN p.post_parent ELSE p.ID END WHERE i.campaign_id=%d AND i.status<>'removed' AND p.post_type IN ('product','product_variation') AND l.stock_status='instock' AND parent.stock_status='instock' AND (parent.stock_quantity IS NULL OR parent.stock_quantity>0)", $this->table( 'items' ), $wpdb->posts, $wpdb->prefix . 'wc_product_meta_lookup', $wpdb->prefix . 'wc_product_meta_lookup', $id );
+		if ( '' !== $search ) {
+			$like = '%' . $wpdb->esc_like( $search ) . '%';
+			$sql .= $wpdb->prepare( ' AND (p.post_title LIKE %s OR l.sku LIKE %s OR p.ID=%d)', $like, $like, ctype_digit( $search ) ? (int) $search : 0 );
+		}
+		$rows = $wpdb->get_results( 'SELECT i.*' . $sql . $wpdb->prepare( ' ORDER BY i.featured DESC,i.priority ASC,i.product_id ASC LIMIT 25 OFFSET %d', max( 0, $page - 1 ) * 25 ), ARRAY_A );
+		return array(
+			'items' => array_map( array( $this, 'decode_item' ), $rows ),
+			'count' => (int) $wpdb->get_var( 'SELECT COUNT(*)' . $sql ),
+		);
+	}
+
+	/**
 	 * Read a bounded page of campaign product records.
 	 *
 	 * @param int $campaign_id Campaign identifier.
