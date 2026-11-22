@@ -1,0 +1,53 @@
+{
+  "result": "PASS",
+  "catalog_products": 1748,
+  "floor_bound": true,
+  "manual_only": true,
+  "prior_campaigns_2_4_preserved": true,
+  "restore": true,
+  "catalog_benchmark": {
+    "started_unix": 1795382715.409977,
+    "finished_unix": 1795382715.466229,
+    "wall_seconds": 0.056075,
+    "cpu_user_seconds": 0.006754,
+    "cpu_system_seconds": 0,
+    "cpu_percent_one_core": 12.04,
+    "queries": 7,
+    "php_peak_bytes": 134021120,
+    "process_peak_rss_bytes": 150224896,
+    "result": {
+      "products": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ],
+      "total": 1748,
+      "pages": 70,
+      "page": 1
+    }
+  },
+  "production_accessed": false,
+  "real_campaigns_2_4_verified": false
+}

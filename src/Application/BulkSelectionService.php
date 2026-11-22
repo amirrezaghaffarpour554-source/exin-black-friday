@@ -323,7 +323,10 @@ final class BulkSelectionService {
 		$precision  = (int) ( $campaign['settings']['precision'] ?? wc_get_price_decimals() );
 		$base_minor = Money::parse( $base, $precision );
 		$mode       = isset( $policy['floors'][ $product_id ] ) ? 'independent' : ( $policy['mode'] ?? 'none' );
-		$value      = (string) ( $policy['value'] ?? '0' );
+		if ( ! empty( $campaign['settings']['manual_floor_catalog'] ) && ( 'independent' !== $mode || ! isset( $policy['floors'][ $product_id ] ) ) ) {
+			throw new \DomainException( 'product_floor_required' );
+		}
+		$value = (string) ( $policy['value'] ?? '0' );
 		switch ( $mode ) {
 			case 'none':
 				if ( empty( $campaign['settings']['discount_plan'] ) || 'linear' === ( $campaign['settings']['discount_plan']['mode'] ?? '' ) ) {
@@ -368,6 +371,9 @@ final class BulkSelectionService {
 				break;
 			default:
 				throw new \DomainException( 'invalid_floor_policy' );
+		}
+		if ( ! empty( $campaign['settings']['manual_floor_catalog'] ) && $floor <= 0 ) {
+			throw new \DomainException( 'product_floor_required' );
 		}
 		if ( $floor < 0 || $floor > $base_minor ) {
 			throw new \DomainException( 'floor_exceeds_base' );
