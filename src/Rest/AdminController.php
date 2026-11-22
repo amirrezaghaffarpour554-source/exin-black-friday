@@ -821,7 +821,7 @@ final class AdminController {
 				$changes['floor_override'] = $this->boolean( $data['floor_override'] ); }
 			if ( isset( $data['floor_price'] ) ) {
 				$this->editable_campaign( $id );
-				$changes['floor_price'] = $this->decimal( $data['floor_price'], $this->amount_unit( $data ) );
+				$changes['floor_price'] = $this->validated_floor( $this->required_campaign( $id ), $product, $data['floor_price'], $this->amount_unit( $data ) );
 			}
 			if ( isset( $data['priority'] ) ) {
 				$changes['priority'] = $this->integer( $data['priority'], 0, 999999 );
@@ -882,7 +882,7 @@ final class AdminController {
 						$id,
 						$product,
 						array(
-							'floor_price'    => $this->decimal( $row['floor_price'] ?? '', $this->amount_unit( $data ) ),
+							'floor_price'    => $this->validated_floor( $this->required_campaign( $id ), $product, $row['floor_price'] ?? '', $this->amount_unit( $data ) ),
 							'floor_override' => 1,
 						)
 					);
@@ -902,7 +902,7 @@ final class AdminController {
 				$results[] = array(
 					'product_id' => $product,
 					'ok'         => false,
-					'error'      => __( 'عملیات محصول انجام نشد؛ قیمت و وضعیت تعارض را بررسی کنید.', 'exin-black-friday' ),
+					'error'      => $this->domain_message( $error->getMessage() ),
 				);
 			}
 		}
@@ -1258,7 +1258,8 @@ final class AdminController {
 	 */
 	private function domain_message( string $code ): string {
 		$messages = array(
-			'invalid_automatic_base_floor_or_stage'       => __( 'روش خودکار برای هر محصول به قیمت اصلی معتبر و کف مثبت و کمتر یا مساوی قیمت اصلی نیاز دارد؛ ابتدا کف‌ها را تعیین کنید.', 'exin-black-friday' ),
+			'product_floor_required' => __( 'کف این محصول باید عددی بزرگ‌تر از صفر باشد؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),
+			'floor_exceeds_base' => __( 'کف قیمت نباید از قیمت مبنا بیشتر باشد؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),			'invalid_automatic_base_floor_or_stage'       => __( 'روش خودکار برای هر محصول به قیمت اصلی معتبر و کف مثبت و کمتر یا مساوی قیمت اصلی نیاز دارد؛ ابتدا کف‌ها را تعیین کنید.', 'exin-black-friday' ),
 			'automatic_flash_capacity_exceeded'           => __( 'فاصلهٔ Flash برای تعداد محصولات و بودجهٔ پردازش فعلی کوتاه است؛ فاصله را بیشتر کنید.', 'exin-black-friday' ),
 			'automatic_cohort_capacity_exceeded'          => __( 'تعداد نوبت‌های ویژه بیش از بودجهٔ ایمن است؛ مراحل یا اندازهٔ گروه ویژه را کاهش دهید.', 'exin-black-friday' ),
 			'selection_requires_editable_campaign'        => __( 'انتخاب گروهی فقط برای پیش‌نویس بدون مالکیت قیمت یا کمپین فعال و منقضی‌نشده مجاز است.', 'exin-black-friday' ),
@@ -1329,6 +1330,25 @@ final class AdminController {
 			throw new InvalidArgumentException( esc_html__( 'درخواست JSON معتبر لازم است.', 'exin-black-friday' ) );
 		}
 		return $body;
+	}
+
+	/**
+	 * Validate an edited floor before any enrollment state is saved.
+	 *
+	 * @param array $campaign Campaign.
+	 * @param int $product Product ID.
+	 * @param mixed $value Submitted amount.
+	 * @param string $unit Editing currency unit.
+	 * @return string Validated store amount.
+	 * @throws InvalidArgumentException When a required positive floor is missing.
+	 */
+	private function validated_floor( array $campaign, int $product, mixed $value, string $unit ): string {
+		$floor = $this->decimal( $value, $unit );
+		$positive = DiscountPlan::automatic( $campaign ) || ! isset( $campaign['settings']['discount_plan'] ) || \Exin\BlackFriday\Domain\Money::parse( $this->repository->item( (int) $campaign['id'], $product )['floor_price'] ?? '0', wc_get_price_decimals() ) > 0;
+		if ( $positive && \Exin\BlackFriday\Domain\Money::parse( $floor, wc_get_price_decimals() ) <= 0 ) {
+			throw new InvalidArgumentException( 'product_floor_required' );
+		}
+		return $floor;
 	}
 
 	/**

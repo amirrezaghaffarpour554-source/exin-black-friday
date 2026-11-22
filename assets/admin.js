@@ -398,6 +398,7 @@
         return `${(simulation.warnings || []).map(warning => `<p class="exin-bf-warning">${esc(typeof warning === 'string' ? warning : warning.message || warning.code || '')}</p>`).join('')}<p class="exin-bf-note">این شبیه‌سازی قیمت فروشگاه را تغییر نمی‌دهد. کف هر محصول در همهٔ مراحل رعایت می‌شود.</p>${(simulation.samples || []).map((sample, index) => `<details class="exin-bf-simulation" ${index === 0 ? 'open' : ''}><summary>${esc(sample.name || `#${sample.product_id}`)} · مبنا ${price(sample.base_price)} · کف ${price(sample.floor_price)}${sample.maximum_discount_percent !== undefined ? ` · سقف ${esc(sample.maximum_discount_percent)}٪` : ''}</summary><div class="exin-bf-preview">${(sample.schedule || []).map((amount, stage) => `<span><small>مرحله ${helpers.persianDigits((simulation.stage_start || 0) + stage + 1)}</small>${price(amount)}${sample.details?.[stage] ? `<small>${esc(sample.details[stage].discount_percent)}٪ از قیمت اصلی</small>` : ''}</span>`).join('')}</div></details>`).join('')}`;
     }
     function stockText(product) {
+        if (product.stock_status === 'outofstock' || product.stock_status === 'onbackorder' || (product.stock !== null && product.stock !== undefined && Number(product.stock) <= 0) || (product.stock_quantity !== null && product.stock_quantity !== undefined && Number(product.stock_quantity) <= 0)) return 'ناموجود';
         if (product.stock_quantity !== null && product.stock_quantity !== undefined) return helpers.persianDigits(product.stock_quantity);
         if (product.stock !== null && product.stock !== undefined) return helpers.persianDigits(product.stock);
         return product.stock_status === 'instock' ? wp.i18n.__('موجود', 'exin-black-friday') : product.stock_status === 'onbackorder' ? wp.i18n.__('پیش‌سفارش؛ در نمایش جشنواره پنهان است', 'exin-black-friday') : wp.i18n.__('ناموجود', 'exin-black-friday');
@@ -708,13 +709,19 @@
         if (name === 'picker-save') { await saveSelected(); return; }
         if (name === 'save-floors') {
             const prefix = `${state.campaign.id}:`, edits = [...floorEdits].filter(([key]) => key.startsWith(prefix));
-            let failed = 0;
-            for (let offset = 0; offset < edits.length; offset += 25) {
-                const batch = edits.slice(offset, offset + 25);
-                const result = await api(campaignPath('bulk'), {...unitPayload(), action:'floors', items:batch.map(([key,value]) => ({product_id:Number(key.slice(prefix.length)),floor_price:value}))});
-                result.results.forEach(row => { const key = `${prefix}${row.product_id}`; if (row.ok && floorEdits.get(key) === batch.find(([k]) => k === key)?.[1]) floorEdits.delete(key); else if (!row.ok) failed++; });
-            }
-            await load(); notice(failed ? 'برخی کف‌ها ذخیره نشدند؛ مقادیر برای اصلاح حفظ شدند.' : labels.requestSaved, !!failed); return;
+            const errors = [];
+            try {
+                for (let offset = 0; offset < edits.length; offset += 25) {
+                    const batch = edits.slice(offset, offset + 25);
+                    const result = await api(campaignPath('bulk'), {...unitPayload(), action:'floors', items:batch.map(([key,value]) => ({product_id:Number(key.slice(prefix.length)),floor_price:value}))});
+                    batch.forEach(([key,value]) => {
+                        const id = Number(key.slice(prefix.length)), row = result.results.find(item => item.product_id === id);
+                        if (row?.ok) { if (floorEdits.get(key) === value) floorEdits.delete(key); }
+                        else errors.push(`#${id}: ${row?.error || 'ذخیره تأیید نشد؛ کف معتبر وارد کنید.'}`);
+                    });
+                }
+            } catch (error) { errors.push(`ذخیره کامل نشد: ${error.message || labels.failed}؛ ورودی‌های ذخیره‌نشده حفظ شدند.`); }
+            await load(); notice(errors.length ? errors.join(' | ') : labels.requestSaved, !!errors.length); return;
         }
         if (name === 'item-edit') { openEdit(node.dataset.id); return; }
         if (name === 'bulk-add') { openBulkIds(); return; }
