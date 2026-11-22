@@ -1,0 +1,61 @@
+{
+  "result": "PASS",
+  "catalog_products": 1739,
+  "floor_bound": true,
+  "manual_only": true,
+  "prior_campaigns_2_4_preserved": true,
+  "restore": true,
+  "catalog_benchmark": {
+    "seconds": 0.047096,
+    "queries": 4,
+    "peak_bytes": 161284096,
+    "result": {
+      "total": 1739,
+      "pages": 70,
+      "page": 1,
+      "returned_products": 25
+    }
+  },
+  "regression": {
+    "suite": "v130-financial-integration",
+    "wordpress": "7.1.4",
+    "woocommerce": "11.3.0",
+    "php": "8.2.35",
+    "database": "11.8.6",
+    "hpos": true,
+    "tests": 3,
+    "assertions": 32,
+    "passed": 3,
+    "failed": 0,
+    "results": [
+      {
+        "test": "Hybrid specials replace the progressive base and rotate back to the current base without stacking",
+        "status": "passed"
+      },
+      {
+        "test": "Bulk floors and exceptions work with automatic stages; stock withdrawal and restock coalesce through existing scheduler",
+        "status": "passed"
+      },
+      {
+        "test": "Schema 4 upgrade preserves an active manual plan and its prices byte-for-byte; automatic seed is saved only on explicit opt-in",
+        "status": "passed"
+      }
+    ]
+  },
+  "base": "main",
+  "schema": "6",
+  "smart_adaptive_classes_present": false,
+  "pr8_helpers_required": false,
+  "production_accessed": false,
+  "real_campaigns_2_4_verified": false,
+  "checks": {
+    "php_syntax": "passed",
+    "javascript_syntax": "passed",
+    "wpcs_new_findings": 0,
+    "wpcs_existing_main": {
+      "errors": 14,
+      "warnings": 6
+    }
+  },
+  "dependencies": "Manual-floor catalog, active enrollment, Hybrid, locks and Restore use main only. Smart Adaptive sales-based strategy remains exclusive to PR #8 and is not included."
+}
