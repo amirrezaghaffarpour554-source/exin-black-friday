@@ -1,0 +1,9 @@
+<?php
+/** Helpers for isolated actual Action Scheduler readiness measurements. */
+use Exin\BlackFriday\Application\Scheduler;
+if(!defined('WP_CLI')||!WP_CLI||DB_NAME!=='exin_test'||wp_get_environment_type()!=='local'||!str_starts_with($GLOBALS['wpdb']->prefix,'exin140_ready_'))throw new RuntimeException('Private readiness prefix required');
+add_filter('action_scheduler_allow_async_request_runner','__return_false');add_filter('pre_wp_mail','__return_true');
+function ready_assert($ok,$message){if(!$ok)throw new RuntimeException($message);}
+function ready_measure(callable $fn){$q=get_num_queries();$cpu=getrusage();$t=microtime(true);memory_reset_peak_usage();$v=$fn();$r=getrusage();$user=($r['ru_utime.tv_sec']-$cpu['ru_utime.tv_sec'])+($r['ru_utime.tv_usec']-$cpu['ru_utime.tv_usec'])/1e6;$system=($r['ru_stime.tv_sec']-$cpu['ru_stime.tv_sec'])+($r['ru_stime.tv_usec']-$cpu['ru_stime.tv_usec'])/1e6;$wall=microtime(true)-$t;preg_match('/VmHWM:\s+(\d+) kB/',file_get_contents('/proc/self/status'),$m);return ['started_unix'=>$t,'finished_unix'=>microtime(true),'wall_seconds'=>round($wall,6),'cpu_user_seconds'=>round($user,6),'cpu_system_seconds'=>round($system,6),'cpu_percent_one_core'=>round(100*($user+$system)/max(.000001,$wall),2),'queries'=>get_num_queries()-$q,'php_peak_bytes'=>memory_get_peak_usage(true),'process_peak_rss_bytes'=>(int)($m[1]??0)*1024,'result'=>$v];}
+function ready_action($id){ActionScheduler_QueueRunner::instance()->process_action($id,'EXIN isolated readiness');ready_assert(ActionScheduler::store()->get_status($id)==='complete','AS action did not complete: '.$id);}
+function ready_drain($hook,$max=100){$n=0;while($n<$max){$ids=as_get_scheduled_actions(['hook'=>$hook,'group'=>Scheduler::GROUP,'status'=>'pending','per_page'=>1,'date'=>time(),'date_compare'=>'<='],'ids');if(!$ids)break;ready_action((int)$ids[0]);$n++;}return$n;}

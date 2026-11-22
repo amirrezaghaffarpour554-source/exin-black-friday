@@ -9,3 +9,5 @@
 [راهنمای فارسی مدیر، معماری، خروجی فقط‌خواندنی کف‌ها و چک‌لیست مقصد](../../docs/smart-adaptive-v1.4.0-fa.md). بکاپ کامل با آزمون بازیابی مستقل پیش از هر استقرار Production الزامی است. Production، ظرفیت و سرویس‌های واقعی مقصد تأیید نشده‌اند؛ این تحویل Draft برای Staging است.
 
 Hardening: تحلیل مستقل با Outbox پایدار و Snapshot معتبر؛ بدون اسکن سفارش در قیمت‌گذاری. آزمون ۱٬۷۳۸ محصول و هم‌زمانی/Refund پاس شد؛ جزئیات اندازه‌گیری در [scale-hardening.json](scale-hardening.json) است. مهاجرت، بازگشت ۱٫۳٫۲ پس از تسویه مالکیت و ارتقای مجدد نیز پاس شدند.
+
+آزمون نهایی صف و قطع Worker: [readiness.json](readiness.json)؛ هم‌پوشانی واقعی Refund با Worker مستقل تحلیل: [readiness-overlap.json](readiness-overlap.json). بازیابی همان مرحله برای ۱٬۷۳۸ محصول پاس شد؛ CPU، RSS و Query هر پردازش جدا ثبت شده‌اند. این شواهد، تأیید ظرفیت Production نیستند.

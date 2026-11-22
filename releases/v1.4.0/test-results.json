@@ -199,7 +199,7 @@
       "warnings": 0,
       "fixable": 0
     },
-    "php_syntax": "PASS 60 PHP files: runtime and v140 focused fixtures",
+    "php_syntax": "PASS 54 runtime and readiness PHP files",
     "javascript_syntax": "node --check assets/admin.js passed",
     "package": "105 files; source identity, CRC and deterministic rebuild passed"
   },
@@ -217,8 +217,8 @@
   },
   "artifact": {
     "file": "exin-black-friday-v1.4.0.zip",
-    "sha256": "6f7dde49634943cd75388eb778438e9cdbbaa2190388f033a702fbe3d8e209e4",
-    "bytes": 288887,
+    "sha256": "b9385c6300a92c8934987b8be321e8561093a4cbd37d3e24fbbb37956270f634",
+    "bytes": 289957,
     "installed_files_verified": 105,
     "installed_proof": "package-install.json"
   },
@@ -246,7 +246,7 @@
     "Native execution and mocked admin REST are explicitly distinguished from real database tests"
   ],
   "production_actions": [],
-  "previous_validation_note": "Suites outside final_hardening were executed on the earlier PR head; current focused reruns and package proof are identified below.",
+  "previous_validation_note": "Suites outside final_readiness were executed on previous PR heads; current targeted reruns, real Action Scheduler and SIGKILL tests are identified in final_readiness.",
   "final_hardening": {
     "adaptive_policy": {
       "assertions": 194,
@@ -453,5 +453,84 @@
       "Child process query counts measured separately; no production cache/drop-in or p95 validation"
     ],
     "resolved_failure": "Initial concurrency scale run exposed stale in-process Woo refund cache. Runtime-only cache reset before fresh order reads fixed it; successful rerun is reported."
+  },
+  "final_readiness": {
+    "result": "PASS",
+    "production_ready": false,
+    "worker_queue_and_fault_report": "readiness.json",
+    "concurrent_order_refund_overlap_report": "readiness-overlap.json",
+    "real_action_scheduler_store_and_callbacks": true,
+    "transport": "Native WP CLI",
+    "synthetic_products": 1738,
+    "new_parallel_orders": 120,
+    "sigkill_between_checkpoint_commit_and_ack": true,
+    "as_cleaner_timeout_simulated_seconds": 601,
+    "automatic_watchdog_recovery": true,
+    "same_stage_recovered_decisions": 1738,
+    "floor_violations": 0,
+    "duplicate_counting_detected": false,
+    "prior_unexpired_campaigns_and_financial_data_unchanged": true,
+    "targeted_regression": {
+      "suite": "v140-analytics-hardening",
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "database": "11.8.6",
+      "hpos": true,
+      "tests": 4,
+      "assertions": 18,
+      "passed": 4,
+      "failed": 0,
+      "results": [
+        {
+          "test": "Pricing missing or invalid snapshots holds safe prices and never scans orders",
+          "status": "passed"
+        },
+        {
+          "test": "Durable outbox retries a failed checkpoint transaction without counting twice",
+          "status": "passed"
+        },
+        {
+          "test": "Only inconsistent checkpoints trigger bounded recovery; normal expiry never rebuilds sales",
+          "status": "passed"
+        },
+        {
+          "test": "Deleted orders and stale repeated events never resurrect counted sales",
+          "status": "passed"
+        }
+      ]
+    },
+    "policy": {
+      "assertions": 194,
+      "passed": 194,
+      "failed": 0
+    },
+    "snapshot_unit": {
+      "passed": 23,
+      "failed": 0,
+      "real_database": false,
+      "pricing_order_scans": 0,
+      "pricing_aggregates": 0
+    },
+    "wpcs": {
+      "errors": 0,
+      "warnings": 0,
+      "fixable": 0
+    },
+    "syntax": "PASS 54 runtime and readiness PHP files",
+    "installed_zip_finances": {
+      "version": "1.4.0",
+      "schema": "8",
+      "result": "passed",
+      "tables_preserved": 5,
+      "product_price_snapshots_preserved": 3641,
+      "class_loaded_from_installed_zip": true
+    },
+    "performance_limits": [
+      "PHP CPU only; DB server CPU not measured",
+      "RSS lifetime process peak vs reset PHP allocator peak are distinct",
+      "Single isolated run, reused synthetic products, no p95/cold-production benchmark",
+      "Actual Action Scheduler callbacks/store tested with CLI; target Cron/HTTP runner, caches and server capacity remain unverified"
+    ]
   }
 }

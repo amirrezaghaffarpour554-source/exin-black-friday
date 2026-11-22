@@ -75,6 +75,16 @@ final class SmartAdaptive {
 		}
 		$previous = null === $previous ? null : json_decode( $previous, true, 512, JSON_THROW_ON_ERROR );
 		if ( ! $fresh ) {
+			if ( $worker ) {
+				update_option(
+					'exin_bf_adaptive_wait_' . $campaign['id'],
+					array(
+						'version' => $campaign['version'],
+						'stage'   => $stage,
+					),
+					false
+				);
+			}
 			if ( $previous ) {
 				return DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, $stage, $item['product_id'], true, true, true, $previous['intensity_bps'] ); }
 			$held      = $item['expected']['price'] ?? $item['snapshot']['price'] ?? $item['base_price'];
@@ -114,6 +124,26 @@ final class SmartAdaptive {
 			throw new \RuntimeException( 'adaptive_decision_write_failed' );
 		}
 		return $price;
+	}
+
+
+	/** Check for newly validated, undecided products after a completed held batch.
+	 *
+	 * @param array $campaign Current campaign.
+	 * @return bool Whether the existing batch should resume in the same stage.
+	 */
+	public function ready_to_resume( array $campaign ): bool {
+		global $wpdb;
+		if ( ! self::enabled( $campaign ) || 'active' !== $campaign['status'] ) {
+			return false;
+		}
+		$waiting = get_option( 'exin_bf_adaptive_wait_' . $campaign['id'] );
+		$stage   = DiscountPlan::index( $campaign, time() );
+		if ( ! $waiting || (int) $waiting['version'] !== $campaign['version'] || (int) $waiting['stage'] !== $stage || get_option( 'exin_bf_adaptive_error_global' ) || get_option( 'exin_bf_adaptive_error_' . $campaign['id'] ) ) {
+			return false;
+		}
+		$id = $wpdb->get_var( $wpdb->prepare( "SELECT i.product_id FROM %i i JOIN %i m ON m.campaign_id=i.campaign_id AND m.product_id=i.product_id JOIN %i s ON s.campaign_id=i.campaign_id LEFT JOIN %i d ON d.campaign_id=i.campaign_id AND d.product_id=i.product_id AND d.version=%d AND d.stage=%d WHERE i.campaign_id=%d AND i.status IN ('included','pending','active') AND m.version=%d AND m.revision=m.validated_revision AND m.valid_until>%s AND s.recovering=0 AND s.signature=%s AND d.product_id IS NULL LIMIT 1", $wpdb->prefix . 'exin_bf_items', $wpdb->prefix . 'exin_bf_adaptive_metrics', $wpdb->prefix . 'exin_bf_adaptive_state', $wpdb->prefix . 'exin_bf_adaptive_decisions', $campaign['version'], $stage, $campaign['id'], $campaign['version'], gmdate( 'Y-m-d H:i:s' ), AdaptiveAnalytics::signature( $campaign ) ) );
+		return ! $wpdb->last_error && null !== $id;
 	}
 
 

@@ -1,0 +1,73 @@
+{
+    "initial_sales_units": 365,
+    "refund_during_live_analytics": true,
+    "result": "PASS",
+    "products": 1738,
+    "overlap": {
+        "started_unix": 1795379166.74741,
+        "finished_unix": 1795379173.302749,
+        "wall_seconds": 6.555184,
+        "cpu_user_seconds": 0,
+        "cpu_system_seconds": 0.008327,
+        "cpu_percent_one_core": 0.13,
+        "queries": 0,
+        "php_peak_bytes": 134021120,
+        "process_peak_rss_bytes": 151433216,
+        "result": [
+            {
+                "role": "updates",
+                "measurement": {
+                    "started_unix": 1795379168.261516,
+                    "finished_unix": 1795379169.96586,
+                    "wall_seconds": 1.704185,
+                    "cpu_user_seconds": 0.599755,
+                    "cpu_system_seconds": 0.113563,
+                    "cpu_percent_one_core": 41.86,
+                    "queries": 9237,
+                    "php_peak_bytes": 136118272,
+                    "process_peak_rss_bytes": 153874432,
+                    "result": {
+                        "updated_orders": 30,
+                        "refunded_units": 1,
+                        "refund_finished_unix": 1795379169.965677
+                    }
+                }
+            },
+            {
+                "role": "analytics",
+                "measurement": {
+                    "started_unix": 1795379168.396007,
+                    "finished_unix": 1795379173.289258,
+                    "wall_seconds": 4.892758,
+                    "cpu_user_seconds": 0.28934,
+                    "cpu_system_seconds": 0.043175,
+                    "cpu_percent_one_core": 6.8,
+                    "queries": 3663,
+                    "php_peak_bytes": 134021120,
+                    "process_peak_rss_bytes": 150216704,
+                    "result": {
+                        "passes": 40
+                    }
+                }
+            },
+            {
+                "role": "pricing",
+                "measurement": {
+                    "started_unix": 1795379168.301904,
+                    "finished_unix": 1795379168.346763,
+                    "wall_seconds": 0.044772,
+                    "cpu_user_seconds": 0.005193,
+                    "cpu_system_seconds": 0,
+                    "cpu_percent_one_core": 11.6,
+                    "queries": 24,
+                    "php_peak_bytes": 134021120,
+                    "process_peak_rss_bytes": 149757952,
+                    "result": 1
+                }
+            }
+        ]
+    },
+    "units_after_concurrent_refund": 364,
+    "distinct_orders": 198,
+    "campaigns_items_unchanged": true
+}

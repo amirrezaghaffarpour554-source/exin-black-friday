@@ -221,7 +221,7 @@ final class Scheduler {
 				'watchdog',
 				function () {
 					foreach ( $this->repo->runnable() as $campaign ) {
-						if ( DiscountPlan::automatic( $campaign ) && get_option( 'exin_bf_auto_stock_' . $campaign['id'] ) ) {
+						if ( DiscountPlan::automatic( $campaign ) && ( get_option( 'exin_bf_auto_stock_' . $campaign['id'] ) || ( new SmartAdaptive( $this->repo ) )->ready_to_resume( $campaign ) ) ) {
 							( new LockManager() )->run(
 								'batch:' . $campaign['id'] . ':' . $campaign['version'] . ':apply',
 								function () use ( $campaign ): void {
@@ -234,7 +234,8 @@ final class Scheduler {
 												$settings = $current['settings'];
 												unset( $settings['last_run'] );
 												$this->repo->save( $current['id'], array( 'settings' => $settings ) );
-												delete_option( 'exin_bf_auto_stock_' . $current['id'] ); }
+												delete_option( 'exin_bf_auto_stock_' . $current['id'] );
+												delete_option( 'exin_bf_adaptive_wait_' . $current['id'] ); }
 										}
 									);
 								}
