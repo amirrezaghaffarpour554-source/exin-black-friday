@@ -1,0 +1,13 @@
+<?php
+use Exin\BlackFriday\Infrastructure\CampaignRepository;
+use Exin\BlackFriday\Infrastructure\Logger;
+use Exin\BlackFriday\Application\PriceState;
+if(!defined('WP_CLI')||!WP_CLI||DB_NAME!=='exin_test'||wp_get_environment_type()!=='local')throw new RuntimeException('Local only');
+global$wpdb;$root=dirname(__DIR__,2);$file=$root.'/work/v140/rollback-before.json';$phase=getenv('EXIN140_ROLLBACK_PHASE');
+if($phase==='prepare'){
+ $r=new CampaignRepository();$s=new Exin\BlackFriday\Application\ProductSelectionService($r);$p=new Exin\BlackFriday\Application\PriceProcessor($r,new Logger());$a=new Exin\BlackFriday\Application\AdaptiveAnalytics($r);$plan=Exin\BlackFriday\Domain\DiscountPlan::normalize(['mode'=>'smart_adaptive','duration_minutes'=>10080,'interval'=>'hourly','seed'=>'rollback-isolated'],2);$c=['title'=>'Rollback safety fixture','start_utc'=>gmdate('Y-m-d H:i:s',time()-7200),'timezone'=>'UTC','days'=>7,'strategy'=>'linear','power'=>2,'rounding'=>'half_up','settings'=>['discount_plan'=>$plan]];$c['end_utc']=Exin\BlackFriday\Domain\DiscountPlan::end($c);$id=$r->create($c);$product=new WC_Product_Simple();$product->set_name('Rollback owned smart');$product->set_status('publish');$product->set_virtual(true);$product->set_regular_price('100');$product->save();$s->add($id,$product->get_id(),'70.01');$r->save($id,['status'=>'active']);$a->run($id);$p->apply($id,$product->get_id(),$r->get($id)['version']);$blocked=false;try{$a->assert_rollback_safe();}catch(DomainException$e){$blocked=true;}if(!$blocked)throw new RuntimeException('Rollback was not blocked with smart ownership');$p->restore($id,$product->get_id());$r->save($id,['status'=>'completed']);$a->assert_rollback_safe();
+}
+$state=[];foreach(['campaigns','items','audit','turns','locks']as$t)$state['tables'][$t]=$wpdb->get_results('SELECT * FROM '.$wpdb->prefix.'exin_bf_'.$t.' ORDER BY 1,2',ARRAY_A);foreach($wpdb->get_col('SELECT DISTINCT product_id FROM '.$wpdb->prefix.'exin_bf_items')as$id){$p=wc_get_product($id);if($p)$state['prices'][(int)$id]=PriceState::capture($p);}
+if($phase==='prepare'){file_put_contents($file,wp_json_encode($state));echo 'ROLLBACK_GUARD: blocked before restore, allowed after ownership settled'.PHP_EOL;return;}
+$before=json_decode(file_get_contents($file),true,512,JSON_THROW_ON_ERROR);if($before!==$state)throw new RuntimeException('Rollback changed original financial data');
+echo 'EXIN_ROLLBACK '.wp_json_encode(['phase'=>$phase,'version'=>EXIN_BF_VERSION,'schema'=>get_option('exin_bf_schema_version'),'financial_tables_preserved'=>5,'prices_preserved'=>count($state['prices']),'passed'=>true]).PHP_EOL;

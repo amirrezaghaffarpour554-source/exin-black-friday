@@ -20,7 +20,8 @@
     "test:unit": [
       "@test:unit:domain",
       "@test:unit:date-money",
-      "@test:unit:shipping"
+      "@test:unit:shipping",
+      "@test:unit:v140"
     ],
     "test:unit:domain": "php tests/unit/run.php",
     "test:unit:date-money": "php tests/unit/v101-date-money.php",
@@ -42,6 +43,11 @@
     "test:integration:v100-runtime": "bash scripts/test-runtime.sh test",
     "test:package": "python3 tests/test_package.py",
     "test:unit:v110": "php tests/unit/v110-plan.php",
-    "test:integration:v110": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/v110.php"
+    "test:integration:v110": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/v110.php",
+    "test:unit:v140": [
+      "php tests/unit/v140-adaptive.php",
+      "php tests/unit/v140-checkpoints.php"
+    ],
+    "test:integration:v140": "bash scripts/test-v101-runtime.sh wp eval-file /var/www/html/wp-content/plugins/exin-black-friday/tests/integration/v140.php"
   }
 }

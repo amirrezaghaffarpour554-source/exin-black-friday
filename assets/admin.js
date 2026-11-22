@@ -60,7 +60,7 @@
     let campaigns = [], campaignListPage = 1, campaignListMore = false, jobBusy = false, jobState = null;
     function storageGet(store, key) { try { return store.getItem(key); } catch (_) { return null; } }
     function storageSet(store, key, value) { try { value === null ? store.removeItem(key) : store.setItem(key, String(value)); } catch (_) { /* Storage may be disabled by the browser. */ } }
-    const planModes = {auto_progressive:'افزایشی خودکار تا سقف هر محصول',auto_descending:'کاهشی خودکار',auto_rotation:'چرخشی متوازن',auto_random:'شانسی قطعی',auto_wave:'موجی',auto_hybrid:'ترکیبی؛ پایه و ویژه',fixed_percent: 'درصد ثابت', fixed_amount: 'مبلغ ثابت', linear: 'کاهش خطی تا کف', stepped: 'درصد افزایشی یا کاهشی', custom: 'برنامه دستی مرحله‌ها'};
+    const planModes = {smart_adaptive:'هوشمند فروش‌محور',auto_progressive:'افزایشی خودکار تا سقف هر محصول',auto_descending:'کاهشی خودکار',auto_rotation:'چرخشی متوازن',auto_random:'شانسی قطعی',auto_wave:'موجی',auto_hybrid:'ترکیبی؛ پایه و ویژه',fixed_percent: 'درصد ثابت', fixed_amount: 'مبلغ ثابت', linear: 'کاهش خطی تا کف', stepped: 'درصد افزایشی یا کاهشی', custom: 'برنامه دستی مرحله‌ها'};
     const jobKey = () => `exin-bf-selection-job:${cfg.root}:${selectedCampaign}`;
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[char]));
     const status = value => `<span class="exin-bf-status" data-status="${esc(value)}">${esc(statuses[value] || value)}</span>`;
@@ -119,7 +119,7 @@
         return {
             id: campaign?.id || null, title: campaign?.title || 'کمپین جدید اکسین',
             start_jalali: helpers.persianDigits(starts.date), start_time: starts.time,
-            timezone: campaign?.timezone || 'Asia/Tehran', days: String(plan?.mode?.startsWith('auto_') && plan.duration_minutes ? Math.ceil(plan.duration_minutes / 1440) : campaign?.days || 7),
+            timezone: campaign?.timezone || 'Asia/Tehran', days: String(plan?.mode?.match(/^(auto_|smart_adaptive$)/) && plan.duration_minutes ? Math.ceil(plan.duration_minutes / 1440) : campaign?.days || 7),
             strategy: campaign?.strategy || 'linear', power: String(campaign?.power || 2), rounding: campaign?.rounding || 'half_up',
             campaign_type: settings.campaign_type || (campaign ? 'black_friday' : 'general'), priority: String(settings.priority || 0),
             discount_mode: plan?.mode || (campaign ? 'legacy' : 'fixed_percent'), interval: plan?.interval || 'daily',
@@ -127,6 +127,7 @@
             initial_discount: plan?.mode === 'fixed_amount' ? displayAmount(plan.initial_discount) : String(plan?.initial_discount ?? '5'),
             final_discount: String(plan?.final_discount ?? '15'), reach_floor: !!plan?.reach_floor,
             duration_minutes: String(plan?.duration_minutes || 4320),
+            adaptive_preset: plan?.adaptive?.preset || 'balanced', adaptive_interval_minutes:String(plan?.mode === 'smart_adaptive' ? plan.interval_minutes || 60 : 60), adaptive_expected_units_day:String(plan?.adaptive?.expected_units_day || 5), adaptive_window_hours:String(plan?.adaptive?.window_hours || 24), adaptive_cooldown_minutes:String(plan?.adaptive?.cooldown_minutes || 360), adaptive_max_change_bps:String(plan?.adaptive?.max_change_bps || 1000), adaptive_hysteresis_bps:String(plan?.adaptive?.hysteresis_bps || 1500), adaptive_min_orders:String(plan?.adaptive?.min_orders || 3), adaptive_cold_start_minutes:String(plan?.adaptive?.cold_start_minutes || 180), adaptive_initial_bps:String(plan?.adaptive?.initial_bps ?? 1000), adaptive_maximum_bps:String(plan?.adaptive?.maximum_bps || 8000), adaptive_exploration_bps:String(plan?.adaptive?.exploration_bps ?? 100),
             auto_min: plan?.intensity_min ?? '10', auto_max: plan?.intensity_max ?? '100', auto_base_max: plan?.base_max ?? '40', auto_curve: plan?.curve || 'linear', auto_bands: String(plan?.bands || 3), auto_wave_period: String(plan?.wave_period || 4), auto_selection_mode: plan?.selection_mode || 'percent', auto_selection_value: String(plan?.selection_value || 25), auto_selector: plan?.selector || 'priority', auto_last_day: plan?.last_day || 'disabled', auto_descending_end: plan?.descending_end || 'continue', auto_seed: plan?.seed || '',
             points: points.map(point => ({...point, value: point.kind === 'amount' ? displayAmount(point.value) : String(point.value)})),
             existing_sale_policy: settings.existing_sale_policy || (!campaign ? 'preserve' : 'reject'),
@@ -197,7 +198,7 @@
             existing_sale_policy: fields.has('preserve_existing_sale') ? 'preserve' : 'reject',
             points: form.querySelector('[data-plan-point-row]') ? [...form.querySelectorAll('[data-plan-point-row]')].map(row => ({offset_minutes: row.querySelector('[data-point-offset]').value, kind: row.querySelector('[data-point-kind]').value, value: row.querySelector('[data-point-value]').value})) : draft.points
         };
-        for (const key of ['auto_min','auto_max','auto_base_max','auto_curve','auto_bands','auto_wave_period','auto_selection_mode','auto_selection_value','auto_selector','auto_last_day','auto_descending_end','auto_seed']) { if (fields.has(key)) next[key] = fields.get(key); }
+        for (const key of ['adaptive_preset','adaptive_interval_minutes','adaptive_expected_units_day','adaptive_window_hours','adaptive_cooldown_minutes','adaptive_max_change_bps','adaptive_hysteresis_bps','adaptive_min_orders','adaptive_cold_start_minutes','adaptive_initial_bps','adaptive_maximum_bps','adaptive_exploration_bps','auto_min','auto_max','auto_base_max','auto_curve','auto_bands','auto_wave_period','auto_selection_mode','auto_selection_value','auto_selector','auto_last_day','auto_descending_end','auto_seed']) { if (fields.has(key)) next[key] = fields.get(key); }
         const stageCount = form.querySelector('[name="auto_steps"]');
         if (stageCount) stageCount.value = automaticSteps(next);
         if (JSON.stringify(next) !== JSON.stringify(draft)) { draft = next; editRevision++; draftNotice(labels.dirty, 'dirty'); }
@@ -223,7 +224,7 @@
                 existing_sale_policy: draft.existing_sale_policy}
         };
         if (draft.discount_mode !== 'legacy') {
-            const automatic = draft.discount_mode.startsWith('auto_'), intervalMinutes = automatic && draft.interval === 'daily' ? 1440 : integer(draft.interval_minutes);
+            const automatic = draft.discount_mode.match(/^(auto_|smart_adaptive$)/), intervalMinutes = automatic && draft.interval === 'daily' ? 1440 : integer(draft.interval_minutes);
             const steps = automatic ? automaticSteps(draft) : integer(draft.steps);
             if (!automatic && (!Number.isInteger(steps) || steps < 1 || steps > 366)) throw new Error('تعداد مراحل باید بین ۱ تا ۳۶۶ باشد.');
             const plan = {mode: draft.discount_mode, interval: draft.interval, steps, interval_minutes: intervalMinutes,
@@ -233,6 +234,11 @@
                 plan.duration_minutes = integer(draft.duration_minutes);
             }
             if (automatic) Object.assign(plan,{duration_minutes:days * 1440,intensity_min:draft.auto_min,intensity_max:draft.auto_max,base_max:draft.auto_base_max,curve:draft.auto_curve,bands:integer(draft.auto_bands),wave_period:integer(draft.auto_wave_period),selection_mode:draft.auto_selection_mode,selection_value:integer(draft.auto_selection_value),selector:draft.auto_selector,last_day:draft.auto_last_day,descending_end:draft.auto_descending_end,seed:draft.auto_seed});
+            if (draft.discount_mode === 'smart_adaptive') {
+                plan.interval='hourly';plan.interval_minutes=integer(draft.adaptive_interval_minutes);plan.steps=Math.ceil(days*1440/plan.interval_minutes);plan.last_day='disabled';
+                plan.adaptive={preset:draft.adaptive_preset};
+                for (const name of ['expected_units_day','window_hours','cooldown_minutes','max_change_bps','hysteresis_bps','min_orders','cold_start_minutes','initial_bps','maximum_bps','exploration_bps']) plan.adaptive[name]=integer(draft[`adaptive_${name}`]);
+            }
             payload.settings.discount_plan = plan;
         }
         if (draft.id) payload.id = Number(draft.id);
@@ -279,8 +285,8 @@
         view = next; page = nextPage; await load();
     }
     function steps(active) {
-        const currentStep = (draft?.discount_mode || state.campaign?.settings.discount_plan?.mode || '').startsWith('auto_') ? ({1:1,2:3,3:5}[active] || active) : active;
-        return `<nav class="exin-bf-steps" aria-label="${esc(wp.i18n.__('مراحل راه‌اندازی', 'exin-black-friday'))}">${((draft?.discount_mode || state.campaign?.settings.discount_plan?.mode || '').startsWith('auto_') ? [[1,'انتخاب محصولات','products'],[2,'کف قیمت‌ها','products'],[3,'روش خودکار','settings'],[4,'زمان‌بندی','settings'],[5,labels.review,'review']] : [[1, 'محدوده محصولات', 'products'], [2, labels.settings, 'settings'], [3, labels.review, 'review']]).map(([step, label, destination]) => `<button type="button" data-command="${destination}" data-step="${step}" ${step === currentStep ? 'aria-current="step"' : ''}><span>${helpers.persianDigits(step)}</span>${esc(label)}</button>`).join('')}</nav>`;
+        const currentStep = (draft?.discount_mode || state.campaign?.settings.discount_plan?.mode || '').match(/^(auto_|smart_adaptive$)/) ? ({1:1,2:3,3:5}[active] || active) : active;
+        return `<nav class="exin-bf-steps" aria-label="${esc(wp.i18n.__('مراحل راه‌اندازی', 'exin-black-friday'))}">${((draft?.discount_mode || state.campaign?.settings.discount_plan?.mode || '').match(/^(auto_|smart_adaptive$)/) ? [[1,'انتخاب محصولات','products'],[2,'کف قیمت‌ها','products'],[3,'روش خودکار','settings'],[4,'زمان‌بندی','settings'],[5,labels.review,'review']] : [[1, 'محدوده محصولات', 'products'], [2, labels.settings, 'settings'], [3, labels.review, 'review']]).map(([step, label, destination]) => `<button type="button" data-command="${destination}" data-step="${step}" ${step === currentStep ? 'aria-current="step"' : ''}><span>${helpers.persianDigits(step)}</span>${esc(label)}</button>`).join('')}</nav>`;
     }
     function render() {
         clearInterval(countdownTimer);
@@ -297,6 +303,7 @@
         else if (view === 'review') renderReview();
         else renderDashboard();
         if (view === 'dashboard' && state.campaign && state.analytics?.complete) content.insertAdjacentHTML('beforeend', `<section class="exin-bf-card"><h3>کم‌فروش‌ترین اقلام جشنواره</h3>${salesRows(state.analytics.least_products || [])}</section>`);
+        if (view === 'dashboard' && state?.adaptive) content.insertAdjacentHTML('beforeend', adaptiveMarkup(state.adaptive));
         helpers.attach(content);
     }
     function actions() {
@@ -344,6 +351,8 @@
         return Number.isInteger(days) && days > 0 && Number.isInteger(minutes) && minutes > 0 ? Math.ceil(days * 1440 / minutes) : '';
     }
     function automaticSettings(value) {
+        if(value.discount_mode === 'smart_adaptive') return `${field('مدت کمپین (روز)','auto_duration_days',value.days,{required:true,extra:'inputmode="numeric"'})}<label>روش هوشمند<select name="adaptive_preset">${options([['conservative','محافظه‌کار'],['balanced','متعادل'],['aggressive','تهاجمی']],value.adaptive_preset)}</select></label><p class="exin-bf-note">ارزیابی با فاصلهٔ قابل تنظیم بر پایهٔ فروش ثبت‌شده و موجودی؛ افزایش، کاهش یا حفظ تخفیف ممکن است. روز آخر تضمین کمترین قیمت نیست. پیش‌نمایش فقط آخرین تصمیم یا برآورد شروع است؛ قیمت نهایی پس از کوپن خارجی می‌تواند متفاوت باشد.</p><details><summary>تنظیمات پیشرفتهٔ هوشمند</summary><div class="exin-bf-form">${[['interval_minutes','فاصلهٔ ارزیابی (دقیقه؛ مضرب ۶۰)'],['expected_units_day','تقاضای مورد انتظار (واحد در روز)'],['window_hours','پنجرهٔ فروش (ساعت)'],['cooldown_minutes','حداقل فاصلهٔ تغییر (دقیقه)'],['max_change_bps','حداکثر تغییر شدت (واحد از ۱۰۰۰۰)'],['hysteresis_bps','آستانهٔ تغییر تقاضا (واحد از ۱۰۰۰۰)'],['min_orders','حداقل سفارش معتبر'],['cold_start_minutes','انتظار شروع (دقیقه)'],['initial_bps','شدت محافظه‌کارانهٔ شروع (از ۱۰۰۰۰)'],['maximum_bps','سقف شدت (از ۱۰۰۰۰)'],['exploration_bps','دامنهٔ آزمون محدود (از ۱۰۰۰۰)']].map(([key,label])=>field(label,`adaptive_${key}`,value[`adaptive_${key}`],{required:true,extra:'inputmode="numeric"'})).join('')}</div></details>`;
+
         return `<div class="exin-bf-field"><label>زمان‌بندی خودکار<select id="bf-interval" name="interval">${options([['daily','روزانه؛ هر ۲۴ ساعت'],['hourly','ساعتی با فاصلهٔ قابل تنظیم'],['flash','Flash؛ حداقل ۵ دقیقه و وابسته به ظرفیت']],value.interval)}</select></label></div>
         ${field('مدت کمپین (روز)','auto_duration_days',value.days,{required:true,extra:'inputmode="numeric" min="1" max="366"',help:'مدت کمپین مستقل از فاصلهٔ تغییر تخفیف است.'})}
         ${field('تعداد مراحل خودکار','auto_steps',automaticSteps(value),{extra:'readonly',help:'از مدت و فاصله محاسبه می‌شود؛ سیاست روز آخر ممکن است یک مرز اضافه کند.'})}
@@ -361,7 +370,7 @@
     }
     function renderSettings() {
         const campaign = state.campaign, locked = campaign.status !== 'draft', value = draft || hydrateDraft(campaign);
-        const methods = state.health.shipping_methods || [], legacy = value.discount_mode === 'legacy', automatic = value.discount_mode.startsWith('auto_');
+        const methods = state.health.shipping_methods || [], legacy = value.discount_mode === 'legacy', automatic = value.discount_mode.match(/^(auto_|smart_adaptive$)/);
         content.innerHTML = `${steps(2)}<div class="exin-bf-toolbar"><div><h2>${esc(labels.settings)}</h2><p class="exin-bf-note">ذخیرهٔ پیش‌نویس قیمت فروشگاه را تغییر نمی‌دهد؛ تخفیف اولیه از لحظهٔ شروع فعال می‌شود.</p></div>${status(campaign.status)}</div>
             ${locked ? '<p class="exin-bf-warning">تنظیمات مالی این نسخه قفل است. پس از بازیابی قیمت‌ها از «کپی به پیش‌نویس جدید» برای ویرایش و اجرای مجدد استفاده کنید.</p>' : ''}
             <form id="exin-bf-settings"><fieldset ${locked ? 'disabled' : ''}><section class="exin-bf-card"><div class="exin-bf-form">
@@ -396,6 +405,10 @@
     function simulationMarkup(simulation) {
         if (!simulation) return '';
         return `${(simulation.warnings || []).map(warning => `<p class="exin-bf-warning">${esc(typeof warning === 'string' ? warning : warning.message || warning.code || '')}</p>`).join('')}<p class="exin-bf-note">این شبیه‌سازی قیمت فروشگاه را تغییر نمی‌دهد. کف هر محصول در همهٔ مراحل رعایت می‌شود.</p>${(simulation.samples || []).map((sample, index) => `<details class="exin-bf-simulation" ${index === 0 ? 'open' : ''}><summary>${esc(sample.name || `#${sample.product_id}`)} · مبنا ${price(sample.base_price)} · کف ${price(sample.floor_price)}${sample.maximum_discount_percent !== undefined ? ` · سقف ${esc(sample.maximum_discount_percent)}٪` : ''}</summary><div class="exin-bf-preview">${(sample.schedule || []).map((amount, stage) => `<span><small>مرحله ${helpers.persianDigits((simulation.stage_start || 0) + stage + 1)}</small>${price(amount)}${sample.details?.[stage] ? `<small>${esc(sample.details[stage].discount_percent)}٪ از قیمت اصلی</small>` : ''}</span>`).join('')}</div></details>`).join('')}`;
+    }
+    function adaptiveMarkup(report) {
+        const reasons={metrics_refresh_pending:'حفظ قیمت تا تکمیل بررسی داده‌های فروش',cold_start:'دادهٔ کافی نیست؛ شروع محافظه‌کارانه',cooldown:'حفظ قیمت در دورهٔ انتظار',hold:'حفظ تخفیف',strong_demand_or_limited_stock:'تقاضای قوی یا موجودی محدود؛ کاهش شدت',weak_sales_excess_stock:'فروش ضعیف و موجودی زیاد',weak_sales_stock_time_pressure:'فشار موجودی و زمان باقی‌مانده',no_observed_gain:'افزایش قبلی بهبود مشاهده‌شده نداشت',bounded_exploration:'آزمون محدود و کنترل‌شده'};
+        return `<section class="exin-bf-card"><h2>تصمیم‌های هوشمند اخیر</h2>${report.error?`<p class="exin-bf-warning">ارزیابی متوقف است؛ خطای دادهٔ فروش نیاز به بررسی مدیر فنی دارد: ${esc(report.error)}</p>`:''}${report.samples.map(row=>`<p>${esc(row.name)} · ${price(row.adaptive.price || row.schedule[0])} · ${esc(reasons[row.adaptive.reason] || 'در انتظار ارزیابی')} · فروش معتبر ${esc(row.adaptive.metrics?.units ?? 0)} · موجودی ${esc(row.adaptive.metrics?.stock >= 0 ? row.adaptive.metrics.stock : '—')} · عملکرد در برابر انتظار ${esc(row.adaptive.metrics?.performance_bps !== undefined ? Math.round(row.adaptive.metrics.performance_bps / 100) + '٪' : '—')}</p>`).join('')}</section>`;
     }
     function stockText(product) {
         if (product.stock_status === 'outofstock' || product.stock_status === 'onbackorder' || (product.stock !== null && product.stock !== undefined && Number(product.stock) <= 0) || (product.stock_quantity !== null && product.stock_quantity !== undefined && Number(product.stock_quantity) <= 0)) return 'ناموجود';
@@ -488,9 +501,9 @@
     }
     async function openPicker() {
         await requireSelection();
-        picker = {selected: new Map(), rows: [], page: 1, total: 0, hasMore: false, parent: 0, filters: {search: '', category: '', stock: 'instock', type: 'all', publication: 'publish', tax_filters: {}}, floorPolicy: {mode: (state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.startsWith('auto_')) ? 'shared' : state.campaign.settings.discount_plan ? 'none' : 'independent', value: ''}};
+        picker = {selected: new Map(), rows: [], page: 1, total: 0, hasMore: false, parent: 0, filters: {search: '', category: '', stock: 'instock', type: 'all', publication: 'publish', tax_filters: {}}, floorPolicy: {mode: (state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.match(/^(auto_|smart_adaptive$)/)) ? 'shared' : state.campaign.settings.discount_plan ? 'none' : 'independent', value: ''}};
         openModal(labels.add, `<div id="exin-bf-picker"><div class="exin-bf-picker-filters"><label>${esc(labels.search)}<input type="search" id="exin-bf-product-search" autocomplete="off"></label><label>دسته‌بندی<select data-picker-filter="category"><option value="">${esc(labels.all)}</option></select></label><label>وضعیت انتشار<select data-picker-filter="publication">${options([['publish','منتشرشده'],['draft','پیش‌نویس؛ ورود پس از انتشار'],['pending','در انتظار بررسی'],['private','خصوصی']],'publish')}</select></label><div id="exin-bf-brand-filters"></div><label>${esc(labels.stock)}<select data-picker-filter="stock">${options([['all', 'همه'], ['instock', 'موجود'], ['outofstock', 'ناموجود']], 'all')}</select></label><label>نوع محصول<select data-picker-filter="type">${options([['all', 'همه'], ['simple', 'ساده'], ['variable', 'متغیر'], ['variation', 'تنوع']], 'all')}</select></label></div><details class="exin-bf-picker-advanced"><summary>فیلترهای پیشرفته</summary><div class="exin-bf-picker-filters" id="exin-bf-taxonomy-filters"></div></details>
-            <section class="exin-bf-floor-policy"><h3>روش تعیین کف قیمت</h3><div class="exin-bf-form"><label>روش<select id="exin-bf-floor-policy-mode">${options([...((state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.startsWith('auto_')) ? [] : [['none', 'بدون کف مستقل؛ محاسبه از مبنای معتبر']]), ['percent', 'درصد پایین‌تر از قیمت مبنا'], ['amount', 'مبلغ پایین‌تر از قیمت مبنا'], ['shared', 'کف مشترک'], ['previous', 'استفاده از کف قبلی'], ['independent', 'کف مستقل هر محصول']], picker.floorPolicy.mode)}</select></label><label>مقدار <span id="exin-bf-floor-policy-unit">${esc(cfg.currency)}</span><input id="exin-bf-floor-policy-value" data-exin-money inputmode="decimal" value="" ${['none','independent','previous'].includes(picker.floorPolicy.mode) ? 'disabled' : ''}></label></div><p class="exin-bf-note">${state.campaign.status === 'active' ? 'کف معتبر و مثبت برای هر محصول جدید الزامی است. ردیف‌ها و کف‌های قبلی تغییر نمی‌کنند؛ محصول جدید از مرحلهٔ فعلی تخفیف می‌گیرد. برای استثنا، محصول را انتخاب و کف اختصاصی آن را وارد کنید.' : 'در تخفیف عمومی درصدی، ورود کف مستقل اجباری نیست. کف قبلی فقط از دادهٔ ثبت‌شده خوانده می‌شود.'}</p></section>
+            <section class="exin-bf-floor-policy"><h3>روش تعیین کف قیمت</h3><div class="exin-bf-form"><label>روش<select id="exin-bf-floor-policy-mode">${options([...((state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.match(/^(auto_|smart_adaptive$)/)) ? [] : [['none', 'بدون کف مستقل؛ محاسبه از مبنای معتبر']]), ['percent', 'درصد پایین‌تر از قیمت مبنا'], ['amount', 'مبلغ پایین‌تر از قیمت مبنا'], ['shared', 'کف مشترک'], ['previous', 'استفاده از کف قبلی'], ['independent', 'کف مستقل هر محصول']], picker.floorPolicy.mode)}</select></label><label>مقدار <span id="exin-bf-floor-policy-unit">${esc(cfg.currency)}</span><input id="exin-bf-floor-policy-value" data-exin-money inputmode="decimal" value="" ${['none','independent','previous'].includes(picker.floorPolicy.mode) ? 'disabled' : ''}></label></div><p class="exin-bf-note">${state.campaign.status === 'active' ? 'کف معتبر و مثبت برای هر محصول جدید الزامی است. ردیف‌ها و کف‌های قبلی تغییر نمی‌کنند؛ محصول جدید از مرحلهٔ فعلی تخفیف می‌گیرد. برای استثنا، محصول را انتخاب و کف اختصاصی آن را وارد کنید.' : 'در تخفیف عمومی درصدی، ورود کف مستقل اجباری نیست. کف قبلی فقط از دادهٔ ثبت‌شده خوانده می‌شود.'}</p></section>
             <div class="exin-bf-actions">${button('انتخاب صفحه جاری', 'picker-select-page')}${button('تمام نتایج فیلترشده', 'picker-select-filtered')}${button('تمام محصولات سایت', 'picker-select-all')}${button('تمام محصولات موجود', 'picker-select-instock')}${button('پاک‌کردن انتخاب‌های این پنجره', 'picker-clear')}${button('بازگشت به همه محصولات', 'picker-parent-back')}</div><div id="exin-bf-search-results" class="exin-bf-picker-results" aria-live="polite"></div><div id="exin-bf-picker-pagination" class="exin-bf-pagination"></div>
             <section class="exin-bf-picker-selection"><h3>انتخاب‌های فعلی <span id="exin-bf-selection-count" class="exin-bf-status">۰</span></h3><div id="exin-bf-picker-selected"></div><div class="exin-bf-actions">${button('پیش‌نمایش و ثبت انتخاب‌ها', 'picker-save', 'exin-bf-primary')}${button(labels.close, 'close-dialog')}</div></section><section id="exin-bf-selection-preview" aria-live="polite"></section><div id="exin-bf-picker-job-progress" role="status" aria-live="polite"></div></div>`);
         renderPickerSelection();
@@ -509,7 +522,7 @@
         const mode = document.getElementById('exin-bf-floor-policy-mode')?.value || picker?.floorPolicy.mode || 'none';
         const value = document.getElementById('exin-bf-floor-policy-value')?.value ?? picker?.floorPolicy.value ?? '';
         const floors = {};
-        picker?.selected.forEach(row => { if (mode === 'independent' || ((state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.startsWith('auto_')) && String(row.floor).trim() !== '')) floors[row.product.id] = row.floor; });
+        picker?.selected.forEach(row => { if (mode === 'independent' || ((state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.match(/^(auto_|smart_adaptive$)/)) && String(row.floor).trim() !== '')) floors[row.product.id] = row.floor; });
         return {mode, value, floors};
     }
     function scopeFilters() { return {...picker.filters, parent_id: picker.parent}; }
@@ -599,7 +612,7 @@
     function renderPickerSelection() {
         const selected = document.getElementById('exin-bf-picker-selected');
         const independent = picker.floorPolicy.mode === 'independent';
-        const individual = independent || state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.startsWith('auto_');
+        const individual = independent || state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.match(/^(auto_|smart_adaptive$)/);
         document.getElementById('exin-bf-selection-count').textContent = helpers.persianDigits(picker.selected.size);
         selected.innerHTML = [...picker.selected.values()].map(row => `<div class="exin-bf-selected-row" data-selected-row="${row.product.id}"><strong>${esc(row.product.name)}</strong>${individual ? `<label>${esc(labels.floor)} (${esc(cfg.currency)})<input type="text" data-exin-money data-picker-floor="${row.product.id}" value="${esc(row.floor)}" inputmode="decimal" aria-label="${esc(labels.floor + ' ' + row.product.name)}"></label>` : '<span class="exin-bf-note">کف طبق روش گروهی محاسبه می‌شود.</span>'}<div>${independent ? button(labels.preview, 'picker-preview', '', `data-id="${row.product.id}"`) : ''}<button type="button" class="exin-bf-button" data-picker-remove="${row.product.id}">حذف از انتخاب</button></div><div class="exin-bf-preview" id="exin-bf-preview-${row.product.id}"></div></div>`).join('') || `<p>${esc(labels.selectFirst)}</p>`;
         helpers.attach(selected);
@@ -607,7 +620,7 @@
     function chooseProduct(product, selected) {
         if (!product || !product.selectable || product.included || knownMember(product.id)) return;
         if (selected) {
-            if (!picker.selected.has(product.id)) picker.selected.set(product.id, {product, floor: (state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.startsWith('auto_')) ? '' : state.campaign.settings.discount_plan ? '0' : ''});
+            if (!picker.selected.has(product.id)) picker.selected.set(product.id, {product, floor: (state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.match(/^(auto_|smart_adaptive$)/)) ? '' : state.campaign.settings.discount_plan ? '0' : ''});
         } else picker.selected.delete(product.id);
     }
     function checkedFloor(row) {
@@ -809,7 +822,8 @@
             }
             if (node.closest('#exin-bf-settings')) {
                 captureSettings();
-                if (node.id === 'bf-interval' && draft.discount_mode.startsWith('auto_')) draft.interval_minutes = draft.interval === 'flash' ? '5' : draft.interval === 'hourly' ? '60' : '1440';
+        if (node.name === 'adaptive_preset') { const [change,maximum,cooldown] = {conservative:['500','6000','720'],balanced:['1000','8000','360'],aggressive:['1500','10000','180']}[draft.adaptive_preset]; Object.assign(draft,{adaptive_max_change_bps:change,adaptive_maximum_bps:maximum,adaptive_cooldown_minutes:cooldown}); render(); }
+                if (node.id === 'bf-interval' && draft.discount_mode.match(/^(auto_|smart_adaptive$)/)) draft.interval_minutes = draft.interval === 'flash' ? '5' : draft.interval === 'hourly' ? '60' : '1440';
                 if (['bf-discount_mode', 'bf-interval'].includes(node.id)) { render(); helpers.attach(content); }
                 scheduleDraftSave();
             }

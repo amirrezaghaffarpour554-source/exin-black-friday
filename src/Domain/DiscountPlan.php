@@ -294,7 +294,7 @@ final class DiscountPlan {
 	 * @return bool Whether an automatic mode was explicitly saved.
 	 */
 	public static function automatic( array $campaign ): bool {
-		return in_array( $campaign['settings']['discount_plan']['mode'] ?? '', array( 'auto_progressive', 'auto_descending', 'auto_rotation', 'auto_random', 'auto_wave', 'auto_hybrid' ), true );
+		return in_array( $campaign['settings']['discount_plan']['mode'] ?? '', array( 'smart_adaptive', 'auto_progressive', 'auto_descending', 'auto_rotation', 'auto_random', 'auto_wave', 'auto_hybrid' ), true );
 	}
 
 	/**
@@ -330,10 +330,12 @@ final class DiscountPlan {
 		$size_mode = $input['selection_mode'] ?? 'percent';
 		if ( ! in_array( $curve, array( 'linear', 'stepped' ), true ) || ! in_array( $selector, array( 'priority', 'random' ), true ) || ! in_array( $last, array( 'disabled', 'continue', 'all_floor', 'remaining_floor' ), true ) || ! in_array( $ending, array( 'continue', 'regular', 'minimum' ), true ) || ! in_array( $size_mode, array( 'count', 'percent' ), true ) ) {
 			throw new InvalidArgumentException( 'invalid_automatic_option' ); }
+		if ( 'smart_adaptive' === $mode && ! isset( $input['seed'] ) ) {
+			throw new InvalidArgumentException( 'adaptive_seed_required' ); }
 		$seed = $input['seed'] ?? 'exin-auto-130';
 		if ( ! is_string( $seed ) || ! preg_match( '/\A[A-Za-z0-9_-]{8,64}\z/D', $seed ) ) {
 			throw new InvalidArgumentException( 'invalid_automatic_seed' ); }
-		return array(
+		$result = array(
 			'mode'             => $mode,
 			'interval'         => $interval,
 			'steps'            => $steps,
@@ -356,23 +358,31 @@ final class DiscountPlan {
 			'last_day'         => $last,
 			'descending_end'   => $ending,
 		);
+		if ( 'smart_adaptive' === $mode ) {
+			if ( ! in_array( $last, array( 'disabled', 'continue' ), true ) ) {
+				throw new InvalidArgumentException( 'adaptive_has_no_final_day_floor' ); }
+			$result['last_day'] = 'disabled';
+			$result['adaptive'] = AdaptivePolicy::normalize( $input['adaptive'] ?? array() );
+		}
+		return $result;
 	}
 
 	/**
 	 * Make one exact decision relative to the regular-to-floor headroom.
 	 *
-	 * @param string $base Immutable regular price.
-	 * @param string $floor Positive per-product floor.
-	 * @param array  $campaign Explicit automatic campaign.
-	 * @param int    $stage Actual stage index.
-	 * @param int    $product_id Product seed identity.
-	 * @param bool   $selected Whether the immutable stage cohort selected this item.
-	 * @param bool   $remaining Whether no previous special turn was recorded.
-	 * @param bool   $in_stock Current strict stock eligibility.
+	 * @param string   $base Immutable regular price.
+	 * @param string   $floor Positive per-product floor.
+	 * @param array    $campaign Explicit automatic campaign.
+	 * @param int      $stage Actual stage index.
+	 * @param int      $product_id Product seed identity.
+	 * @param bool     $selected Whether the immutable stage cohort selected this item.
+	 * @param bool     $remaining Whether no previous special turn was recorded.
+	 * @param bool     $in_stock Current strict stock eligibility.
+	 * @param int|null $adaptive_intensity Committed smart intensity, internal only.
 	 * @return string One bounded price; discounts never stack.
 	 * @throws InvalidArgumentException When the financial inputs are invalid.
 	 */
-	public static function automatic_price( string $base, string $floor, array $campaign, int $stage, int $product_id = 0, bool $selected = true, bool $remaining = true, bool $in_stock = true ): string {
+	public static function automatic_price( string $base, string $floor, array $campaign, int $stage, int $product_id = 0, bool $selected = true, bool $remaining = true, bool $in_stock = true, ?int $adaptive_intensity = null ): string {
 		$context   = self::automatic_context( $campaign );
 		$p         = $context['plan'];
 		$precision = self::precision( $campaign );
@@ -393,6 +403,11 @@ final class DiscountPlan {
 		$progress = $lo + intdiv( ( $hi - $lo ) * $position, $den );
 		$random   = $lo + (int) ( hexdec( substr( hash( 'sha256', $p['seed'] . ':' . $stage . ':' . $product_id . ':intensity' ), 0, 8 ) ) % ( $hi - $lo + 1 ) );
 		switch ( $p['mode'] ) {
+			case 'smart_adaptive':
+				$intensity = $adaptive_intensity ?? $p['adaptive']['initial_bps'];
+				if ( $intensity < 0 || $intensity > $p['adaptive']['maximum_bps'] ) {
+					throw new InvalidArgumentException( 'invalid_adaptive_intensity' ); }
+				break;
 			case 'auto_descending':
 				$intensity = $hi - ( $progress - $lo );
 				if ( $stage === $steps - 1 && 'continue' !== $p['descending_end'] ) {

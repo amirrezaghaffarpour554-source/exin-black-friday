@@ -245,6 +245,9 @@ final class CatalogProductQuery {
 	public static function presentation( \WC_Product $product ): array {
 		$image  = wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' );
 		$parent = $product->is_type( 'variation' ) ? wc_get_product( $product->get_parent_id() ) : null;
+		$owner  = wc_get_product( $product->get_stock_managed_by_id() );
+		$owner  = $owner ? $owner : $product;
+		$color  = $product->get_attribute( 'pa_color' );
 		return array(
 			'id'             => $product->get_id(),
 			'product_id'     => $product->get_id(),
@@ -253,15 +256,15 @@ final class CatalogProductQuery {
 			'type'           => $product->get_type(),
 			'price'          => $product->get_price( 'edit' ),
 			'stock_status'   => $product->get_stock_status(),
-			'stock_quantity' => ( wc_get_product( $product->get_stock_managed_by_id() ) ?: $product )->get_stock_quantity(),
-			'color'          => $product->get_attribute( 'pa_color' ) ?: $product->get_attribute( 'color' ),
+			'stock_quantity' => $owner->get_stock_quantity(),
+			'color'          => $color ? $color : $product->get_attribute( 'color' ),
 			'in_stock'       => $product->is_in_stock(),
 			'backorders'     => $product->backorders_allowed(),
 			'image'          => $image ? $image : '',
 			'categories'     => $parent ? $parent->get_category_ids() : $product->get_category_ids(),
 			'status'         => $product->get_status(),
 			'parent_id'      => $product->get_parent_id(),
-			'selectable'     => $product->is_type( array( 'simple', 'variation' ) ) && '' !== $product->get_price( 'edit' ) && 'instock' === $product->get_stock_status() && ( ! ( wc_get_product( $product->get_stock_managed_by_id() ) ?: $product )->managing_stock() || ( wc_get_product( $product->get_stock_managed_by_id() ) ?: $product )->get_stock_quantity() > 0 ),
+			'selectable'     => $product->is_type( array( 'simple', 'variation' ) ) && '' !== $product->get_price( 'edit' ) && 'instock' === $product->get_stock_status() && ( ! $owner->managing_stock() || $owner->get_stock_quantity() > 0 ),
 			'has_variations' => $product->is_type( 'variable' ),
 		);
 	}

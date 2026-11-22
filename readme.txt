@@ -3,7 +3,7 @@ Contributors: exin
 Tags: woocommerce, campaign, black-friday, pricing
 Requires at least: 6.5
 Requires PHP: 8.2
-Stable tag: 1.3.2
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: exin-black-friday
@@ -57,6 +57,9 @@ Text Domain: exin-black-friday
 داده هنگام حذف به‌طور پیش‌فرض حفظ می‌شود. Opt-in پاک‌سازی در حضور مالکیت یا Intent باز رد می‌شود. بازگشت فایل افزونه به‌تنهایی قیمت‌ها را برنمی‌گرداند؛ راهنمای docs/rollback-fa.md را اجرا کنید.
 
 == Changelog ==
+
+= 1.4.0 =
+Optional smart_adaptive strategy: bounded explainable sales/stock rules, immutable stage decisions and incremental HPOS-compatible sales checkpoints. Additive schema 7 preserves existing campaign financial rows. No automatic opt-in or upgrade repricing. See docs/smart-adaptive-v1.4.0-fa.md.
 
 = 1.3.1 =
 Inline draft floors with bounded bulk save and cross-page edits; stock-only manager pages, SKU/ID search and variation color/stock. Existing financial locks remain.

@@ -1,0 +1,193 @@
+{
+  "result": "PASS",
+  "prefix": "exin140_ready_1795378876_",
+  "products": 1738,
+  "wordpress": "7.1.4",
+  "woocommerce": "11.3.0",
+  "php": "8.2.35",
+  "database": "11.8.6",
+  "baseline_sales_units": 183,
+  "baseline_counted_orders": 99,
+  "fixture": {
+    "reused_synthetic_products": 1738,
+    "creation_timing_not_repeated": true
+  },
+  "campaign": 3,
+  "cold_pricing": {
+    "wall_seconds": 8.658848,
+    "cpu_user_seconds": 3.522702,
+    "cpu_system_seconds": 0.611823,
+    "cpu_percent_one_core": 47.75,
+    "queries": 59410,
+    "php_peak_bytes": 150798336,
+    "process_peak_rss_bytes": 167636992,
+    "result": 70
+  },
+  "initial_scheduled_analytics": {
+    "wall_seconds": 0.066528,
+    "cpu_user_seconds": 0.017619,
+    "cpu_system_seconds": 0.001574,
+    "cpu_percent_one_core": 28.85,
+    "queries": 212,
+    "php_peak_bytes": 150798336,
+    "process_peak_rss_bytes": 167854080,
+    "result": {
+      "passes": 4,
+      "snapshots": 1738
+    }
+  },
+  "parallel_orders_and_pricing": {
+    "wall_seconds": 19.742079,
+    "cpu_user_seconds": 0,
+    "cpu_system_seconds": 0.00766,
+    "cpu_percent_one_core": 0.04,
+    "queries": 0,
+    "php_peak_bytes": 150798336,
+    "process_peak_rss_bytes": 167854080,
+    "result": [
+      {
+        "role": "0",
+        "measurement": {
+          "wall_seconds": 16.148582,
+          "cpu_user_seconds": 3.870503,
+          "cpu_system_seconds": 0.380592,
+          "cpu_percent_one_core": 26.32,
+          "queries": 28420,
+          "php_peak_bytes": 150798336,
+          "process_peak_rss_bytes": 168636416,
+          "result": {
+            "created_orders": 40,
+            "expected_units": 61,
+            "expected_counted_orders": 33
+          }
+        }
+      },
+      {
+        "role": "1",
+        "measurement": {
+          "wall_seconds": 13.56523,
+          "cpu_user_seconds": 3.66997,
+          "cpu_system_seconds": 0.263234,
+          "cpu_percent_one_core": 28.99,
+          "queries": 28436,
+          "php_peak_bytes": 150798336,
+          "process_peak_rss_bytes": 168620032,
+          "result": {
+            "created_orders": 40,
+            "expected_units": 61,
+            "expected_counted_orders": 33
+          }
+        }
+      },
+      {
+        "role": "2",
+        "measurement": {
+          "wall_seconds": 14.300556,
+          "cpu_user_seconds": 3.540976,
+          "cpu_system_seconds": 0.400438,
+          "cpu_percent_one_core": 27.56,
+          "queries": 28420,
+          "php_peak_bytes": 150798336,
+          "process_peak_rss_bytes": 168652800,
+          "result": {
+            "created_orders": 40,
+            "expected_units": 61,
+            "expected_counted_orders": 33
+          }
+        }
+      },
+      {
+        "role": "pricing",
+        "measurement": {
+          "wall_seconds": 17.956251,
+          "cpu_user_seconds": 4.494731,
+          "cpu_system_seconds": 0.576886,
+          "cpu_percent_one_core": 28.24,
+          "queries": 64608,
+          "php_peak_bytes": 150798336,
+          "process_peak_rss_bytes": 166842368,
+          "result": 70
+        }
+      }
+    ]
+  },
+  "backlog_pass": {
+    "wall_seconds": 0.588832,
+    "cpu_user_seconds": 0.230754,
+    "cpu_system_seconds": 0.026738,
+    "cpu_percent_one_core": 43.73,
+    "queries": 3473,
+    "php_peak_bytes": 150798336,
+    "process_peak_rss_bytes": 168312832,
+    "result": 1
+  },
+  "kill_and_recovery": {
+    "wall_seconds": 0.132927,
+    "cpu_user_seconds": 0.036017,
+    "cpu_system_seconds": 0.012089,
+    "cpu_percent_one_core": 36.19,
+    "queries": 713,
+    "php_peak_bytes": 150798336,
+    "process_peak_rss_bytes": 168316928,
+    "result": {
+      "sigkill_exit": 9,
+      "checkpoint_commit_before_ack": true,
+      "timeout_seconds_simulated": 601,
+      "automatic_watchdog_recovery": true
+    }
+  },
+  "stale_pricing": {
+    "wall_seconds": 8.246932,
+    "cpu_user_seconds": 3.453522,
+    "cpu_system_seconds": 0.505386,
+    "cpu_percent_one_core": 48,
+    "queries": 59392,
+    "php_peak_bytes": 152895488,
+    "process_peak_rss_bytes": 168468480,
+    "result": 70
+  },
+  "delayed_analytics_recovery": {
+    "wall_seconds": 0.089359,
+    "cpu_user_seconds": 0.033184,
+    "cpu_system_seconds": 0.004117,
+    "cpu_percent_one_core": 41.74,
+    "queries": 207,
+    "php_peak_bytes": 152895488,
+    "process_peak_rss_bytes": 168423424,
+    "result": 4
+  },
+  "same_stage_resumed_pricing": {
+    "wall_seconds": 8.299464,
+    "cpu_user_seconds": 3.445652,
+    "cpu_system_seconds": 0.542512,
+    "cpu_percent_one_core": 48.05,
+    "queries": 64604,
+    "php_peak_bytes": 152895488,
+    "process_peak_rss_bytes": 168816640,
+    "result": 70
+  },
+  "parallel_orders_created": 120,
+  "sales_units_after_refunds_and_deletions": 366,
+  "distinct_counted_orders": 198,
+  "backlog_before": 120,
+  "backlog_after_one_pass": 20,
+  "floor_violations": 0,
+  "pricing_order_or_sales_queries": 0,
+  "manual_floors_selections_snapshots_preserved": true,
+  "prior_campaigns_preserved": true,
+  "same_stage_recovery_decisions": 1738,
+  "action_scheduler_watchdog_recurring": true,
+  "measurement_limits": [
+    "Isolated synthetic HPOS; Action Scheduler real process_action and real store, CLI transport",
+    "CPU is measured PHP process user+system; DB server CPU is excluded",
+    "RSS is lifetime process high-water mark, PHP peak is reset per phase; parent excludes child CPU/query counts",
+    "Clock delay and AS timeout simulated by backdating synthetic metrics/action/campaign timestamps; no wall-clock 601-second sleep",
+    "No production capacity/p95/cache-drop-in validation"
+  ],
+  "test_execution_notes": [
+    "Final full readiness acceptance run reused 1738 existing synthetic products, recorded baseline of 183 units/99 valid orders, then created 120 new parallel orders. No fresh-product creation time claimed for this run.",
+    "Earlier test-harness assertions were corrected: unaffected snapshot must lie within bounded publication page; legacy paused campaign must be unexpired to avoid legitimate existing expiry/restore behavior. Production code was not changed to suppress expiry.",
+    "Overlap test reran on same synthetic fixture; its own initial sales units and final net after one refund are recorded independently.",
+    "CPU/query timings include Action Scheduler store processing; concurrent producer/price child measurements are separate from parent waiting time."
+  ]
+}
