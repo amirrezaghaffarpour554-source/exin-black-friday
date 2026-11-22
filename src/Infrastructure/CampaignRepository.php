@@ -255,15 +255,27 @@ final class CampaignRepository {
 	 * @param int    $id Campaign.
 	 * @param int    $page Page.
 	 * @param string $search Name, SKU or ID.
+	 * @param string $stock Stock filter.
+	 * @param string $status Enrollment status.
 	 * @return array Page and total.
 	 */
-	public function manager_items( int $id, int $page, string $search ): array {
+	public function manager_items( int $id, int $page, string $search, string $stock = 'all', string $status = '' ): array {
 		global $wpdb;
 		$sql = $wpdb->prepare( " FROM %i i JOIN %i p ON p.ID=i.product_id WHERE i.campaign_id=%d AND i.status<>'removed' AND p.post_type IN ('product','product_variation')", $this->table( 'items' ), $wpdb->posts, $id );
 		if ( '' !== $search ) {
 			$like = '%' . $wpdb->esc_like( $search ) . '%';
 			$sql .= $wpdb->prepare( " AND (p.post_title LIKE %s OR EXISTS (SELECT 1 FROM {$wpdb->postmeta} sku WHERE sku.post_id=p.ID AND sku.meta_key='_sku' AND sku.meta_value LIKE %s) OR p.ID=%d)", $like, $like, ctype_digit( $search ) ? (int) $search : 0 );
 		}
+		if ( '' !== $status ) {
+			$sql .= $wpdb->prepare( ' AND i.status=%s', $status );
+		}
+		if ( in_array( $stock, array( 'instock', 'outofstock' ), true ) ) {
+			// Resolve shared variation stock without joining duplicate metadata rows.
+			$owner = "CASE WHEN p.post_type='product_variation' AND NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} cm WHERE cm.post_id=p.ID AND cm.meta_key='_manage_stock' AND cm.meta_value='yes') AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id=p.post_parent AND pm.meta_key='_manage_stock' AND pm.meta_value='yes') THEN p.post_parent ELSE p.ID END";
+			$available = "EXISTS (SELECT 1 FROM {$wpdb->postmeta} cs WHERE cs.post_id=p.ID AND cs.meta_key='_stock_status' AND cs.meta_value='instock') AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} os WHERE os.post_id=($owner) AND os.meta_key='_stock_status' AND os.meta_value='instock') AND (NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} ms WHERE ms.post_id=($owner) AND ms.meta_key='_manage_stock' AND ms.meta_value='yes') OR EXISTS (SELECT 1 FROM {$wpdb->postmeta} qty WHERE qty.post_id=($owner) AND qty.meta_key='_stock' AND CAST(qty.meta_value AS DECIMAL(20,6))>0))";
+			$sql .= ' AND ' . ( 'outofstock' === $stock ? 'NOT ' : '' ) . '(' . $available . ')';
+		}
+
 		$rows = $wpdb->get_results( 'SELECT i.*' . $sql . $wpdb->prepare( ' ORDER BY i.featured DESC,i.priority ASC,i.product_id ASC LIMIT 25 OFFSET %d', max( 0, $page - 1 ) * 25 ), ARRAY_A );
 		return array(
 			'items' => array_map( array( $this, 'decode_item' ), $rows ),

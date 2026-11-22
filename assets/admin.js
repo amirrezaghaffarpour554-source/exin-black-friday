@@ -50,7 +50,7 @@
         sold_out: wp.i18n.__('ناموجود', 'exin-black-friday'), conflict: wp.i18n.__('تعارض', 'exin-black-friday'), removed: wp.i18n.__('حذف‌شده', 'exin-black-friday')
     };
     const floorEdits = new Map();
-    let productSearch = '', productSearchTimer;
+    let productSearch = '', productStock = 'all', productStatus = '', productSearchTimer;
     let state = null, view = 'dashboard', page = 1, requestVersion = 0, serverOffset = 0, countdownTimer;
     let draft = null, editRevision = 0, savedRevision = 0, savePromise = null, autosaveTimer, previousFocus;
     let picker = null, pickerRequest = 0, pickerTimer, filterMetadata = null, draggedId = null;
@@ -166,7 +166,7 @@
         const revision = ++requestVersion;
         content.setAttribute('aria-busy', 'true');
         try {
-            const result = await api(`state?search=${encodeURIComponent(productSearch)}&page=${page}&view=${encodeURIComponent(view)}${selectedCampaign ? `&campaign_id=${selectedCampaign}` : ''}`);
+            const result = await api(`state?stock=${encodeURIComponent(productStock)}&status=${encodeURIComponent(productStatus)}&search=${encodeURIComponent(productSearch)}&page=${page}&view=${encodeURIComponent(view)}${selectedCampaign ? `&campaign_id=${selectedCampaign}` : ''}`);
             if (revision !== requestVersion) return;
             state = result;
             if (result.campaigns) { campaigns = result.campaigns; campaignListMore = campaigns.length >= 50; }
@@ -406,7 +406,7 @@
     function renderProducts() {
         content.innerHTML = `${state.campaign.status === 'draft' ? steps(1) : ''}<div class="exin-bf-toolbar"><div><h2>${esc(labels.products)} <span class="exin-bf-status">${helpers.persianDigits(state.count)}</span></h2><p class="exin-bf-note">${esc(wp.i18n.__('تنوع‌ها مستقل‌اند. ردیف‌های ویژه را بکشید یا اولویت عددی بدهید؛ ترتیب عادی بر اساس تخفیف روز، فروش و تازگی است.', 'exin-black-friday'))}</p></div><div class="exin-bf-actions">${button(labels.add, 'add', 'exin-bf-primary')}${state.campaign.status === 'draft' ? button('ذخیره گروهی کف قیمت‌ها', 'save-floors', 'exin-bf-primary') : ''}${state.campaign.status === 'draft' ? button('تخفیف و زمان‌بندی ←', 'settings') : ''}${button(wp.i18n.__('حذف انتخاب‌شده‌ها', 'exin-black-friday'), 'bulk-remove', 'exin-bf-danger')}${button(labels.review, 'review')}</div></div>
             ${['draft','active'].includes(state.campaign.status) ? `<section class="exin-bf-card exin-bf-scope"><h3>محدودهٔ محصولات</h3><p class="exin-bf-note">برای هزاران محصول، انتخاب و پردازش دسته‌ای روی سرور انجام می‌شود؛ همهٔ محصولات در مرورگر بارگذاری نمی‌شوند.</p><div class="exin-bf-actions">${button('تمام محصولات فروشگاه', 'scope-all')}${button('تمام محصولات موجود', 'scope-instock')}${button('انتخاب با فیلترها', 'add')}${state.count ? button('حذف تمام انتخاب‌های کمپین', 'selection-remove-all', 'exin-bf-danger') : ''}</div>${storageGet(sessionStorage, jobKey()) ? `<p class="exin-bf-warning">یک پردازش گروهی ناتمام دارید. ${button('ادامهٔ پردازش', 'selection-resume')}</p>` : ''}<div id="exin-bf-job-progress" role="status" aria-live="polite"></div></section>` : ''}
-            <div class="exin-bf-filter"><input id="exin-bf-filter-text" value="${esc(productSearch)}" class="exin-bf-search" type="search" placeholder="${esc(wp.i18n.__('جست‌وجوی نام، SKU یا شناسه', 'exin-black-friday'))}" aria-label="${esc(labels.search)}"><select id="exin-bf-filter-status" aria-label="${esc(wp.i18n.__('فیلتر وضعیت', 'exin-black-friday'))}"><option value="">${esc(labels.all)}</option>${Object.entries(statuses).map(([key, text]) => `<option value="${key}">${esc(text)}</option>`).join('')}</select></div>
+            <div class="exin-bf-filter"><input id="exin-bf-filter-text" value="${esc(productSearch)}" class="exin-bf-search" type="search" placeholder="${esc(wp.i18n.__('جست‌وجوی نام، SKU یا شناسه', 'exin-black-friday'))}" aria-label="${esc(labels.search)}"><select id="exin-bf-filter-status" aria-label="${esc(wp.i18n.__('فیلتر وضعیت', 'exin-black-friday'))}"><option value="">${esc(labels.all)}</option>${Object.entries(statuses).map(([key, text]) => `<option value="${key}" ${key === productStatus ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select><select id="exin-bf-filter-stock" aria-label="فیلتر موجودی">${options([['all','همه'],['instock','فقط موجود'],['outofstock','فقط ناموجود']],productStock)}</select></div>
             <section class="exin-bf-card"><div class="exin-bf-table-scroll"><table class="exin-bf-table"><thead><tr><th><input type="checkbox" id="exin-bf-select-all" aria-label="${esc(wp.i18n.__('انتخاب ردیف‌های صفحه', 'exin-black-friday'))}"></th><th>${esc(wp.i18n.__('محصول', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('قیمت مبنا', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('قیمت فعلی', 'exin-black-friday'))}</th><th>${esc(labels.floor)}</th><th>${esc(wp.i18n.__('تخفیف فعلی', 'exin-black-friday'))}</th><th>${esc(labels.stock)}</th><th>${esc(wp.i18n.__('وضعیت', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('ویژه و ترتیب', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('عملیات', 'exin-black-friday'))}</th></tr></thead><tbody>${(state.items || []).map(productRow).join('') || `<tr><td colspan="10">${esc(wp.i18n.__('محصولی اضافه نشده است.', 'exin-black-friday'))}</td></tr>`}</tbody></table></div></section>
             <div class="exin-bf-pagination">${button(labels.previous, 'previous', '', page <= 1 ? 'disabled' : '')}<span>${helpers.persianDigits(page)}</span>${button(labels.next, 'next', '', page * 25 >= state.count ? 'disabled' : '')}</div><details class="exin-bf-advanced"><summary>${esc(wp.i18n.__('ابزار پیشرفته: ورود با شناسه', 'exin-black-friday'))}</summary><p>${esc(wp.i18n.__('روش اصلی، انتخاب‌گر ووکامرس است؛ این ابزار برای اپراتور باتجربه باقی مانده است.', 'exin-black-friday'))}</p>${button(wp.i18n.__('ورود گروهی با شناسه', 'exin-black-friday'), 'bulk-add')}</details>`;
     }
@@ -828,7 +828,10 @@
             }
             if (node.dataset.pickerSelect && picker) { invalidateSelectionPreview(); chooseProduct(picker.rows.find(product => product.id === Number(node.dataset.pickerSelect)), node.checked); renderPickerSelection(); }
             if (node.id === 'exin-bf-confirm-activate') document.getElementById('exin-bf-activate').disabled = !node.checked;
-            if (node.id === 'exin-bf-filter-status') filterRows();
+            if (['exin-bf-filter-status','exin-bf-filter-stock'].includes(node.id)) {
+                productStatus = document.getElementById('exin-bf-filter-status').value; productStock = document.getElementById('exin-bf-filter-stock').value;
+                clearTimeout(productSearchTimer); page = 1; await load();
+            }
             if (node.id === 'exin-bf-select-all') root.querySelectorAll('.exin-bf-row-select').forEach(input => { if (!input.closest('tr').hidden) input.checked = node.checked; });
             if (node.dataset.featured || node.dataset.priority) {
                 const id = node.dataset.featured || node.dataset.priority;
@@ -838,10 +841,6 @@
             }
         } catch (error) { notice(error.message, true); }
     });
-    function filterRows() {
-        const term = document.getElementById('exin-bf-filter-text').value.toLowerCase(), filter = document.getElementById('exin-bf-filter-status').value;
-        content.querySelectorAll('[data-product-row]').forEach(row => { row.hidden = !row.dataset.name.toLowerCase().includes(term) || !!(filter && row.dataset.status !== filter); });
-    }
     root.addEventListener('dragstart', event => {
         const row = event.target.closest('[data-product-row]');
         if (!row?.draggable || event.target.closest('input,button')) { event.preventDefault(); return; }

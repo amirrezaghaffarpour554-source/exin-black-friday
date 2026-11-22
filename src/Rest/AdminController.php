@@ -157,7 +157,7 @@ final class AdminController {
 		$requested = $this->integer( $request->get_param( 'campaign_id' ) ?? 0, 0, PHP_INT_MAX );
 		$campaign  = $requested ? $this->required_campaign( $requested ) : $this->repository->current();
 		$page      = $this->integer( $request->get_param( 'page' ) ?? 1, 1, 100000 );
-		$manager   = $campaign && 'products' === $request->get_param( 'view' ) ? $this->repository->manager_items( (int) $campaign['id'], $page, sanitize_text_field( (string) ( $request->get_param( 'search' ) ?? '' ) ) ) : null;
+		$manager   = $campaign && 'products' === $request->get_param( 'view' ) ? $this->repository->manager_items( (int) $campaign['id'], $page, sanitize_text_field( (string) ( $request->get_param( 'search' ) ?? '' ) ), $this->choice( $request->get_param( 'stock' ) ?? 'all', array( 'all', 'instock', 'outofstock' ) ), sanitize_key( $this->text( $request->get_param( 'status' ) ?? '' ) ) ) : null;
 		$items     = null !== $manager ? $manager['items'] : ( $campaign ? $this->repository->items( (int) $campaign['id'], 25, ( $page - 1 ) * 25 ) : array() );
 		foreach ( $items as &$item ) {
 			$product         = wc_get_product( (int) $item['product_id'] );
