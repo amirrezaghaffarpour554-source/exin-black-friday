@@ -10,5 +10,5 @@ $before=json_decode(file_get_contents($file),true,512,JSON_THROW_ON_ERROR);
 if($before!==$capture)throw new RuntimeException('RELEASE BLOCKED: ZIP load changed financial data');
 $path=(new ReflectionClass(Exin\BlackFriday\Application\SmartAdaptive::class))->getFileName();
 if(EXIN_BF_VERSION!=='1.4.0'||!str_contains($path,'/package/exin-black-friday/'))throw new RuntimeException('Actual ZIP class not loaded');
-if(get_option('exin_bf_schema_version')!=='7')throw new RuntimeException('Schema mismatch');
-echo 'EXIN_V140_INSTALLED '.wp_json_encode(['version'=>EXIN_BF_VERSION,'schema'=>'7','result'=>'passed','tables_preserved'=>count($capture['tables']),'product_price_snapshots_preserved'=>count($capture['prices']),'class_loaded_from_installed_zip'=>true]).PHP_EOL;
+if(get_option('exin_bf_schema_version')!==\Exin\BlackFriday\Infrastructure\Migration::VERSION)throw new RuntimeException('Schema mismatch');
+echo 'EXIN_V140_INSTALLED '.wp_json_encode(['version'=>EXIN_BF_VERSION,'schema'=>\Exin\BlackFriday\Infrastructure\Migration::VERSION,'result'=>'passed','tables_preserved'=>count($capture['tables']),'product_price_snapshots_preserved'=>count($capture['prices']),'class_loaded_from_installed_zip'=>true]).PHP_EOL;

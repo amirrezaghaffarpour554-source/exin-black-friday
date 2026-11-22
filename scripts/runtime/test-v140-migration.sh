@@ -17,3 +17,11 @@ cp releases/v1.3.2/exin-black-friday-v1.3.2.zip work/dist/
 "${client[@]}" wp "--exec=$migration_exec" eval-file "$PWD/tests/integration/v140-seed.php"
 "${client[@]}" setup use-source
 "${client[@]}" wp "--exec=$migration_exec" eval-file "$PWD/tests/integration/v140-migration.php"
+
+if [ "${EXIN140_TEST_ROLLBACK:-0}" = 1 ]; then
+  "${client[@]}" wp "--exec=$migration_exec putenv(\"EXIN140_ROLLBACK_PHASE=prepare\");" eval-file "$PWD/tests/integration/v140-rollback.php"
+  "${client[@]}" setup use-package
+  "${client[@]}" wp "--exec=$migration_exec putenv(\"EXIN140_ROLLBACK_PHASE=old\");" eval-file "$PWD/tests/integration/v140-rollback.php"
+  "${client[@]}" setup use-source
+  "${client[@]}" wp "--exec=$migration_exec putenv(\"EXIN140_ROLLBACK_PHASE=forward\");" eval-file "$PWD/tests/integration/v140-rollback.php"
+fi

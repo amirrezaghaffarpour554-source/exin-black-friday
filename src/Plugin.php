@@ -80,6 +80,7 @@ final class Plugin {
 		$selection  = new ProductSelectionService( $repository );
 		$scheduler  = new Scheduler( $repository, $processor, $logger );
 		$scheduler->register();
+		( new \Exin\BlackFriday\Application\AdaptiveAnalytics( $repository ) )->register();
 		( new Admin\Dashboard( $repository, $selection, $scheduler, $logger ) )->register();
 		( new Rest\AdminController( $repository, $selection, $scheduler, $logger ) )->register();
 		( new Integration\Storefront( $repository ) )->register();

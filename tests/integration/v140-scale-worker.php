@@ -1,0 +1,10 @@
+<?php
+if(!defined('WP_CLI')||!WP_CLI||DB_NAME!=='exin_test'||wp_get_environment_type()!=='local')throw new RuntimeException('Local only');
+$until=microtime(true)+15;while(!file_exists(getenv('EXIN_HARDEN_GATE'))){if(microtime(true)>$until)throw new RuntimeException('Barrier timeout');usleep(10000);}
+$cid=(int)getenv('EXIN_HARDEN_CID');$pid=(int)getenv('EXIN_HARDEN_PID');$oid=(int)getenv('EXIN_HARDEN_OID');$v=(int)getenv('EXIN_HARDEN_VERSION');$role=getenv('EXIN_HARDEN_ROLE');$q=get_num_queries();$t=microtime(true);if(function_exists('memory_reset_peak_usage'))memory_reset_peak_usage();
+$r=new Exin\BlackFriday\Infrastructure\CampaignRepository();$analytics=new Exin\BlackFriday\Application\AdaptiveAnalytics($r);$observer=new Exin\BlackFriday\Integration\Orders($r);$scheduler=new Exin\BlackFriday\Application\Scheduler($r,new Exin\BlackFriday\Application\PriceProcessor($r,new Exin\BlackFriday\Infrastructure\Logger()),new Exin\BlackFriday\Infrastructure\Logger());
+if($role==='status'){for($i=0;$i<5;$i++){$o=wc_get_order($oid);$o->update_status('pending');$o->update_status('completed');$observer->invalidate($oid);usleep(40000);}}
+elseif($role==='refund'){$o=wc_get_order($oid);$line_id=array_key_first($o->get_items());$line=$o->get_item($line_id);$refund=wc_create_refund(['order_id'=>$oid,'amount'=>wc_format_decimal((float)$line->get_total()/2,2),'line_items'=>[$line_id=>['qty'=>1,'refund_total'=>wc_format_decimal((float)$line->get_total()/2,2)]],'refund_payment'=>false,'restock_items'=>false]);if(is_wp_error($refund))throw new RuntimeException($refund->get_error_message());for($i=0;$i<5;$i++){$observer->invalidate($oid);usleep(40000);}}
+elseif($role==='analytics'){for($i=0;$i<15;$i++){$analytics->run($cid);usleep(40000);}}
+else{for($i=0;$i<5;$i++){$scheduler->retry($cid,$pid,$v,'apply',0);usleep(40000);}}
+echo 'HARDEN_CHILD '.wp_json_encode(['role'=>$role,'seconds'=>round(microtime(true)-$t,6),'queries'=>get_num_queries()-$q,'peak_bytes'=>memory_get_peak_usage(true)]).PHP_EOL;

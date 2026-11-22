@@ -13,7 +13,7 @@ use Exin\BlackFriday\Domain\CurrencyDisplay;
 
 /** Creates and upgrades durable campaign database tables. */
 final class Migration {
-	public const VERSION = '7';
+	public const VERSION = '8';
 
 	/**
 	 * Create the current schema and record its independent migration version.
@@ -136,7 +136,42 @@ final class Migration {
             KEY recent_sales (campaign_id,product_id,created_at)
         ) ENGINE=InnoDB $charset;"
 		);
-		foreach ( array( 'campaigns', 'items', 'locks', 'audit', 'turns', 'adaptive_decisions', 'adaptive_sales' ) as $table ) {
+
+		dbDelta(
+			"CREATE TABLE {$prefix}adaptive_state (
+            campaign_id bigint unsigned NOT NULL,
+            signature varchar(64) NOT NULL DEFAULT '',
+            recovering tinyint NOT NULL DEFAULT 1,
+            recovery_cursor bigint unsigned NOT NULL DEFAULT 0,
+            product_cursor bigint unsigned NOT NULL DEFAULT 0,
+            PRIMARY KEY  (campaign_id)
+        ) ENGINE=InnoDB $charset;"
+		);
+		dbDelta(
+			"CREATE TABLE {$prefix}adaptive_events (
+            campaign_id bigint unsigned NOT NULL,
+            order_id bigint unsigned NOT NULL,
+            revision bigint unsigned NOT NULL DEFAULT 1,
+            deleted tinyint NOT NULL DEFAULT 0,
+            PRIMARY KEY  (campaign_id,order_id),
+            KEY by_order (order_id)
+        ) ENGINE=InnoDB $charset;"
+		);
+		dbDelta(
+			"CREATE TABLE {$prefix}adaptive_metrics (
+            campaign_id bigint unsigned NOT NULL,
+            product_id bigint unsigned NOT NULL,
+            version bigint unsigned NOT NULL DEFAULT 0,
+            revision bigint unsigned NOT NULL DEFAULT 1,
+            validated_revision bigint unsigned NOT NULL DEFAULT 0,
+            units int unsigned NOT NULL DEFAULT 0,
+            orders int unsigned NOT NULL DEFAULT 0,
+            validated_at datetime NOT NULL DEFAULT '1970-01-01 00:00:00',
+            valid_until datetime NOT NULL DEFAULT '1970-01-01 00:00:00',
+            PRIMARY KEY  (campaign_id,product_id)
+        ) ENGINE=InnoDB $charset;"
+		);
+		foreach ( array( 'campaigns', 'items', 'locks', 'audit', 'turns', 'adaptive_decisions', 'adaptive_sales', 'adaptive_state', 'adaptive_events', 'adaptive_metrics' ) as $table ) {
 			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $prefix . $table ) ) ) !== $prefix . $table ) {
 				throw new \RuntimeException( 'schema_creation_failed' );
 			}

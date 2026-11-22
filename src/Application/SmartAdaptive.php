@@ -40,10 +40,10 @@ final class SmartAdaptive {
 	 * @param bool        $in_stock Strict stock eligibility.
 	 * @return string Price.
 	 * @throws \RuntimeException When a checkpoint cannot be safely persisted.
-	 * @throws \DomainException When a safe worker or trusted metrics are unavailable.
 	 */
 	public function price( array $campaign, array $item, \WC_Product $product, int $stage, bool $in_stock ): string {
 		global $wpdb;
+		DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, $stage, $item['product_id'], true, true, false );
 		if ( ! $in_stock ) {
 			return DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, $stage, $item['product_id'], true, true, false );
 		}
@@ -52,39 +52,37 @@ final class SmartAdaptive {
 		if ( null !== $saved ) {
 			$d = json_decode( $saved, true, 512, JSON_THROW_ON_ERROR );
 			return DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, $stage, $item['product_id'], true, true, true, $d['intensity_bps'] );}
-		// Frontend reads may reuse a committed decision, but never build analytics or a new decision.
-		if ( ! ( defined( 'WP_CLI' ) && WP_CLI ) && ! wp_doing_cron() && ! doing_action( 'action_scheduler_run_queue' ) && ! doing_action( 'action_scheduler_before_execute' ) && ! doing_action( 'exin_bf_batch' ) && ! doing_action( 'exin_bf_retry' ) ) {
-			throw new \DomainException( 'adaptive_waiting_for_worker' );
-		}
-		if ( get_option( 'exin_bf_adaptive_error_global' ) ) {
-			throw new \DomainException( 'adaptive_metrics_untrusted' );
-		}
-		$p     = $campaign['settings']['discount_plan']['adaptive'];
-		$now   = time();
-		$fresh = $this->refresh( $campaign );
-		if ( get_option( 'exin_bf_adaptive_error_' . $campaign['id'] ) ) {
-			throw new \DomainException( 'adaptive_metrics_untrusted' );
-		}
-		$from    = max( strtotime( $campaign['start_utc'] . ' UTC' ), $now - $p['window_hours'] * 3600 );
-		$metrics = $fresh ? $wpdb->get_row( $wpdb->prepare( 'SELECT COALESCE(SUM(units),0) units,COUNT(*) orders FROM %i WHERE campaign_id=%d AND product_id=%d AND created_at>=%s AND created_at<=%s', $wpdb->prefix . 'exin_bf_adaptive_sales', $campaign['id'], $item['product_id'], gmdate( 'Y-m-d H:i:s', $from ), gmdate( 'Y-m-d H:i:s', $now ) ), ARRAY_A ) : array(
+		$worker   = ( defined( 'WP_CLI' ) && WP_CLI ) || wp_doing_cron() || doing_action( 'exin_bf_batch' ) || doing_action( 'exin_bf_retry' );
+		$p        = $campaign['settings']['discount_plan']['adaptive'];
+		$now      = time();
+		$metrics  = ( new AdaptiveAnalytics( $this->repo ) )->snapshot( $campaign, $item['product_id'] );
+		$fresh    = $worker && null !== $metrics;
+		$metrics  = $metrics ?? array(
 			'units'  => 0,
 			'orders' => 0,
+			'as_of'  => 0,
 		);
-		if ( ! $metrics || $wpdb->last_error ) {
-			throw new \RuntimeException( 'adaptive_metrics_read_failed' );
-		}
 		$owner    = wc_get_product( $product->get_stock_managed_by_id() );
 		$metrics  = array(
 			'units'  => min( 1000000, (int) $metrics['units'] ),
 			'orders' => min( 1000000, (int) $metrics['orders'] ),
 			'stock'  => $owner && $owner->managing_stock() ? max( 0, min( 1000000, (int) $owner->get_stock_quantity() ) ) : -1,
-			'as_of'  => $now,
+			'as_of'  => $metrics['as_of'],
 		);
 		$previous = $wpdb->get_var( $wpdb->prepare( 'SELECT decision FROM %i WHERE campaign_id=%d AND version=%d AND product_id=%d AND stage<%d ORDER BY stage DESC LIMIT 1', $table, $campaign['id'], $campaign['version'], $item['product_id'], $stage ) );
 		if ( $wpdb->last_error ) {
 			throw new \RuntimeException( 'adaptive_history_read_failed' );
 		}
 		$previous = null === $previous ? null : json_decode( $previous, true, 512, JSON_THROW_ON_ERROR );
+		if ( ! $fresh ) {
+			if ( $previous ) {
+				return DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, $stage, $item['product_id'], true, true, true, $previous['intensity_bps'] ); }
+			$held      = $item['expected']['price'] ?? $item['snapshot']['price'] ?? $item['base_price'];
+			$precision = $campaign['settings']['precision'];
+			$minor     = \Exin\BlackFriday\Domain\Money::parse( $held, $precision );
+			return $minor >= \Exin\BlackFriday\Domain\Money::parse( $item['floor_price'], $precision ) && $minor <= \Exin\BlackFriday\Domain\Money::parse( $item['base_price'], $precision ) ? $held : $item['base_price'];
+		}
+
 		// Existing private per-campaign seed; never returned to the public or preview.
 		$span            = $p['exploration_bps'];
 		$hash            = hash_hmac( 'sha256', $item['product_id'] . ':' . $stage, $campaign['settings']['discount_plan']['seed'] );
@@ -119,74 +117,32 @@ final class SmartAdaptive {
 	}
 
 
-	/**
-	 * Reconcile at most 100 Woo orders in a worker; incomplete scans only hold.
+	/** Queue a durable latest-order event.
 	 *
-	 * @param array $c Campaign.
-	 * @return bool Completion state.
-	 * @throws \RuntimeException When a checkpoint cannot be safely persisted.
+	 * @param \WC_Order $order Order.
+	 * @return bool Queued.
 	 */
-	private function refresh( array $c ): bool {
-		global $wpdb;
-		$key        = 'exin_bf_adaptive_scan_' . $c['id'];
-		$generation = get_option( 'exin_bf_report_generation_' . $c['id'], '1' );
-		$signature  = $c['version'] . ':' . $generation;
-		$scan       = get_transient( $key );
-		if ( ! is_array( $scan ) || ( $scan['signature'] ?? '' ) !== $signature || ( ! empty( $scan['complete'] ) && time() - $scan['at'] > 300 ) ) {
-			$from = max( strtotime( $c['start_utc'] . ' UTC' ), time() - $c['settings']['discount_plan']['adaptive']['window_hours'] * 3600 );
-			if ( false === $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE campaign_id=%d AND created_at>=%s', $wpdb->prefix . 'exin_bf_adaptive_sales', $c['id'], gmdate( 'Y-m-d H:i:s', $from ) ) ) ) {
-				throw new \RuntimeException( 'adaptive_refresh_failed' );
-			}
-			$scan = array(
-				'signature' => $signature,
-				'page'      => 1,
-				'from'      => $from,
-				'at'        => time(),
-				'complete'  => false,
-			);
-		}
-		if ( ! empty( $scan['complete'] ) ) {
-			return true;
-		}
-		// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key,WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Existing HPOS attribution, bounded to 100 orders in workers only.
-		$orders = wc_get_orders(
-			array(
-				'type'         => 'shop_order',
-				'status'       => array_keys( wc_get_order_statuses() ),
-				'date_created' => '>=' . $scan['from'],
-				'meta_key'     => '_exin_bf_campaign_' . $c['id'], // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Bounded HPOS attribution reconciliation, workers only.
-				'meta_value'   => '1', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Same bounded attribution query.
-				'limit'        => 100,
-				'page'         => $scan['page'],
-				'orderby'      => 'ID',
-				'order'        => 'ASC',
-			)
-		);
-		foreach ( $orders as$order ) {
-			if ( ! $this->observe( $order, (int) $c['id'] ) ) {
-				throw new \RuntimeException( 'adaptive_refresh_failed' );
-			}
-		}
-		++$scan['page'];
-		$scan['complete'] = count( $orders ) < 100;
-		if ( $scan['complete'] ) {
-			delete_option( 'exin_bf_adaptive_error_' . $c['id'] );
-			$scan['at'] = time();}
-		set_transient( $key, $scan, 3600 );
-		return $scan['complete'];
-	}
+	public function observe( \WC_Order $order ): bool {
+		( new AdaptiveAnalytics( $this->repo ) )->enqueue( $order->get_id(), $order );
+		return true; }
+
 	/**
 	 * Incremental order checkpoints via Woo CRUD: status/refund changes replace rows.
 	 *
 	 * @param \WC_Order $order Current order.
 	 * @param ?int      $only_campaign Optional locked campaign scope.
 	 * @return bool Completion state.
+	 * @throws \RuntimeException When a checkpoint read fails.
+	 * @throws \Throwable When the campaign lock must be retried.
 	 */
-	public function observe( \WC_Order $order, ?int $only_campaign = null ): bool {
+	public function sync_order( \WC_Order $order, ?int $only_campaign = null ): bool {
 		global $wpdb;
-		$ok     = true;
-		$groups = array();
-		foreach ( $wpdb->get_col( $wpdb->prepare( 'SELECT DISTINCT campaign_id FROM %i WHERE order_id=%d', $wpdb->prefix . 'exin_bf_adaptive_sales', $order->get_id() ) ) as $old_id ) {
+		$ok      = true;
+		$groups  = array();
+		$old_ids = $wpdb->get_col( $wpdb->prepare( 'SELECT DISTINCT campaign_id FROM %i WHERE order_id=%d', $wpdb->prefix . 'exin_bf_adaptive_sales', $order->get_id() ) );
+		if ( $wpdb->last_error ) {
+			throw new \RuntimeException( 'adaptive_event_read_failed' ); }
+		foreach ( $old_ids as $old_id ) {
 			$old = $this->repo->get( (int) $old_id );
 			if ( ( null === $only_campaign || (int) $old_id === $only_campaign ) && $old && self::enabled( $old ) ) {
 				$groups[ (int) $old_id ] = array( 'campaign' => $old );
@@ -264,8 +220,12 @@ final class SmartAdaptive {
 					}
 				);
 			} catch ( \Throwable $e ) {
+				if ( 'lock_busy' === $e->getMessage() ) {
+					throw $e; }
 				$ok = false;
-				update_option( 'exin_bf_adaptive_error_' . $cid, 'order_checkpoint_failed', false );}
+				if ( 'lock_busy' !== $e->getMessage() ) {
+					update_option( 'exin_bf_adaptive_error_' . $cid, 'order_checkpoint_failed', false ); }
+			}
 		}
 		return $ok;
 	}
@@ -276,28 +236,8 @@ final class SmartAdaptive {
 	 * @return void Operation result.
 	 */
 	public function forget( $order_id ): void {
-		global $wpdb;
-		$id  = $order_id instanceof \WC_Order ? $order_id->get_id() : (int) $order_id;
-		$ids = $wpdb->get_col( $wpdb->prepare( 'SELECT DISTINCT campaign_id FROM %i WHERE order_id=%d', $wpdb->prefix . 'exin_bf_adaptive_sales', $id ) );
-		foreach ( $ids as$cid ) {
-			try {
-				( new LockManager() )->run(
-					'campaign:' . $cid,
-					function () use ( $id, $cid ) {
-						global $wpdb;
-						if ( false === $wpdb->delete(
-							$wpdb->prefix . 'exin_bf_adaptive_sales',
-							array(
-								'order_id'    => $id,
-								'campaign_id' => $cid,
-							)
-						) ) {
-							throw new \RuntimeException( 'adaptive_sales_delete_failed' );
-						}}
-				);
-			} catch ( \Throwable $e ) {
-				update_option( 'exin_bf_adaptive_error_' . $cid, 'order_delete_failed', false );}
-		}
+		$id = $order_id instanceof \WC_Order ? $order_id->get_id() : (int) $order_id;
+		( new AdaptiveAnalytics( $this->repo ) )->enqueue( $id, null, true );
 	}
 	/**
 	 * Bounded manager-only decisions; no future prices or seeds.

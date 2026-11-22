@@ -13,5 +13,5 @@ foreach(array(1,2)as$run){
  foreach($before['tables']as$table=>$rows){$after=$wpdb->get_results('SELECT * FROM '.$wpdb->prefix.'exin_bf_'.$table.' ORDER BY 1,2',ARRAY_A);if($rows!==$after)throw new RuntimeException('RELEASE BLOCKED: existing '.$table.' changed');$checks++;}
  foreach($before['prices']as$id=>$state){if($state!==PriceState::capture(wc_get_product($id)))throw new RuntimeException('RELEASE BLOCKED: product repriced');$checks++;}
 }
-if(get_option('exin_bf_schema_version')!=='7')throw new RuntimeException('Missing additive schema');
-echo 'EXIN_V140_MIGRATION '.wp_json_encode(array('passed'=>$checks,'failed'=>0,'baseline'=>'actual v1.3.2 ZIP, schema 6','schema'=>'7','campaign_2'=>'synthetic campaign 2 unchanged','production_accessed'=>false)).PHP_EOL;
+if(get_option('exin_bf_schema_version')!==\Exin\BlackFriday\Infrastructure\Migration::VERSION)throw new RuntimeException('Missing additive schema');
+echo 'EXIN_V140_MIGRATION '.wp_json_encode(array('passed'=>$checks,'failed'=>0,'baseline'=>'actual v1.3.2 ZIP, schema 6','schema'=>\Exin\BlackFriday\Infrastructure\Migration::VERSION,'campaign_2'=>'synthetic campaign 2 unchanged','production_accessed'=>false)).PHP_EOL;

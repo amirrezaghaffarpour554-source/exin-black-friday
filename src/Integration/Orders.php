@@ -43,7 +43,7 @@ final class Orders {
 		add_action( 'woocommerce_order_refunded', array( $this, 'invalidate' ) );
 		add_action( 'woocommerce_refund_deleted', array( $this, 'invalidate' ), 10, 2 );
 		add_action( 'woocommerce_before_delete_order', array( $this, 'invalidate' ) );
-		add_action( 'woocommerce_before_delete_order', array( new \Exin\BlackFriday\Application\SmartAdaptive( $this->repository ), 'forget' ) );
+		add_action( 'woocommerce_delete_order', array( new \Exin\BlackFriday\Application\SmartAdaptive( $this->repository ), 'forget' ) );
 		add_action( 'woocommerce_trash_order', array( new \Exin\BlackFriday\Application\SmartAdaptive( $this->repository ), 'forget' ) );
 		add_action( 'woocommerce_untrash_order', array( $this, 'invalidate' ) );
 	}

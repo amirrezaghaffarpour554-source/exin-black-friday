@@ -8,7 +8,7 @@
   "deployment_requires_verified_restore_tested_backup": true,
   "migration": {
     "from": "6",
-    "to": "7",
+    "to": "8",
     "baseline_zip": "releases/v1.3.2/exin-black-friday-v1.3.2.zip",
     "baseline_zip_sha256": "0d59645fe6112804ec3a485271ec41bc1e4771db62c496fb27311f8cc90386da",
     "fresh_prefix_in_real_isolated_database": true,
@@ -23,7 +23,16 @@
     "idempotent_runs": 2,
     "automatic_opt_in": false,
     "upgrade_repricing": false,
-    "real_production_campaign_2_accessed": false
+    "real_production_campaign_2_accessed": false,
+    "rollback_and_forward": {
+      "legacy_version": "1.3.2",
+      "legacy_schema": "6",
+      "forward_schema": "8",
+      "financial_tables_preserved": 5,
+      "prices_preserved": 5,
+      "guard_blocks_unsettled_smart_ownership": true,
+      "passed": true
+    }
   },
   "runtime": {
     "wordpress": "7.1.4",
@@ -39,10 +48,11 @@
       "failed": 0
     },
     "bounded_checkpoint_and_frontend_guard": {
-      "passed": 16,
+      "passed": 23,
       "failed": 0,
       "real_database": false,
-      "frontend_analytics_calls": 0
+      "pricing_order_scans": 0,
+      "pricing_aggregates": 0
     },
     "smart_financial": {
       "suite": "v140-smart-integration",
@@ -176,10 +186,10 @@
     },
     "installed_zip_finances": {
       "version": "1.4.0",
-      "schema": "7",
+      "schema": "8",
       "result": "passed",
       "tables_preserved": 5,
-      "product_price_snapshots_preserved": 105,
+      "product_price_snapshots_preserved": 3641,
       "class_loaded_from_installed_zip": true
     }
   },
@@ -189,9 +199,9 @@
       "warnings": 0,
       "fixable": 0
     },
-    "php_syntax": "51 runtime PHP files passed",
+    "php_syntax": "PASS 60 PHP files: runtime and v140 focused fixtures",
     "javascript_syntax": "node --check assets/admin.js passed",
-    "package": "104 files; CRC, one plugin root, dev exclusion, source byte identity and deterministic rebuild passed"
+    "package": "105 files; source identity, CRC and deterministic rebuild passed"
   },
   "additional_focused_checks": {
     "manager_query_construction": {
@@ -207,9 +217,9 @@
   },
   "artifact": {
     "file": "exin-black-friday-v1.4.0.zip",
-    "sha256": "c30ae9b03f06c4e7469ac7a84de5559d5f35a30ce0a1206c6b3f88db19e2bf5b",
-    "bytes": 283382,
-    "installed_files_verified": 104,
+    "sha256": "6f7dde49634943cd75388eb778438e9cdbbaa2190388f033a702fbe3d8e209e4",
+    "bytes": 288887,
+    "installed_files_verified": 105,
     "installed_proof": "package-install.json"
   },
   "guide": "../../docs/smart-adaptive-v1.4.0-fa.md",
@@ -217,7 +227,7 @@
     "Explicit smart_adaptive profile inside existing DiscountPlan and PriceProcessor, no separate price or snapshot engine",
     "Integer regular-to-floor headroom arithmetic; immutable decisions before price writes",
     "Sales/stock/time/demand rules with conservative cold start, cooldown, hysteresis, capped exploration and changes; no forced final-day floor",
-    "Woo order/refund/status checkpoints and bounded 100-order reconciliation in workers; generation invalidation and read-only frontend guard",
+    "Durable revisioned order outbox, transactional per-order checkpoints and bounded exceptional keyset recovery; independent analytics action publishes validated snapshots; pricing performs no order or sales aggregate queries",
     "Existing 25-item batches, one next-stage job and shared wake-up for live additions; delayed/concurrent workers freeze one decision",
     "Three presets and hidden advanced settings in existing wizard; actual prior reasons and performance in existing dashboard"
   ],
@@ -225,15 +235,223 @@
     "Full historical CI or full version/browser matrix",
     "Target Production or real campaign 2 verification",
     "Target Woodmart/Elementor layout, Redis/WP Rocket/Nginx, live gateway and external services",
-    "Large server-capacity benchmark or empirical sales/profit uplift trial"
+    "Production server-capacity benchmark, p95 latency or empirical sales/profit uplift trial"
   ],
   "limits": [
     "250000 decision budget per campaign plus configurable existing batch-work estimate",
-    "Large/incomplete reconciliation holds the prior or cold-start intensity until a complete scan",
-    "A failed global checkpoint marker requires technical review and verified reconciliation before clearing",
+    "Missing, invalid or expired metrics preserve the last financially bounded decision; initial warm-up may delay new decisions",
+    "Checkpoint errors trigger durable bounded recovery; operator must investigate recurring errors",
     "Fractional inventory/order units are rounded down for signals; all monetary amounts use exact currency precision",
     "Existing coupon policy is preserved; effective checkout price may differ from campaign price under external incentives",
     "Native execution and mocked admin REST are explicitly distinguished from real database tests"
   ],
-  "production_actions": []
+  "production_actions": [],
+  "previous_validation_note": "Suites outside final_hardening were executed on the earlier PR head; current focused reruns and package proof are identified below.",
+  "final_hardening": {
+    "adaptive_policy": {
+      "assertions": 194,
+      "passed": 194,
+      "failed": 0
+    },
+    "snapshot_and_frontend_guard": {
+      "passed": 23,
+      "failed": 0,
+      "real_database": false,
+      "pricing_order_scans": 0,
+      "pricing_aggregates": 0
+    },
+    "smart_financial": {
+      "suite": "v140-smart-integration",
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "database": "11.8.6",
+      "hpos": true,
+      "tests": 9,
+      "assertions": 68,
+      "passed": 9,
+      "failed": 0,
+      "results": [
+        {
+          "test": "Smart cold start reuses immutable snapshot; retries freeze decisions; expiry restores prior sale",
+          "status": "passed"
+        },
+        {
+          "test": "Real sales drive increase decrease and floor protection; refund status and deletion invalidate checkpoints",
+          "status": "passed"
+        },
+        {
+          "test": "Shared-stock variations leave discounts when sold out and restore the same decision on restock",
+          "status": "passed"
+        },
+        {
+          "test": "External prices remain protected; scheduler delay commits only current stage; private preview has no future seed",
+          "status": "passed"
+        },
+        {
+          "test": "Explicit draft conversion preserves all old floors and selections; live settings cannot opt in",
+          "status": "passed"
+        },
+        {
+          "test": "Actual smart price can peak safely before final day and corrupt floors fail before writes",
+          "status": "passed"
+        },
+        {
+          "test": "Smart prices reuse coupon floor protection and do not rewrite completed order totals",
+          "status": "passed"
+        },
+        {
+          "test": "Live smart enrollment uses one coalesced wake-up and preserves old floors until worker evaluation",
+          "status": "passed"
+        },
+        {
+          "test": "Two concurrent workers commit one decision and one financial price",
+          "status": "passed"
+        }
+      ]
+    },
+    "analytics_failure_retry_and_recovery": {
+      "suite": "v140-analytics-hardening",
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "database": "11.8.6",
+      "hpos": true,
+      "tests": 4,
+      "assertions": 18,
+      "passed": 4,
+      "failed": 0,
+      "results": [
+        {
+          "test": "Pricing missing or invalid snapshots holds safe prices and never scans orders",
+          "status": "passed"
+        },
+        {
+          "test": "Durable outbox retries a failed checkpoint transaction without counting twice",
+          "status": "passed"
+        },
+        {
+          "test": "Only inconsistent checkpoints trigger bounded recovery; normal expiry never rebuilds sales",
+          "status": "passed"
+        },
+        {
+          "test": "Deleted orders and stale repeated events never resurrect counted sales",
+          "status": "passed"
+        }
+      ]
+    },
+    "installed_zip_finances": {
+      "version": "1.4.0",
+      "schema": "8",
+      "result": "passed",
+      "tables_preserved": 5,
+      "product_price_snapshots_preserved": 3641,
+      "class_loaded_from_installed_zip": true
+    },
+    "migration": {
+      "passed": 18,
+      "failed": 0,
+      "baseline": "actual v1.3.2 ZIP, schema 6",
+      "schema": "8",
+      "campaign_2": "synthetic campaign 2 unchanged",
+      "production_accessed": false
+    },
+    "scale_and_concurrency": {
+      "products": 1738,
+      "campaign_id": 116,
+      "duration_days": 7,
+      "evaluation_minutes": 120,
+      "database": "11.8.6",
+      "php": "8.2.35",
+      "fixture": {
+        "seconds": 71.385812,
+        "queries": 314622,
+        "peak_bytes": 161284096,
+        "result": 1738
+      },
+      "initial_analytics": {
+        "seconds": 0.091802,
+        "queries": 490,
+        "peak_bytes": 163381248,
+        "result": {
+          "passes": 18,
+          "snapshots": 1738
+        }
+      },
+      "pricing": {
+        "seconds": 25.608454,
+        "queries": 176670,
+        "peak_bytes": 163381248,
+        "result": {
+          "batches": 70,
+          "run": true
+        }
+      },
+      "event_processing": {
+        "seconds": 0.034357,
+        "queries": 133,
+        "peak_bytes": 167575552,
+        "result": true
+      },
+      "concurrency_parent": {
+        "seconds": 1.972449,
+        "queries": 0,
+        "peak_bytes": 167575552,
+        "result": true
+      },
+      "concurrent_children": [
+        {
+          "role": "status",
+          "seconds": 0.448447,
+          "queries": 1446,
+          "peak_bytes": 134021120
+        },
+        {
+          "role": "refund",
+          "seconds": 0.324589,
+          "queries": 285,
+          "peak_bytes": 134021120
+        },
+        {
+          "role": "analytics",
+          "seconds": 0.813911,
+          "queries": 838,
+          "peak_bytes": 134021120
+        },
+        {
+          "role": "pricing",
+          "seconds": 0.220958,
+          "queries": 50,
+          "peak_bytes": 134021120
+        }
+      ],
+      "missing_metrics_hold": {
+        "seconds": 0.006581,
+        "queries": 29,
+        "peak_bytes": 167575552,
+        "result": true
+      },
+      "pricing_order_queries": 0,
+      "pricing_sales_aggregates": 0,
+      "floor_violations": 0,
+      "sales_units_after_refund": 3,
+      "distinct_valid_orders": 3,
+      "financial_fields_unchanged": true,
+      "measurement": "single isolated Native run; parent queries exclude child queries, which are separately reported"
+    },
+    "wpcs": {
+      "errors": 0,
+      "warnings": 0,
+      "fixable": 0
+    },
+    "syntax": "PASS 60 PHP files: runtime and v140 focused fixtures",
+    "package": "105 files; source identity, CRC and deterministic rebuild passed",
+    "measurement_caveats": [
+      "Single synthetic isolated Native run, not production capacity certification",
+      "Pricing totals span 70 batches; absolute CLI peak includes prior fixture/cache allocation",
+      "18 consecutive analytics passes measure compute; real minute watchdog warm-up may take about 18 minutes",
+      "Child process query counts measured separately; no production cache/drop-in or p95 validation"
+    ],
+    "resolved_failure": "Initial concurrency scale run exposed stale in-process Woo refund cache. Runtime-only cache reset before fresh order reads fixed it; successful rerun is reported."
+  }
 }

@@ -1,0 +1,83 @@
+{
+    "products": 1738,
+    "campaign_id": 116,
+    "duration_days": 7,
+    "evaluation_minutes": 120,
+    "database": "11.8.6",
+    "php": "8.2.35",
+    "fixture": {
+        "seconds": 71.385812,
+        "queries": 314622,
+        "peak_bytes": 161284096,
+        "result": 1738
+    },
+    "initial_analytics": {
+        "seconds": 0.091802,
+        "queries": 490,
+        "peak_bytes": 163381248,
+        "result": {
+            "passes": 18,
+            "snapshots": 1738
+        }
+    },
+    "pricing": {
+        "seconds": 25.608454,
+        "queries": 176670,
+        "peak_bytes": 163381248,
+        "result": {
+            "batches": 70,
+            "run": true
+        }
+    },
+    "event_processing": {
+        "seconds": 0.034357,
+        "queries": 133,
+        "peak_bytes": 167575552,
+        "result": true
+    },
+    "concurrency_parent": {
+        "seconds": 1.972449,
+        "queries": 0,
+        "peak_bytes": 167575552,
+        "result": true
+    },
+    "concurrent_children": [
+        {
+            "role": "status",
+            "seconds": 0.448447,
+            "queries": 1446,
+            "peak_bytes": 134021120
+        },
+        {
+            "role": "refund",
+            "seconds": 0.324589,
+            "queries": 285,
+            "peak_bytes": 134021120
+        },
+        {
+            "role": "analytics",
+            "seconds": 0.813911,
+            "queries": 838,
+            "peak_bytes": 134021120
+        },
+        {
+            "role": "pricing",
+            "seconds": 0.220958,
+            "queries": 50,
+            "peak_bytes": 134021120
+        }
+    ],
+    "missing_metrics_hold": {
+        "seconds": 0.006581,
+        "queries": 29,
+        "peak_bytes": 167575552,
+        "result": true
+    },
+    "pricing_order_queries": 0,
+    "pricing_sales_aggregates": 0,
+    "floor_violations": 0,
+    "sales_units_after_refund": 3,
+    "distinct_valid_orders": 3,
+    "financial_fields_unchanged": true,
+    "measurement": "single isolated Native run; parent queries exclude child queries, which are separately reported"
+}
