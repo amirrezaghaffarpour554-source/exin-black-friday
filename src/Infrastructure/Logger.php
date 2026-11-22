@@ -101,6 +101,9 @@ final class Logger {
 		// Preserve claims until campaign end even for stages longer than log retention.
 		$wpdb->query( $wpdb->prepare( "DELETE FROM %i WHERE (option_name LIKE %s OR option_name LIKE %s) AND CAST(option_value AS UNSIGNED)<%d AND NOT EXISTS (SELECT 1 FROM %i c WHERE c.id=CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(option_name,'_',4),'_',-1) AS UNSIGNED) AND c.end_utc>%s) LIMIT 1000", $wpdb->options, $wpdb->esc_like( 'exin_bf_notice_' ) . '%', $wpdb->esc_like( 'exin_bf_late_' ) . '%', time() - min( 365, max( 7, $days ) ) * DAY_IN_SECONDS, $wpdb->prefix . 'exin_bf_campaigns', gmdate( 'Y-m-d H:i:s' ) ) );
 		$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE campaign_id IN (SELECT id FROM %i WHERE end_utc<%s) LIMIT 1000', $wpdb->prefix . 'exin_bf_turns', $wpdb->prefix . 'exin_bf_campaigns', gmdate( 'Y-m-d H:i:s', time() - min( 365, max( 7, $days ) ) * DAY_IN_SECONDS ) ) );
+		foreach ( array( 'adaptive_decisions', 'adaptive_sales' ) as $suffix ) {
+			$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE campaign_id IN (SELECT id FROM %i WHERE end_utc<%s) LIMIT 1000', $wpdb->prefix . 'exin_bf_' . $suffix, $wpdb->prefix . 'exin_bf_campaigns', gmdate( 'Y-m-d H:i:s', time() - min( 365, max( 7, $days ) ) * DAY_IN_SECONDS ) ) );
+		}
 		// Bounded storage even if an administrator configures excessive retention.
 		$cutoff = $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM %i ORDER BY id DESC LIMIT 1 OFFSET 9999', $table ) );
 		if ( $cutoff ) {

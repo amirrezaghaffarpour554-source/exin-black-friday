@@ -78,7 +78,7 @@ final class Storefront {
 							'active'        => $live,
 							'campaign_id'   => $live ? (int) $campaign['id'] : null,
 							'ends_at'       => $live ? strtotime( $campaign['end_utc'] . ' UTC' ) : null,
-							'stage_ends_at' => $live ? $this->stage_end( $campaign ) : null,
+							'stage_ends_at' => $live && ! \Exin\BlackFriday\Application\SmartAdaptive::enabled( $campaign ) ? $this->stage_end( $campaign ) : null,
 						)
 					);
 					$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
@@ -159,7 +159,7 @@ final class Storefront {
 		if ( 'related' === $kind ) {
 			return $this->related( $campaign, $attributes ); }
 		if ( 'countdown' === $kind ) {
-			return '<div class="exin-bf-countdown" role="timer" aria-label="' . esc_attr__( 'زمان باقی‌مانده کمپین', 'exin-black-friday' ) . '" data-exin-bf-countdown data-campaign="' . esc_attr( (string) $campaign['id'] ) . '" data-target="' . esc_attr( 'stage' === ( $attributes['target'] ?? ( $campaign['settings']['countdown_target'] ?? 'campaign' ) ) ? 'stage' : 'campaign' ) . '"><span>' . esc_html__( 'در حال دریافت زمان سرور…', 'exin-black-friday' ) . '</span></div>';
+			return '<div class="exin-bf-countdown" role="timer" aria-label="' . esc_attr__( 'زمان باقی‌مانده کمپین', 'exin-black-friday' ) . '" data-exin-bf-countdown data-campaign="' . esc_attr( (string) $campaign['id'] ) . '" data-target="' . esc_attr( ! \Exin\BlackFriday\Application\SmartAdaptive::enabled( $campaign ) && 'stage' === ( $attributes['target'] ?? ( $campaign['settings']['countdown_target'] ?? 'campaign' ) ) ? 'stage' : 'campaign' ) . '"><span>' . esc_html__( 'در حال دریافت زمان سرور…', 'exin-black-friday' ) . '</span></div>';
 		}
 		if ( 'categories' === $kind ) {
 			return $this->categories( $campaign );

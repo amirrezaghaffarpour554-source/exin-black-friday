@@ -1,0 +1,239 @@
+{
+  "version": "1.4.0",
+  "base_commit": "4246b0110cff82a9438627596d4f3a852aae7308",
+  "branch": "feature/smart-adaptive-v1.4.0",
+  "production_ready": false,
+  "production_accessed": false,
+  "production_backup_verified": false,
+  "deployment_requires_verified_restore_tested_backup": true,
+  "migration": {
+    "from": "6",
+    "to": "7",
+    "baseline_zip": "releases/v1.3.2/exin-black-friday-v1.3.2.zip",
+    "baseline_zip_sha256": "0d59645fe6112804ec3a485271ec41bc1e4771db62c496fb27311f8cc90386da",
+    "fresh_prefix_in_real_isolated_database": true,
+    "existing_tables_compared": [
+      "campaigns",
+      "items",
+      "audit",
+      "turns",
+      "locks"
+    ],
+    "original_floors_overrides_settings_dates_snapshots_ownership_and_prices_preserved": true,
+    "idempotent_runs": 2,
+    "automatic_opt_in": false,
+    "upgrade_repricing": false,
+    "real_production_campaign_2_accessed": false
+  },
+  "runtime": {
+    "wordpress": "7.1.4",
+    "woocommerce": "11.3.0",
+    "php": "8.2.35",
+    "database": "11.8.6",
+    "hpos": true
+  },
+  "suites": {
+    "adaptive_policy": {
+      "assertions": 194,
+      "passed": 194,
+      "failed": 0
+    },
+    "bounded_checkpoint_and_frontend_guard": {
+      "passed": 16,
+      "failed": 0,
+      "real_database": false,
+      "frontend_analytics_calls": 0
+    },
+    "smart_financial": {
+      "suite": "v140-smart-integration",
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "database": "11.8.6",
+      "hpos": true,
+      "tests": 9,
+      "assertions": 68,
+      "passed": 9,
+      "failed": 0,
+      "results": [
+        {
+          "test": "Smart cold start reuses immutable snapshot; retries freeze decisions; expiry restores prior sale",
+          "status": "passed"
+        },
+        {
+          "test": "Real sales drive increase decrease and floor protection; refund status and deletion invalidate checkpoints",
+          "status": "passed"
+        },
+        {
+          "test": "Shared-stock variations leave discounts when sold out and restore the same decision on restock",
+          "status": "passed"
+        },
+        {
+          "test": "External prices remain protected; scheduler delay commits only current stage; private preview has no future seed",
+          "status": "passed"
+        },
+        {
+          "test": "Explicit draft conversion preserves all old floors and selections; live settings cannot opt in",
+          "status": "passed"
+        },
+        {
+          "test": "Actual smart price can peak safely before final day and corrupt floors fail before writes",
+          "status": "passed"
+        },
+        {
+          "test": "Smart prices reuse coupon floor protection and do not rewrite completed order totals",
+          "status": "passed"
+        },
+        {
+          "test": "Live smart enrollment uses one coalesced wake-up and preserves old floors until worker evaluation",
+          "status": "passed"
+        },
+        {
+          "test": "Two concurrent workers commit one decision and one financial price",
+          "status": "passed"
+        }
+      ]
+    },
+    "legacy_financial": {
+      "suite": "v130-financial-integration",
+      "wordpress": "7.1.4",
+      "woocommerce": "11.3.0",
+      "php": "8.2.35",
+      "database": "11.8.6",
+      "hpos": true,
+      "tests": 9,
+      "assertions": 161,
+      "passed": 9,
+      "failed": 0,
+      "results": [
+        {
+          "test": "Automatic progressive descending and wave use regular-price headroom and floor; late and duplicate writes do not compound",
+          "status": "passed"
+        },
+        {
+          "test": "Rotation is balanced and featured-first; an expired special turn clears the old sale and returns to regular",
+          "status": "passed"
+        },
+        {
+          "test": "Random preview equals real pricing, seed and cohort survive replay, and delayed scheduler skips missed stages",
+          "status": "passed"
+        },
+        {
+          "test": "Hybrid specials replace the progressive base and rotate back to the current base without stacking",
+          "status": "passed"
+        },
+        {
+          "test": "Flash is capacity guarded and last-day policies default off, apply only to allowed floors, and retain turn history",
+          "status": "passed"
+        },
+        {
+          "test": "Bulk floors and exceptions work with automatic stages; stock withdrawal and restock coalesce through existing scheduler",
+          "status": "passed"
+        },
+        {
+          "test": "Seven-day Flash derives 2016 stages; paged preview, bounded scheduler, late pricing and final restore",
+          "status": "passed"
+        },
+        {
+          "test": "Long automatic plans enforce capacity and exact last-day policy without building all stages",
+          "status": "passed"
+        },
+        {
+          "test": "Schema 4 upgrade preserves an active manual plan and its prices byte-for-byte; automatic seed is saved only on explicit opt-in",
+          "status": "passed"
+        }
+      ]
+    },
+    "legacy_automatic_domain": {
+      "cases": 29,
+      "assertions": 531,
+      "passed": 29,
+      "failed": 0
+    },
+    "legacy_manual_domain": {
+      "suite": "v110-discount-plan",
+      "php": "8.2.35",
+      "cases": 9,
+      "assertions": 50,
+      "passed": 9,
+      "failed": 0,
+      "failures": []
+    },
+    "v132_to_v140_migration": {
+      "passed": 18,
+      "failed": 0,
+      "baseline": "actual v1.3.2 ZIP, schema 6",
+      "schema": "7",
+      "campaign_2": "synthetic campaign 2 unchanged",
+      "production_accessed": false
+    },
+    "smart_admin": {
+      "suite": "v140-smart-admin",
+      "checks": 15,
+      "passed": 15,
+      "failed": 0,
+      "boundary": "One Chromium and real shipped JavaScript; mocked REST. Real services and migration are tested separately."
+    },
+    "installed_zip_finances": {
+      "version": "1.4.0",
+      "schema": "7",
+      "result": "passed",
+      "tables_preserved": 5,
+      "product_price_snapshots_preserved": 105,
+      "class_loaded_from_installed_zip": true
+    }
+  },
+  "static_checks": {
+    "wpcs": {
+      "errors": 0,
+      "warnings": 0,
+      "fixable": 0
+    },
+    "php_syntax": "51 runtime PHP files passed",
+    "javascript_syntax": "node --check assets/admin.js passed",
+    "package": "104 files; CRC, one plugin root, dev exclusion, source byte identity and deterministic rebuild passed"
+  },
+  "additional_focused_checks": {
+    "manager_query_construction": {
+      "passed": 13,
+      "failed": 0,
+      "real_database": false
+    },
+    "inline_floor_ui_regression": {
+      "passed": 10,
+      "failed": 0,
+      "mocked_rest": true
+    }
+  },
+  "artifact": {
+    "file": "exin-black-friday-v1.4.0.zip",
+    "sha256": "c30ae9b03f06c4e7469ac7a84de5559d5f35a30ce0a1206c6b3f88db19e2bf5b",
+    "bytes": 283382,
+    "installed_files_verified": 104,
+    "installed_proof": "package-install.json"
+  },
+  "guide": "../../docs/smart-adaptive-v1.4.0-fa.md",
+  "implementation": [
+    "Explicit smart_adaptive profile inside existing DiscountPlan and PriceProcessor, no separate price or snapshot engine",
+    "Integer regular-to-floor headroom arithmetic; immutable decisions before price writes",
+    "Sales/stock/time/demand rules with conservative cold start, cooldown, hysteresis, capped exploration and changes; no forced final-day floor",
+    "Woo order/refund/status checkpoints and bounded 100-order reconciliation in workers; generation invalidation and read-only frontend guard",
+    "Existing 25-item batches, one next-stage job and shared wake-up for live additions; delayed/concurrent workers freeze one decision",
+    "Three presets and hidden advanced settings in existing wizard; actual prior reasons and performance in existing dashboard"
+  ],
+  "not_run": [
+    "Full historical CI or full version/browser matrix",
+    "Target Production or real campaign 2 verification",
+    "Target Woodmart/Elementor layout, Redis/WP Rocket/Nginx, live gateway and external services",
+    "Large server-capacity benchmark or empirical sales/profit uplift trial"
+  ],
+  "limits": [
+    "250000 decision budget per campaign plus configurable existing batch-work estimate",
+    "Large/incomplete reconciliation holds the prior or cold-start intensity until a complete scan",
+    "A failed global checkpoint marker requires technical review and verified reconciliation before clearing",
+    "Fractional inventory/order units are rounded down for signals; all monetary amounts use exact currency precision",
+    "Existing coupon policy is preserved; effective checkout price may differ from campaign price under external incentives",
+    "Native execution and mocked admin REST are explicitly distinguished from real database tests"
+  ],
+  "production_actions": []
+}

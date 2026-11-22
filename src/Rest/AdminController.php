@@ -162,13 +162,16 @@ final class AdminController {
 		foreach ( $items as &$item ) {
 			$product         = wc_get_product( (int) $item['product_id'] );
 			$image           = $product ? wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' ) : false;
+			$owner           = $product ? wc_get_product( $product->get_stock_managed_by_id() ) : false;
+			$owner           = $owner ? $owner : $product;
+			$color           = $product ? $product->get_attribute( 'pa_color' ) : '';
 			$item['product'] = $product ? array(
 				'name'          => $product->get_name(),
 				'sku'           => $product->get_sku(),
 				'price'         => $product->get_price(),
 				'regular_price' => $product->get_regular_price(),
-				'stock'         => ( wc_get_product( $product->get_stock_managed_by_id() ) ?: $product )->get_stock_quantity(),
-				'color'         => $product->get_attribute( 'pa_color' ) ?: $product->get_attribute( 'color' ),
+				'stock'         => $owner->get_stock_quantity(),
+				'color'         => $color ? $color : $product->get_attribute( 'color' ),
 				'stock_status'  => $product->get_stock_status(),
 				'image'         => false !== $image ? $image : '',
 				'type'          => $product->get_type(),
@@ -186,6 +189,7 @@ final class AdminController {
 			'campaign_id'   => $campaign ? $campaign['id'] : null,
 			'campaigns'     => $this->repository->campaigns( 1, 50 )['campaigns'],
 			'selection_job' => $campaign ? ( new BulkSelectionService( $this->repository ) )->status( (int) $campaign['id'] ) : null,
+			'adaptive'      => $campaign && \Exin\BlackFriday\Application\SmartAdaptive::enabled( $campaign ) && 'dashboard' === $request->get_param( 'view' ) ? ( new \Exin\BlackFriday\Application\SmartAdaptive( $this->repository ) )->preview( $campaign, 1 ) : null,
 			'items'         => $items,
 			'count'         => null !== $manager ? $manager['count'] : ( $campaign ? $this->repository->count_items( (int) $campaign['id'] ) : 0 ),
 			'page'          => $page,
@@ -1140,6 +1144,14 @@ final class AdminController {
 				if ( ! isset( $plan['duration_minutes'] ) && ! isset( $plan['duration_days'] ) ) {
 					$plan['duration_minutes'] = $days * 1440;
 				}
+				if ( 'smart_adaptive' === ( $plan['mode'] ?? '' ) && isset( $plan['adaptive'] ) ) {
+					if ( ! is_array( $plan['adaptive'] ) ) {
+						throw new InvalidArgumentException( 'invalid_adaptive_parameter' ); }
+					foreach ( $plan['adaptive'] as $key => $value ) {
+						if ( 'preset' !== $key ) {
+							$plan['adaptive'][ $key ] = MoneyInput::normalize( $this->text( $value ), 0 ); }
+					}
+				}
 				foreach ( array( 'intensity_min', 'intensity_max', 'base_max' ) as $field ) {
 					if ( isset( $plan[ $field ] ) ) {
 						$plan[ $field ] = MoneyInput::normalize( $this->text( $plan[ $field ] ), 2 ); }
@@ -1258,8 +1270,13 @@ final class AdminController {
 	 */
 	private function domain_message( string $code ): string {
 		$messages = array(
-			'product_floor_required' => __( 'کف این محصول باید عددی بزرگ‌تر از صفر باشد؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),
-			'floor_exceeds_base' => __( 'کف قیمت نباید از قیمت مبنا بیشتر باشد؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),			'invalid_automatic_base_floor_or_stage'       => __( 'روش خودکار برای هر محصول به قیمت اصلی معتبر و کف مثبت و کمتر یا مساوی قیمت اصلی نیاز دارد؛ ابتدا کف‌ها را تعیین کنید.', 'exin-black-friday' ),
+			'adaptive_capacity_exceeded'                  => __( 'تعداد محصولات و ارزیابی‌ها بیش از بودجهٔ ایمن است؛ مدت یا محدوده را کاهش دهید یا فاصلهٔ ارزیابی را بیشتر کنید.', 'exin-black-friday' ),
+			'invalid_adaptive_parameter'                  => __( 'پارامتر هوشمند خارج از محدودهٔ مجاز است.', 'exin-black-friday' ),
+			'invalid_adaptive_preset'                     => __( 'روش هوشمند معتبر نیست.', 'exin-black-friday' ),
+			'adaptive_has_no_final_day_floor'             => __( 'روش هوشمند تضمین کف در روز آخر ندارد.', 'exin-black-friday' ),
+			'product_floor_required'                      => __( 'کف این محصول باید عددی بزرگ‌تر از صفر باشد؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),
+			'floor_exceeds_base'                          => __( 'کف قیمت نباید از قیمت مبنا بیشتر باشد؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),
+			'invalid_automatic_base_floor_or_stage'       => __( 'روش خودکار برای هر محصول به قیمت اصلی معتبر و کف مثبت و کمتر یا مساوی قیمت اصلی نیاز دارد؛ ابتدا کف‌ها را تعیین کنید.', 'exin-black-friday' ),
 			'automatic_flash_capacity_exceeded'           => __( 'فاصلهٔ Flash برای تعداد محصولات و بودجهٔ پردازش فعلی کوتاه است؛ فاصله را بیشتر کنید.', 'exin-black-friday' ),
 			'automatic_cohort_capacity_exceeded'          => __( 'تعداد نوبت‌های ویژه بیش از بودجهٔ ایمن است؛ مراحل یا اندازهٔ گروه ویژه را کاهش دهید.', 'exin-black-friday' ),
 			'selection_requires_editable_campaign'        => __( 'انتخاب گروهی فقط برای پیش‌نویس بدون مالکیت قیمت یا کمپین فعال و منقضی‌نشده مجاز است.', 'exin-black-friday' ),
@@ -1335,15 +1352,15 @@ final class AdminController {
 	/**
 	 * Validate an edited floor before any enrollment state is saved.
 	 *
-	 * @param array $campaign Campaign.
-	 * @param int $product Product ID.
-	 * @param mixed $value Submitted amount.
+	 * @param array  $campaign Campaign.
+	 * @param int    $product Product ID.
+	 * @param mixed  $value Submitted amount.
 	 * @param string $unit Editing currency unit.
 	 * @return string Validated store amount.
 	 * @throws InvalidArgumentException When a required positive floor is missing.
 	 */
 	private function validated_floor( array $campaign, int $product, mixed $value, string $unit ): string {
-		$floor = $this->decimal( $value, $unit );
+		$floor    = $this->decimal( $value, $unit );
 		$positive = DiscountPlan::automatic( $campaign ) || ! isset( $campaign['settings']['discount_plan'] ) || \Exin\BlackFriday\Domain\Money::parse( $this->repository->item( (int) $campaign['id'], $product )['floor_price'] ?? '0', wc_get_price_decimals() ) > 0;
 		if ( $positive && \Exin\BlackFriday\Domain\Money::parse( $floor, wc_get_price_decimals() ) <= 0 ) {
 			throw new InvalidArgumentException( 'product_floor_required' );

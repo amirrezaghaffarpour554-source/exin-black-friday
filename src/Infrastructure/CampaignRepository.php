@@ -271,15 +271,16 @@ final class CampaignRepository {
 		}
 		if ( in_array( $stock, array( 'instock', 'outofstock' ), true ) ) {
 			// Resolve shared variation stock without joining duplicate metadata rows.
-			$owner = "CASE WHEN p.post_type='product_variation' AND NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} cm WHERE cm.post_id=p.ID AND cm.meta_key='_manage_stock' AND cm.meta_value='yes') AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id=p.post_parent AND pm.meta_key='_manage_stock' AND pm.meta_value='yes') THEN p.post_parent ELSE p.ID END";
+			$owner     = "CASE WHEN p.post_type='product_variation' AND NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} cm WHERE cm.post_id=p.ID AND cm.meta_key='_manage_stock' AND cm.meta_value='yes') AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id=p.post_parent AND pm.meta_key='_manage_stock' AND pm.meta_value='yes') THEN p.post_parent ELSE p.ID END";
 			$available = "EXISTS (SELECT 1 FROM {$wpdb->postmeta} cs WHERE cs.post_id=p.ID AND cs.meta_key='_stock_status' AND cs.meta_value='instock') AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} os WHERE os.post_id=($owner) AND os.meta_key='_stock_status' AND os.meta_value='instock') AND (NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} ms WHERE ms.post_id=($owner) AND ms.meta_key='_manage_stock' AND ms.meta_value='yes') OR EXISTS (SELECT 1 FROM {$wpdb->postmeta} qty WHERE qty.post_id=($owner) AND qty.meta_key='_stock' AND CAST(qty.meta_value AS DECIMAL(20,6))>0))";
-			$sql .= ' AND ' . ( 'outofstock' === $stock ? 'NOT ' : '' ) . '(' . $available . ')';
+			$sql      .= ' AND ' . ( 'outofstock' === $stock ? 'NOT ' : '' ) . '(' . $available . ')';
 		}
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- WHERE fragments contain prepared inputs and trusted stock predicates only.
 		$rows = $wpdb->get_results( 'SELECT i.*' . $sql . $wpdb->prepare( ' ORDER BY i.featured DESC,i.priority ASC,i.product_id ASC LIMIT 25 OFFSET %d', max( 0, $page - 1 ) * 25 ), ARRAY_A );
 		return array(
 			'items' => array_map( array( $this, 'decode_item' ), $rows ),
-			'count' => (int) $wpdb->get_var( 'SELECT COUNT(*)' . $sql ),
+			'count' => (int) $wpdb->get_var( 'SELECT COUNT(*)' . $sql ), // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Same prepared WHERE as the paged SELECT.
 		);
 	}
 

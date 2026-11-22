@@ -244,12 +244,15 @@ final class ProductSelectionService {
 				}
 				// Persist the wake-up before attempting price writes; a request may die mid-batch.
 				if ( DiscountPlan::automatic( $campaign ) ) {
-					update_option( 'exin_bf_auto_stock_' . $campaign_id, 1, false ); } else {
+					update_option( 'exin_bf_auto_stock_' . $campaign_id, 1, false );
+					if ( SmartAdaptive::enabled( $campaign ) ) {
+						return; }
+				} else {
 					as_enqueue_async_action( 'exin_bf_retry', array( $campaign_id, $product_id, $campaign['version'], 'apply', 0 ), Scheduler::GROUP, true ); }
 					( new Scheduler( $this->repo, new PriceProcessor( $this->repo, new Logger() ), new Logger() ) )->retry( $campaign_id, $product_id, $campaign['version'], 'apply', 0 );
 					$item = $this->repo->item( $campaign_id, $product_id );
-					if ( ! $item || ! $item['expected'] || $item['intent'] || 'active' !== $item['status'] ) {
-						throw new \RuntimeException( 'live_price_retry_pending' ); }
+				if ( ! $item || ! $item['expected'] || $item['intent'] || 'active' !== $item['status'] ) {
+					throw new \RuntimeException( 'live_price_retry_pending' ); }
 			}
 		);
 	}

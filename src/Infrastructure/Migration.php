@@ -13,7 +13,7 @@ use Exin\BlackFriday\Domain\CurrencyDisplay;
 
 /** Creates and upgrades durable campaign database tables. */
 final class Migration {
-	public const VERSION = '6';
+	public const VERSION = '7';
 
 	/**
 	 * Create the current schema and record its independent migration version.
@@ -113,7 +113,30 @@ final class Migration {
             KEY product_turns (campaign_id,version,product_id,stage)
         ) ENGINE=InnoDB $charset;"
 		);
-		foreach ( array( 'campaigns', 'items', 'locks', 'audit', 'turns' ) as $table ) {
+
+		dbDelta(
+			"CREATE TABLE {$prefix}adaptive_decisions (
+            campaign_id bigint unsigned NOT NULL,
+            version bigint unsigned NOT NULL,
+            product_id bigint unsigned NOT NULL,
+            stage int unsigned NOT NULL,
+            decision longtext NOT NULL,
+            created_at datetime NOT NULL,
+            PRIMARY KEY  (campaign_id,version,product_id,stage)
+        ) ENGINE=InnoDB $charset;"
+		);
+		dbDelta(
+			"CREATE TABLE {$prefix}adaptive_sales (
+            order_id bigint unsigned NOT NULL,
+            campaign_id bigint unsigned NOT NULL,
+            product_id bigint unsigned NOT NULL,
+            created_at datetime NOT NULL,
+            units int unsigned NOT NULL,
+            PRIMARY KEY  (order_id,campaign_id,product_id),
+            KEY recent_sales (campaign_id,product_id,created_at)
+        ) ENGINE=InnoDB $charset;"
+		);
+		foreach ( array( 'campaigns', 'items', 'locks', 'audit', 'turns', 'adaptive_decisions', 'adaptive_sales' ) as $table ) {
 			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $prefix . $table ) ) ) !== $prefix . $table ) {
 				throw new \RuntimeException( 'schema_creation_failed' );
 			}

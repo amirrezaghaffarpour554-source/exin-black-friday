@@ -145,10 +145,10 @@ final class PriceProcessor {
 				$selected  = false;
 				if ( $automatic ) {
 					$selection   = new AutomaticSelection( $this->repo );
-					$selected    = $selection->selected( $campaign, $product_id, $day );
+					$selected    = ! SmartAdaptive::enabled( $campaign ) && $selection->selected( $campaign, $product_id, $day );
 					$stock_owner = wc_get_product( $product->get_stock_managed_by_id() );
 					$in_stock    = 'instock' === $product->get_stock_status() && $stock_owner && ( ! $stock_owner->managing_stock() || ( null !== $stock_owner->get_stock_quantity() && $stock_owner->get_stock_quantity() > 0 ) );
-					$price       = DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, $day, $product_id, $selected, 'remaining_floor' === $campaign['settings']['discount_plan']['last_day'] ? $selection->remaining( $campaign, $product_id, $day ) : true, $in_stock );
+					$price       = SmartAdaptive::enabled( $campaign ) ? ( new SmartAdaptive( $this->repo ) )->price( $campaign, $item, $product, $day, $in_stock ) : DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, $day, $product_id, $selected, 'remaining_floor' === $campaign['settings']['discount_plan']['last_day'] ? $selection->remaining( $campaign, $product_id, $day ) : true, $in_stock );
 				} else {
 					$price = $item['schedule'][ $day ] ?? null; }
 

@@ -41,7 +41,11 @@ final class Orders {
 		add_action( 'woocommerce_checkout_order_processed', array( $this, 'invalidate' ) );
 		add_action( 'woocommerce_order_status_changed', array( $this, 'invalidate' ) );
 		add_action( 'woocommerce_order_refunded', array( $this, 'invalidate' ) );
+		add_action( 'woocommerce_refund_deleted', array( $this, 'invalidate' ), 10, 2 );
 		add_action( 'woocommerce_before_delete_order', array( $this, 'invalidate' ) );
+		add_action( 'woocommerce_before_delete_order', array( new \Exin\BlackFriday\Application\SmartAdaptive( $this->repository ), 'forget' ) );
+		add_action( 'woocommerce_trash_order', array( new \Exin\BlackFriday\Application\SmartAdaptive( $this->repository ), 'forget' ) );
+		add_action( 'woocommerce_untrash_order', array( $this, 'invalidate' ) );
 	}
 
 	/**
@@ -109,13 +113,22 @@ final class Orders {
 	 * Invalidate private report checkpoints after an attributed order changes.
 	 *
 	 * @param mixed $order_id WooCommerce order object or identifier.
+	 * @param int   $parent_order_id Parent when invoked after a refund deletion.
 	 * @return void
 	 */
-	public function invalidate( $order_id ): void {
+	public function invalidate( $order_id, $parent_order_id = 0 ): void {
+		if ( $parent_order_id ) {
+			$order_id = $parent_order_id; }
 		$order = $order_id instanceof \WC_Order ? $order_id : wc_get_order( $order_id );
+		if ( $order instanceof \WC_Order_Refund ) {
+			$order = wc_get_order( $order->get_parent_id() ); }
 		if ( ! $order ) {
 			return;
 		}
+		try {
+			( new \Exin\BlackFriday\Application\SmartAdaptive( $this->repository ) )->observe( $order );
+		} catch ( \Throwable $error ) {
+			update_option( 'exin_bf_adaptive_error_global', 'order_checkpoint_failed', false ); }
 		$campaigns = array();
 		foreach ( $order->get_items( 'line_item' ) as $item ) {
 			$campaign_id = absint( $item->get_meta( '_exin_bf_campaign_id', true ) );

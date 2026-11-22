@@ -142,8 +142,11 @@ final class AutomaticSelection {
 	 * @return void
 	 */
 	public function capacity( array $campaign, int $count ): void {
-		$p       = $campaign['settings']['discount_plan'];
+		$p = $campaign['settings']['discount_plan'];
+
 		$minimum = max( 5, (int) apply_filters( 'exin_bf_flash_min_minutes', 5 ), (int) ceil( ceil( $count / 25 ) * max( 1, (int) apply_filters( 'exin_bf_auto_batch_seconds', 20 ) ) * 2 / 60 ) );
+		if ( SmartAdaptive::enabled( $campaign ) && ( $count * DiscountPlan::stage_count( $campaign ) > 250000 || $p['interval_minutes'] < $minimum ) ) {
+			throw new \DomainException( 'adaptive_capacity_exceeded' ); }
 		if ( 'flash' === $p['interval'] && $p['interval_minutes'] < $minimum ) {
 			throw new \DomainException( 'automatic_flash_capacity_exceeded' ); }
 		$size = 'count' === $p['selection_mode'] ? min( $count, $p['selection_value'] ) : (int) ceil( $count * $p['selection_value'] / 100 );
@@ -160,6 +163,8 @@ final class AutomaticSelection {
 	 * @return array Manager-only preview data.
 	 */
 	public function preview( array $campaign, int $page, int $stage_start ): array {
+		if ( SmartAdaptive::enabled( $campaign ) ) {
+			return ( new SmartAdaptive( $this->repo ) )->preview( $campaign, $page ); }
 		global $wpdb;
 		$count       = DiscountPlan::stage_count( $campaign );
 		$boundaries  = array();
