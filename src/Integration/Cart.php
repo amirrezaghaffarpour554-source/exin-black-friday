@@ -8,6 +8,7 @@
 namespace Exin\BlackFriday\Integration;
 
 use Exin\BlackFriday\Application\PriceState;
+use Exin\BlackFriday\Application\FloorGuard;
 use Exin\BlackFriday\Domain\IntegerMath;
 use Exin\BlackFriday\Domain\Money;
 use Exin\BlackFriday\Infrastructure\CampaignRepository;
@@ -25,6 +26,11 @@ final class Cart {
 	 * Register the WooCommerce integration hooks.
 	 */
 	public function register(): void {
+		foreach ( array( 'woocommerce_product_get_price', 'woocommerce_product_get_sale_price', 'woocommerce_product_variation_get_price', 'woocommerce_product_variation_get_sale_price' ) as $hook ) {
+			add_filter( $hook, array( FloorGuard::class, 'filter' ), 9999, 2 );
+		}
+		add_filter( 'woocommerce_variation_prices', array( FloorGuard::class, 'variations' ), 9999, 3 );
+		add_filter( 'woocommerce_get_variation_prices_hash', static fn( $hash ) => array_merge( $hash, array( 'exin_floor_guard' => get_option( 'exin_bf_cache_version', '0' ) ) ), 9999 );
 		add_action( 'woocommerce_before_calculate_totals', array( $this, 'refresh' ), 20 );
 		add_filter( 'woocommerce_coupon_get_items_to_apply', array( $this, 'coupon_items' ), 20 );
 		add_action( 'woocommerce_check_cart_items', array( $this, 'validate' ), 30 );
@@ -116,15 +122,31 @@ final class Cart {
 		if ( ! $cart instanceof \WC_Cart ) {
 			return $messages; }
 		foreach ( $cart->get_cart() as $line ) {
-			$item = $this->protected_item( (int) ( ! empty( $line['variation_id'] ) ? $line['variation_id'] : $line['product_id'] ) );
-			if ( ! $item || ! isset( $line['line_total'] ) ) {
-				continue; }
-			$precision                   = wc_get_price_decimals();
-			$quantity                    = Money::parse( wc_format_decimal( $line['quantity'], 6 ), 6 );
-			list( $minimum, $remainder ) = IntegerMath::divide( IntegerMath::multiply( (string) Money::parse( wc_format_decimal( wc_get_price_excluding_tax( $line['data'], array( 'price' => $item['floor_price'] ) ), $precision ), $precision ), (string) $quantity ), '1000000' );
-			$required                    = (int) $minimum + ( '0' === $remainder ? 0 : 1 );
-			if ( Money::parse( wc_format_decimal( $line['line_total'], $precision ), $precision ) < $required ) {
-				$messages[] = __( 'تخفیف اضافی، مبلغ یکی از اقلام جشنواره را از کف مجاز پایین‌تر برده است؛ کوپن یا تخفیف اضافی را حذف کنید.', 'exin-black-friday' ); }
+			try {
+				$id       = (int) ( ! empty( $line['variation_id'] ) ? $line['variation_id'] : $line['product_id'] );
+				$campaign = $this->repo->campaign_for_product( $id );
+				$item     = $campaign ? $this->repo->item( $campaign['id'], $id ) : null;
+				if ( ! $campaign || ! CampaignContext::eligible_item( $item ) || ! isset( $line['line_total'] ) ) {
+					continue; }
+				$minimum_price = $item['floor_price'];
+				$amount        = $line['line_total'];
+				if ( ! FloorGuard::positive( $item['floor_price'] ?? null, wc_get_price_decimals(), $item['base_price'] ) ) {
+					$minimum_price = FloorGuard::ordinary( $item );
+					if ( ! isset( $line['line_subtotal'] ) || Money::parse( (string) $line['data']->get_price(), wc_get_price_decimals() ) < Money::parse( $minimum_price, wc_get_price_decimals() ) ) {
+						$messages[] = __( 'قیمت محصول فاقد کف معتبر باید بدون تخفیف کمپین محاسبه شود.', 'exin-black-friday' );
+						continue;
+					}
+					// Before-coupon subtotal distinguishes stale campaign discounts from store coupons.
+					$amount = $line['line_subtotal'];
+				}
+				$precision                   = wc_get_price_decimals();
+				$quantity                    = Money::parse( wc_format_decimal( $line['quantity'], 6 ), 6 );
+				list( $minimum, $remainder ) = IntegerMath::divide( IntegerMath::multiply( (string) Money::parse( wc_format_decimal( wc_get_price_excluding_tax( $line['data'], array( 'price' => $minimum_price ) ), $precision ), $precision ), (string) $quantity ), '1000000' );
+				$required                    = (int) $minimum + ( '0' === $remainder ? 0 : 1 );
+				if ( Money::parse( wc_format_decimal( $amount, $precision ), $precision ) < $required ) {
+					$messages[] = __( 'تخفیف اضافی، مبلغ یکی از اقلام جشنواره را از کف مجاز پایین‌تر برده است؛ کوپن یا تخفیف اضافی را حذف کنید.', 'exin-black-friday' ); }
+			} catch ( \Throwable $error ) {
+				$messages[] = __( 'قیمت این قلم نیازمند بررسی است؛ پرداخت تا اعتبارسنجی قیمت مجاز نیست.', 'exin-black-friday' ); }
 		}
 		return array_values( array_unique( $messages ) );
 	}

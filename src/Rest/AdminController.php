@@ -826,7 +826,7 @@ final class AdminController {
 			if ( isset( $data['floor_override'] ) ) {
 				$changes['floor_override'] = $this->boolean( $data['floor_override'] ); }
 			if ( isset( $data['floor_price'] ) ) {
-				$this->editable_campaign( $id );
+				$this->editable_campaign( $id, true );
 				$changes['floor_price'] = $this->validated_floor( $this->required_campaign( $id ), $product, $data['floor_price'], $this->amount_unit( $data ) );
 			}
 			if ( isset( $data['priority'] ) ) {
@@ -871,7 +871,7 @@ final class AdminController {
 			throw new InvalidArgumentException( esc_html__( 'هر نوبت بین ۱ تا ۲۵ محصول مجاز است.', 'exin-black-friday' ) );
 		}
 		if ( in_array( $action, array( 'add', 'floors' ), true ) ) {
-			$this->editable_campaign( $id );
+			$this->editable_campaign( $id, 'floors' === $action );
 		} elseif ( true !== ( $data['confirm_remove'] ?? false ) ) {
 			throw new InvalidArgumentException( esc_html__( 'حذف گروهی و بازیابی قیمت را تأیید کنید.', 'exin-black-friday' ) );
 		}
@@ -1241,15 +1241,16 @@ final class AdminController {
 	}
 
 	/**
-	 * Requires draft status before any financial enrollment change.
+	 * Require draft status, except floor-only requests validated under item locks.
 	 *
-	 * @param int $id Campaign ID.
-	 * @return array Editable draft campaign.
+	 * @param int  $id Campaign ID.
+	 * @param bool $floor_only Permit active floor requests; the service restricts repairs.
+	 * @return array Editable campaign.
 	 * @throws InvalidArgumentException When the campaign has left draft status.
 	 */
-	private function editable_campaign( int $id ): array {
+	private function editable_campaign( int $id, bool $floor_only = false ): array {
 		$campaign = $this->required_campaign( $id );
-		if ( 'draft' !== $campaign['status'] ) {
+		if ( 'draft' !== $campaign['status'] && ! ( $floor_only && 'active' === $campaign['status'] ) ) {
 			throw new InvalidArgumentException( esc_html__( 'تغییر قیمت مبنا و کف پس از شروع کمپین مجاز نیست.', 'exin-black-friday' ) );
 		}
 		return $campaign;
@@ -1350,7 +1351,7 @@ final class AdminController {
 	 */
 	private function validated_floor( array $campaign, int $product, mixed $value, string $unit ): string {
 		$floor = $this->decimal( $value, $unit );
-		$positive = DiscountPlan::automatic( $campaign ) || ! isset( $campaign['settings']['discount_plan'] ) || \Exin\BlackFriday\Domain\Money::parse( $this->repository->item( (int) $campaign['id'], $product )['floor_price'] ?? '0', wc_get_price_decimals() ) > 0;
+		$positive = DiscountPlan::automatic( $campaign ) || ! isset( $campaign['settings']['discount_plan'] ) || \Exin\BlackFriday\Application\FloorGuard::positive( $this->repository->item( (int) $campaign['id'], $product )['floor_price'] ?? null, wc_get_price_decimals() );
 		if ( $positive && \Exin\BlackFriday\Domain\Money::parse( $floor, wc_get_price_decimals() ) <= 0 ) {
 			throw new InvalidArgumentException( 'product_floor_required' );
 		}
