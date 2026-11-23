@@ -1,0 +1,69 @@
+{
+  "base": "feature/manual-floor-standalone",
+  "ui_only_financial_engine_unchanged": true,
+  "production_accessed": false,
+  "suites": [
+    {
+      "suite": "rtl-admin-workspace",
+      "checks": 37,
+      "passed": 37,
+      "failed": 0,
+      "coverage_modes": 11,
+      "mocked_catalog_products": 1739,
+      "rendered_products": 25,
+      "product_view_ready_ms": 113,
+      "elapsed_ms": 4387,
+      "boundary": "Real Chromium, shipped JS/CSS, mocked REST; no real campaign writes."
+    },
+    {
+      "suite": "v130-automatic-admin-smoke",
+      "checks": 33,
+      "passed": 33,
+      "failed": 0,
+      "boundary": "One Chromium and real shipped JavaScript; mocked REST. Real services and migration are tested separately."
+    },
+    {
+      "suite": "v131-inline-floors",
+      "checks": 10,
+      "passed": 10,
+      "failed": 0,
+      "boundary": "One Chromium and real shipped JavaScript; mocked REST. Real services and migration are tested separately."
+    },
+    {
+      "suite": "v132-stock-filter",
+      "checks": 9,
+      "passed": 9,
+      "failed": 0,
+      "boundary": "One Chromium and real shipped JavaScript; mocked REST. Real services and migration are tested separately."
+    }
+  ],
+  "sql_predicate": {
+    "suite": "admin-floor-filter-sql",
+    "passed": 5,
+    "failed": 0,
+    "products": 1739,
+    "seconds": 0.001684,
+    "boundary": "Exact production predicate on SQLite; not Woo/MariaDB integration"
+  },
+  "syntax": {
+    "javascript": "PASS",
+    "php": "PASS: Dashboard.php, CatalogProductQuery.php, AdminController.php"
+  },
+  "wpcs": {
+    "new_findings": 0,
+    "unchanged_baseline": {
+      "errors": 14,
+      "warnings": 6,
+      "fixable": 12
+    }
+  },
+  "not_run": [
+    "Updated real WordPress/WooCommerce integration test: private native test worker is stopped in this environment",
+    "Production campaigns #2/#4 or target theme/Elementor layout"
+  ],
+  "boundaries": [
+    "Browser uses shipped assets and actual PHP-shell markup with mocked REST; 1739 mocked products, 25 rendered rows",
+    "Exact floor predicate is exercised with SQLite, not WooCommerce/MariaDB",
+    "Read-only desktop/mobile marketing preview uses current page products and form settings; it does not reproduce target theme or calculate shipping/checkout amounts"
+  ]
+}

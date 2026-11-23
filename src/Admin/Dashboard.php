@@ -53,11 +53,12 @@ final class Dashboard {
 				if ( $hook !== $this->hook ) {
 					return;
 				}
-				$base = plugins_url( '../../assets/', __FILE__ );
+				$base       = plugins_url( '../../assets/', __FILE__ );
+				$ui_version = EXIN_BF_VERSION . '.' . max( filemtime( __DIR__ . '/../../assets/admin.js' ), filemtime( __DIR__ . '/../../assets/admin.css' ) );
 				wp_enqueue_style( 'exin-bf-admin-helpers', $base . 'admin-helpers.css', array(), EXIN_BF_VERSION );
-				wp_enqueue_style( 'exin-bf-admin', $base . 'admin.css', array( 'exin-bf-admin-helpers' ), EXIN_BF_VERSION );
+				wp_enqueue_style( 'exin-bf-admin', $base . 'admin.css', array( 'exin-bf-admin-helpers' ), $ui_version );
 				wp_enqueue_script( 'exin-bf-admin-helpers', $base . 'admin-helpers.js', array( 'wp-i18n' ), EXIN_BF_VERSION, true );
-				wp_enqueue_script( 'exin-bf-admin', $base . 'admin.js', array( 'wp-i18n', 'exin-bf-admin-helpers' ), EXIN_BF_VERSION, true );
+				wp_enqueue_script( 'exin-bf-admin', $base . 'admin.js', array( 'wp-i18n', 'exin-bf-admin-helpers' ), $ui_version, true );
 				wp_localize_script(
 					'exin-bf-admin',
 					'exinBFAdmin',
@@ -95,12 +96,12 @@ final class Dashboard {
 			<section id="exin-bf-campaigns" class="exin-bf-campaigns" aria-label="<?php esc_attr_e( 'انتخاب کمپین و تاریخچه', 'exin-black-friday' ); ?>"></section>
 			<div id="exin-bf-draft-status" class="exin-bf-draft-status" role="status" aria-live="polite"></div>
 			<nav class="exin-bf-nav" aria-label="<?php esc_attr_e( 'بخش‌های مدیریت کمپین', 'exin-black-friday' ); ?>">
-				<button type="button" data-view="dashboard" aria-current="page"><?php esc_html_e( 'نمای کلی', 'exin-black-friday' ); ?></button>
-				<button type="button" data-view="products"><?php esc_html_e( 'محدوده محصولات', 'exin-black-friday' ); ?></button>
-				<button type="button" data-view="settings"><?php esc_html_e( 'تخفیف و زمان‌بندی', 'exin-black-friday' ); ?></button>
-				<button type="button" data-view="operations">نمایش، سبد و اعلان‌ها</button>
-				<button type="button" data-view="history">تاریخچه</button>
-				<button type="button" data-view="diagnostics"><?php esc_html_e( 'گزارش و عیب‌یابی', 'exin-black-friday' ); ?></button>
+				<button type="button" data-view="dashboard" aria-current="page"><?php esc_html_e( 'داشبورد', 'exin-black-friday' ); ?></button>
+				<button type="button" data-view="products"><?php esc_html_e( 'محصولات و کف‌ها', 'exin-black-friday' ); ?></button>
+				<button type="button" data-view="settings"><?php esc_html_e( 'موتور تخفیف', 'exin-black-friday' ); ?></button>
+				<button type="button" data-view="timeline">زمان‌بندی</button>
+				<button type="button" data-view="operations">بازاریابی و پیش‌نمایش</button>
+				<button type="button" data-view="diagnostics"><?php esc_html_e( 'گزارش‌ها و سلامت', 'exin-black-friday' ); ?></button>
 			</nav>
 			<div id="exin-bf-message" class="exin-bf-message" role="status" aria-live="polite" hidden></div>
 			<main id="exin-bf-content" aria-busy="true"><p><?php esc_html_e( 'در حال دریافت وضعیت کمپین…', 'exin-black-friday' ); ?></p></main>
