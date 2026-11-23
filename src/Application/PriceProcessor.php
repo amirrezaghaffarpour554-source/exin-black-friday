@@ -140,17 +140,21 @@ final class PriceProcessor {
 					$this->conflict( $campaign_id, $product_id, 'dynamic_price_conflict' );
 					return 'error';
 				}
-				$automatic = DiscountPlan::automatic( $campaign );
-				$selection = null;
-				$selected  = false;
-				if ( $automatic ) {
+				$automatic   = DiscountPlan::automatic( $campaign );
+				$selection   = null;
+				$selected    = false;
+				$in_stock    = $product->is_in_stock();
+				$valid_floor = FloorGuard::positive( $item['floor_price'] ?? null, wc_get_price_decimals(), $item['base_price'] );
+				if ( ! $valid_floor ) {
+					$price = FloorGuard::ordinary( $item );
+				} elseif ( $automatic ) {
 					$selection   = new AutomaticSelection( $this->repo );
 					$selected    = $selection->selected( $campaign, $product_id, $day );
 					$stock_owner = wc_get_product( $product->get_stock_managed_by_id() );
 					$in_stock    = 'instock' === $product->get_stock_status() && $stock_owner && ( ! $stock_owner->managing_stock() || ( null !== $stock_owner->get_stock_quantity() && $stock_owner->get_stock_quantity() > 0 ) );
 					$price       = DiscountPlan::automatic_price( $item['base_price'], $item['floor_price'], $campaign, $day, $product_id, $selected, 'remaining_floor' === $campaign['settings']['discount_plan']['last_day'] ? $selection->remaining( $campaign, $product_id, $day ) : true, $in_stock );
 				} else {
-					$price = $item['schedule'][ $day ] ?? null; }
+					$price = FloorGuard::scheduled( $item, $campaign, $day ); }
 
 				if ( ! is_string( $price ) ) {
 					$this->conflict( $campaign_id, $product_id, 'invalid_price_schedule' );
@@ -159,11 +163,11 @@ final class PriceProcessor {
 				$precision = wc_get_price_decimals();
 				$minor     = Money::parse( $price, $precision );
 				$basis     = $item['snapshot']['regular'];
-				if ( $minor < Money::parse( $item['floor_price'], $precision ) || $minor > Money::parse( $item['base_price'], $precision ) || $item['base_price'] !== $basis ) {
+				if ( $minor < ( $valid_floor ? Money::parse( (string) $item['floor_price'], $precision ) : 0 ) || $minor > Money::parse( $item['base_price'], $precision ) || $item['base_price'] !== $basis ) {
 					$this->conflict( $campaign_id, $product_id, 'schedule_financial_bounds_failed' );
 					return 'error';
 				}
-				if ( $automatic && DiscountPlan::index( $campaign, time() ) !== $day ) {
+				if ( DiscountPlan::index( $campaign, time() ) !== $day ) {
 					return 'stage_changed'; }
 				$target          = $current;
 				$target['price'] = $price;

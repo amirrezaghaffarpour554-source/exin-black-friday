@@ -1,0 +1,59 @@
+{
+  "guard": {
+    "passed": 63,
+    "failed": 0,
+    "wordpress": "7.1.4",
+    "woocommerce": "11.3.0",
+    "hpos": true,
+    "production_accessed": false
+  },
+  "regression": {
+    "suite": "v130-financial-integration",
+    "wordpress": "7.1.4",
+    "woocommerce": "11.3.0",
+    "php": "8.2.35",
+    "database": "11.8.6",
+    "hpos": true,
+    "tests": 2,
+    "assertions": 15,
+    "passed": 2,
+    "failed": 0,
+    "results": [
+      {
+        "test": "Hybrid specials replace the progressive base and rotate back to the current base without stacking",
+        "status": "passed"
+      },
+      {
+        "test": "Bulk floors and exceptions work with automatic stages; stock withdrawal and restock coalesce through existing scheduler",
+        "status": "passed"
+      }
+    ]
+  },
+  "validator": {
+    "passed": 7,
+    "failed": 0,
+    "output": "PASS actual floor validator: 6 invalid inputs rejected, positive localized input accepted; no writes"
+  },
+  "lint": {
+    "files": 7,
+    "result": "PASS"
+  },
+  "wpcs": {
+    "errors": 14,
+    "warnings": 6,
+    "fixable": 12
+  },
+  "production_accessed": false,
+  "real_campaign_4_verified": false,
+  "notes": [
+    "Actual isolated WordPress/WooCommerce HPOS and classic/Blocks checkout validation; no payment or production calls",
+    "Campaigns 2/4, prices, floors, schedules and shipping fields compared in synthetic fixtures",
+    "Valid positive floors and normal schedules remain immutable during active campaigns; only invalid-floor repairs are permitted",
+    "Positive floor is a strict checkout minimum regardless of optional coupon protection; ordinary coupons remain available on no-floor products",
+    "No migration, automatic campaign activation, bulk price reset, UI changes or scheduled jobs added",
+    "Custom stage boundaries are rechecked immediately before writes; boundary-crossing test uses the real clock"
+  ],
+  "total_assertions": 85,
+  "base_branch": "feature/admin-rtl-workspace",
+  "runtime_storage": "Private RAM-backed local fixture; Production not accessed"
+}

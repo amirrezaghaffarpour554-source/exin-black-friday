@@ -64,10 +64,14 @@ final class PriceState {
 	 * @return bool Operation result.
 	 */
 	public static function dynamic( \WC_Product $product ): bool {
-		$different = self::money( (string) $product->get_price() ) !== self::money( (string) $product->get_price( 'edit' ) )
+		++FloorGuard::$reading;
+		try {
+			$different = self::money( (string) $product->get_price() ) !== self::money( (string) $product->get_price( 'edit' ) )
 			|| self::money( (string) $product->get_regular_price() ) !== self::money( (string) $product->get_regular_price( 'edit' ) )
 			|| self::money( (string) $product->get_sale_price() ) !== self::money( (string) $product->get_sale_price( 'edit' ) );
-		return (bool) apply_filters( 'exin_bf_dynamic_pricing_conflict', $different, $product );
+			return (bool) apply_filters( 'exin_bf_dynamic_pricing_conflict', $different, $product );
+		} finally {
+			--FloorGuard::$reading; }
 	}
 
 	/**

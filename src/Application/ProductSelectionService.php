@@ -275,7 +275,8 @@ final class ProductSelectionService {
 						if ( ! $item || 'removed' === $item['status'] ) {
 							throw new \DomainException( 'item_not_found' );
 						}
-						$changes = array_intersect_key( $data, array_flip( array( 'priority', 'featured', 'status', 'floor_override' ) ) );
+						$repair_floor = 'active' === $campaign['status'] && CampaignContext::is_live( $campaign ) && empty( $campaign['settings']['restoring'] ) && isset( $data['floor_price'] ) && ! isset( $data['floor_policy'] ) && ! FloorGuard::positive( $item['floor_price'] ?? null, wc_get_price_decimals(), $item['base_price'] ) && FloorGuard::positive( $data['floor_price'], wc_get_price_decimals(), $item['base_price'] ) && ! $item['intent'] && ! $this->repo->owned_elsewhere( $campaign_id, $product_id ) && ( new \Exin\BlackFriday\Integration\Eligibility( $this->repo ) )->owns( $campaign, $product_id );
+						$changes      = array_intersect_key( $data, array_flip( array( 'priority', 'featured', 'status', 'floor_override' ) ) );
 						if ( isset( $changes['status'] ) ) {
 							if ( ! in_array( $changes['status'], array( 'paused', 'included' ), true ) || in_array( $item['status'], array( 'conflict', 'completed' ), true ) ) {
 								throw new \DomainException( 'invalid_item_transition' );
@@ -290,15 +291,16 @@ final class ProductSelectionService {
 								$changes['status'] = 'active';
 							}
 						}
-						if ( isset( $data['floor_override'] ) && ( $item['expected'] || $item['intent'] ) ) {
+						if ( ! $repair_floor && isset( $data['floor_override'] ) && ( $item['expected'] || $item['intent'] ) ) {
 							throw new \DomainException( 'financial_settings_frozen' ); }
 						if ( isset( $data['floor_price'] ) || isset( $data['floor_policy'] ) ) {
-							if ( 'draft' !== $campaign['status'] || $item['expected'] || $item['intent'] ) {
+							if ( ! $repair_floor && ( 'draft' !== $campaign['status'] || $item['expected'] || $item['intent'] ) ) {
 								throw new \DomainException( 'financial_settings_frozen' );
 							}
-							$preview                   = $this->preview( $campaign_id, $product_id, (string) ( $data['floor_price'] ?? $item['floor_price'] ), $data );
-							$changes['floor_price']    = $preview['floor_price'];
-							$changes['schedule']       = DiscountPlan::automatic( $campaign ) ? array() : $preview['schedule'];
+							$preview                = $this->preview( $campaign_id, $product_id, (string) ( $data['floor_price'] ?? $item['floor_price'] ), $data );
+							$changes['floor_price'] = $preview['floor_price'];
+							if ( ! $repair_floor ) {
+								$changes['schedule'] = DiscountPlan::automatic( $campaign ) ? array() : $preview['schedule']; }
 							$changes['floor_override'] = isset( $data['floor_override'] ) ? (int) (bool) $data['floor_override'] : ( isset( $data['floor_price'] ) || array_key_exists( $product_id, $data['floor_policy']['floors'] ?? array() ) ? 1 : (int) ( $item['floor_override'] ?? 0 ) );
 						}
 						if ( isset( $changes['priority'] ) ) {
@@ -308,6 +310,8 @@ final class ProductSelectionService {
 							$changes['featured'] = (int) (bool) $changes['featured'];
 						}
 						$this->repo->put_item( $campaign_id, $product_id, $changes );
+						if ( $repair_floor ) {
+							\Exin\BlackFriday\Infrastructure\Cache::invalidate( $product_id ); }
 						( new Logger() )->log(
 							'info',
 							'item_updated',
