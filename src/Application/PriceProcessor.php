@@ -228,7 +228,8 @@ final class PriceProcessor {
 					return 'error'; // An unresolved intent never grants ownership of an arbitrary current price.
 				}
 				$current = PriceState::capture( $product );
-				if ( PriceState::same( $current, $item['snapshot'] ) ) {
+				$restore_target = PriceState::restore_target( $item['snapshot'] );
+				if ( PriceState::same( $current, $restore_target ) ) {
 					$this->repo->put_item(
 						$campaign_id,
 						$product_id,
@@ -249,7 +250,7 @@ final class PriceProcessor {
 					$this->conflict( $campaign_id, $product_id, 'dynamic_price_conflict' );
 					return 'error';
 				}
-				return $this->write( $campaign_id, $product_id, $product, $current, $item['snapshot'], 'restore', 'completed', 0 );
+				return $this->write( $campaign_id, $product_id, $product, $current, $restore_target, 'restore', 'completed', 0 );
 			}
 		);
 		if ( in_array( $result, array( 'changed', 'unchanged' ), true ) ) {
