@@ -5,14 +5,14 @@
   "suites": [
     {
       "suite": "rtl-admin-workspace",
-      "checks": 37,
-      "passed": 37,
+      "checks": 51,
+      "passed": 51,
       "failed": 0,
       "coverage_modes": 11,
       "mocked_catalog_products": 1739,
       "rendered_products": 25,
-      "product_view_ready_ms": 113,
-      "elapsed_ms": 4387,
+      "product_view_ready_ms": 96,
+      "elapsed_ms": 6140,
       "boundary": "Real Chromium, shipped JS/CSS, mocked REST; no real campaign writes."
     },
     {
@@ -24,8 +24,8 @@
     },
     {
       "suite": "v131-inline-floors",
-      "checks": 10,
-      "passed": 10,
+      "checks": 12,
+      "passed": 12,
       "failed": 0,
       "boundary": "One Chromium and real shipped JavaScript; mocked REST. Real services and migration are tested separately."
     },
@@ -42,7 +42,7 @@
     "passed": 5,
     "failed": 0,
     "products": 1739,
-    "seconds": 0.001684,
+    "seconds": 0.001861,
     "boundary": "Exact production predicate on SQLite; not Woo/MariaDB integration"
   },
   "syntax": {
@@ -65,5 +65,22 @@
     "Browser uses shipped assets and actual PHP-shell markup with mocked REST; 1739 mocked products, 25 rendered rows",
     "Exact floor predicate is exercised with SQLite, not WooCommerce/MariaDB",
     "Read-only desktop/mobile marketing preview uses current page products and form settings; it does not reproduce target theme or calculate shipping/checkout amounts"
-  ]
+  ],
+  "latest_iteration": {
+    "changes": [
+      "Move original named start/interval/duration/stage/final-day controls into editable timeline, preserving derived-end backend rules",
+      "Add visual percentage controls alongside original exact inputs and use the existing simulation API; invalidate stale simulations",
+      "Add direct server-page navigation, Escape cell reset and per-cell save errors",
+      "Freeze campaign ID and prevent campaign changes while floor batches save; retain changed-value and partial-failure retry protection",
+      "Keep all eleven strategy forms and configuration options; open existing advanced groups without nested navigation"
+    ],
+    "browser_checks": 105,
+    "javascript_syntax": "PASS",
+    "runtime_files_changed": [
+      "assets/admin.js",
+      "assets/admin.css"
+    ],
+    "backend_financial_changes": false,
+    "real_data_verified": false
+  }
 }

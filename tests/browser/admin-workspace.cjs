@@ -23,7 +23,7 @@ const item = id => ({product_id:id, product:row(id), base_price:'1000000', floor
   const request=route.request(), url=new URL(request.url());
   if(url.pathname.startsWith('/assets/')){const file=path.join(root,url.pathname.slice(1));return route.fulfill({contentType:file.endsWith('.css')?'text/css':'application/javascript',body:fs.readFileSync(baselineMode&&file.endsWith('/admin.js')?path.join(root,'work/ui-baseline.js'):file,'utf8')});}
   if(!url.searchParams.has('rest_route'))return route.fulfill({contentType:'text/html',body:shell});
-  const endpoint=url.searchParams.get('rest_route').replace('/exin-bf/v1/admin/',''), body=request.method()==='POST'?request.postDataJSON():null;calls.push({endpoint,body});let result;
+  const endpoint=url.searchParams.get('rest_route').replace('/exin-bf/v1/admin/',''), body=request.method()==='POST'?request.postDataJSON():null;calls.push({endpoint,body,query:url.searchParams.toString()});let result;
   if(endpoint==='state')result={campaign, campaigns:campaign?[campaign]:[],items:Array.from({length:25},(_,i)=>item(1000+i)),count,server_time:Date.now()/1000,health,logs:[],analytics:{}};
   else if(endpoint.endsWith('/new-products'))result={products:[{id:42,name:'محصول تازه',price:'1000000'}],page:1,has_more:false};
   else if(endpoint.endsWith('/presentation')){campaign.settings={...campaign.settings,...body};result={campaign};}
@@ -54,13 +54,32 @@ const item = id => ({product_id:id, product:row(id), base_price:'1000000', floor
   await page.screenshot({path:path.join(root,'work/ui-engine.png'),fullPage:true});
   await page.locator('#bf-title').fill('کمپین حفظ تنظیمات');await page.waitForTimeout(1000);
   check(calls.some(c=>c.endpoint==='campaign'&&c.body.title==='کمپین حفظ تنظیمات'),'Existing autosave persists settings');
-  await page.locator('[data-view="timeline"]').click();await page.locator('.exin-bf-timeline').waitFor();check(await page.locator('#bf-start_jalali').count()===1,'Timeline retains actual scheduling controls');
+  await page.locator('[data-view="timeline"]').click();await page.locator('[data-view="timeline"][aria-current="page"]').waitFor();await page.locator('#exin-bf-content[aria-busy="false"]').waitFor();await page.locator('.exin-bf-timeline').waitFor();check(await page.locator('#bf-start_jalali').count()===1,'Timeline retains actual scheduling controls');
+  check(await page.locator('[data-time-start] [name="start_time"]').count()===1,'Start is directly editable in timeline');
+  check(await page.locator('[data-time-end] [name="auto_duration_days"]').count()===1,'End uses actual backend duration control');
+  await page.locator('[name="auto_duration_days"]').fill('7');await page.locator('#bf-interval').selectOption('hourly');
+  await page.locator('[name="interval_minutes"]').fill('120');await page.locator('[name="auto_last_day"]').selectOption('continue');await page.locator('#bf-start_time').fill('04:45');
+  check(await page.locator('[name="auto_steps"]').inputValue()==='84','Stages follow existing duration/interval rule');
+  await page.waitForTimeout(1000);const timelineSave=calls.filter(c=>c.endpoint==='campaign').at(-1).body;
+  check(timelineSave.settings.discount_plan.duration_minutes===10080&&timelineSave.settings.discount_plan.interval_minutes===120&&timelineSave.settings.discount_plan.last_day==='continue'&&timelineSave.start_time==='04:45','Timeline persists through existing API');
+  await page.setViewportSize({width:390,height:844});check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Editable timeline stays within mobile width');await page.screenshot({path:path.join(root,'work/ui-editable-timeline.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});
+  await page.locator('[data-view="settings"]').click();await page.locator('[data-view="settings"][aria-current="page"]').waitFor();await page.locator('#exin-bf-content[aria-busy="false"]').waitFor();await page.locator('[data-visual-control="auto_min"]').waitFor();
+  await page.locator('[data-visual-control="auto_min"]').evaluate(n=>{n.value='17';n.dispatchEvent(new Event('input',{bubbles:true}));});
+  check(await page.locator('[name="auto_min"]').inputValue()==='17','Visual control updates original precise input');
+  await page.locator('[data-command="simulate-prices"]').click();await page.locator('#exin-bf-price-simulation .exin-bf-simulation').first().waitFor();
+  check(calls.some(c=>c.endpoint.endsWith('/simulation')),'Actual simulation API requested');
+  check((await page.locator('#exin-bf-price-simulation').innerText()).includes('90,000'),'Prices come from API sample rather than local approximation');
+  await page.locator('#exin-bf-price-simulation [data-command="auto-preview-stages"]').click();await page.waitForTimeout(100);
+  check(calls.filter(c=>c.endpoint.endsWith('/simulation')).at(-1).body.stage_start===12,'Server simulation stages remain paginated');
+  await page.locator('[name="auto_min"]').fill('18');check(await page.locator('#exin-bf-price-simulation .exin-bf-simulation').count()===0,'Editing configuration invalidates stale simulation');
   const productStart=Date.now();await page.locator('[data-view="products"]').click();await page.locator('[data-inline-floor]').first().waitFor();const productRenderMs=Date.now()-productStart;check(await page.locator('[data-product-row]').count()===25,'Only server page is hydrated for 1739 products');
   const floors=page.locator('[data-inline-floor]');await floors.first().fill('654321');await floors.first().press('Enter');check(await floors.nth(1).evaluate(n=>n===document.activeElement),'Spreadsheet Enter navigation');
   check(await page.locator('.exin-bf-row-dirty').count()===1,'Changed-row styling');
   check((await page.locator('[data-command="save-floors"]').innerText()).includes('۱'),'Changed-only save count');
   await page.locator('[data-command="next"]').click();await page.waitForTimeout(100);check(await floors.first().inputValue()==='654,321','Unsaved floor survives paging');
   check(calls.filter(c=>c.endpoint==='state').at(-1).endpoint==='state','Paging uses existing REST');await page.screenshot({path:path.join(root,'work/ui-products.png'),fullPage:true});
+  await page.locator('[data-page-jump]').fill('3');await page.locator('[data-page-jump]').press('Enter');await page.waitForTimeout(100);check(new URLSearchParams(calls.filter(c=>c.endpoint==='state').at(-1).query).get('page')==='3','Direct server page jump');check((await floors.first().inputValue()).replace(/,/g,'')==='654321','Page jump preserves dirty floor');
+  await floors.first().press('Escape');check(await page.locator('.exin-bf-row-dirty').count()===0,'Escape restores saved value without a write');await floors.first().fill('654321');
   await page.locator('[data-command="review"]').first().click();await page.locator('#exin-bf-confirm-activate').check();await page.locator('#exin-bf-activate').click();check(!calls.some(c=>c.endpoint.endsWith('/action')),'Unsaved floor changes block activation without API write');check((await page.locator('#exin-bf-message').innerText()).includes('کف‌های'),'Activation explains unsaved floors');
   await page.locator('[data-view="operations"]').click();await page.locator('#exin-bf-marketing-preview').waitFor();
   check(await page.locator('#exin-bf-operations [name="manual_floor_catalog"]').count()===1,'Manual-floor opt-in remains accessible');
@@ -73,6 +92,7 @@ const item = id => ({product_id:id, product:row(id), base_price:'1000000', floor
   await page.locator('#exin-bf-operations [type="submit"]').click();await page.waitForTimeout(150);check(calls.some(c=>c.endpoint.endsWith('/presentation')&&c.body.badge_text==='نشان آزمایشی'),'Marketing persists via existing API');
   campaign.status='active';await page.locator('[data-view="settings"]').click();await page.locator('#exin-bf-settings fieldset[disabled]').waitFor();check(await page.locator('#bf-discount_mode').isDisabled(),'Live campaign financial controls locked');
   check(await page.locator('[data-strategy]').first().isDisabled(),'Strategy cards inherit financial lock');
+  const beforeLivePreview=calls.filter(c=>c.endpoint==='campaign').length;await page.locator('[data-command="simulate-prices"]').click();await page.locator('#exin-bf-price-simulation .exin-bf-simulation').first().waitFor();check(calls.filter(c=>c.endpoint==='campaign').length===beforeLivePreview,'Live simulation never saves financial settings');
   await page.locator('[data-view="diagnostics"]').click();await page.locator('[data-command="history"]').waitFor();check(await page.locator('[data-command="history"]').count()===1,'History remains one click from health');
   await page.locator('[data-view="dashboard"]').click();await page.locator('[data-campaign-card]').first().waitFor();check(await page.locator('[data-campaign-card]').count()>0,'Dashboard campaign cards');
   check(await page.locator('#exin-bf-admin').evaluate(n=>getComputedStyle(n).direction)==='rtl','RTL');
