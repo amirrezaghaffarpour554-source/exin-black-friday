@@ -257,14 +257,21 @@ final class CampaignRepository {
 	 * @param string $search Name, SKU or ID.
 	 * @param string $stock Stock filter.
 	 * @param string $status Enrollment status.
+	 * @param string $floor Floor presence filter.
 	 * @return array Page and total.
 	 */
-	public function manager_items( int $id, int $page, string $search, string $stock = 'all', string $status = '' ): array {
+	public function manager_items( int $id, int $page, string $search, string $stock = 'all', string $status = '', string $floor = 'all' ): array {
 		global $wpdb;
 		$sql = $wpdb->prepare( " FROM %i i JOIN %i p ON p.ID=i.product_id WHERE i.campaign_id=%d AND i.status<>'removed' AND p.post_type IN ('product','product_variation')", $this->table( 'items' ), $wpdb->posts, $id );
 		if ( '' !== $search ) {
 			$like = '%' . $wpdb->esc_like( $search ) . '%';
 			$sql .= $wpdb->prepare( " AND (p.post_title LIKE %s OR EXISTS (SELECT 1 FROM {$wpdb->postmeta} sku WHERE sku.post_id=p.ID AND sku.meta_key='_sku' AND sku.meta_value LIKE %s) OR p.ID=%d)", $like, $like, ctype_digit( $search ) ? (int) $search : 0 );
+		}
+		if ( in_array( $floor, array( 'set', 'missing' ), true ) ) {
+			$precision = wc_get_price_decimals();
+			$pattern   = $precision ? '^[0-9]+([.][0-9]{1,' . $precision . '})?$' : '^[0-9]+$';
+			$valid     = $wpdb->prepare( 'TRIM(i.floor_price) REGEXP %s AND CAST(i.floor_price AS DECIMAL(30,8))>0 AND CAST(i.floor_price AS DECIMAL(30,8))<=CAST(i.base_price AS DECIMAL(30,8))', $pattern );
+			$sql      .= 'set' === $floor ? ' AND (' . $valid . ')' : ' AND NOT COALESCE((' . $valid . '),0)';
 		}
 		if ( '' !== $status ) {
 			$sql .= $wpdb->prepare( ' AND i.status=%s', $status );

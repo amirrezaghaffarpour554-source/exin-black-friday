@@ -34,7 +34,7 @@
         floor: wp.i18n.__('کف قیمت', 'exin-black-friday'),
         preview: wp.i18n.__('پیش‌نمایش مراحل', 'exin-black-friday'),
         invalidMoney: wp.i18n.__('مبلغ معتبر وارد کنید؛ کف نباید منفی یا بیشتر از قیمت مبنا باشد.', 'exin-black-friday'),
-        draftOnly: wp.i18n.__('انتخاب محصول و تغییر کف فقط در پیش‌نویس مجاز است.', 'exin-black-friday'),
+        draftOnly: wp.i18n.__('انتخاب، حذف و چیدمان محصولات فقط در پیش‌نویس مجاز است.', 'exin-black-friday'),
         selectFirst: wp.i18n.__('ابتدا محصولی انتخاب کنید.', 'exin-black-friday'),
         noResults: wp.i18n.__('محصولی با این فیلترها پیدا نشد.', 'exin-black-friday'),
         search: wp.i18n.__('نام یا SKU محصول', 'exin-black-friday'),
@@ -49,9 +49,10 @@
         included: wp.i18n.__('انتخاب‌شده', 'exin-black-friday'), pending: wp.i18n.__('در صف', 'exin-black-friday'),
         sold_out: wp.i18n.__('ناموجود', 'exin-black-friday'), conflict: wp.i18n.__('تعارض', 'exin-black-friday'), removed: wp.i18n.__('حذف‌شده', 'exin-black-friday')
     };
-    const floorEdits = new Map(), floorErrors = new Map();
+    const floorEdits = new Map(), floorErrors = new Map(), floorBases = new Map();
     let floorSaving = false;
     let operationsDirty = false, previewMobile = false;
+    let productFloor = 'all';
     let productSearch = '', productStock = 'all', productStatus = '', productSearchTimer;
     let state = null, view = 'dashboard', page = 1, requestVersion = 0, serverOffset = 0, countdownTimer;
     let draft = null, editRevision = 0, savedRevision = 0, savePromise = null, autosaveTimer, previousFocus;
@@ -170,7 +171,7 @@
         const revision = ++requestVersion;
         content.setAttribute('aria-busy', 'true'); content.inert = true;
         try {
-            const result = await api(`state?stock=${encodeURIComponent(productStock)}&status=${encodeURIComponent(productStatus)}&search=${encodeURIComponent(productSearch)}&page=${page}&view=${encodeURIComponent(view === 'timeline' ? 'settings' : view)}${selectedCampaign ? `&campaign_id=${selectedCampaign}` : ''}`);
+            const result = await api(`state?floor=${encodeURIComponent(productFloor)}&stock=${encodeURIComponent(productStock)}&status=${encodeURIComponent(productStatus)}&search=${encodeURIComponent(productSearch)}&page=${page}&view=${encodeURIComponent(view === 'timeline' ? 'settings' : view)}${selectedCampaign ? `&campaign_id=${selectedCampaign}` : ''}`);
             if (revision !== requestVersion) return;
             state = result;
             if (result.campaigns) { campaigns = result.campaigns; campaignListMore = campaigns.length >= 50; }
@@ -355,10 +356,13 @@
             range.closest('label').querySelector('output').textContent = helpers.persianDigits(control.value) + '٪';
         });
     }
+    function canEditFloors() { return state?.campaign && ['draft','scheduled','active'].includes(state.campaign.status) && !state.campaign.settings.restoring; }
+    function floorText(value) { try { return displayAmount(value); } catch (_) { return ''; } }
     function paintFloorEdits() {
         if (!state?.campaign) return;
         const prefix = `${state.campaign.id}:`, count = [...floorEdits.keys()].filter(key => key.startsWith(prefix)).length;
         content.querySelectorAll('[data-product-row]').forEach(row => row.classList.toggle('exin-bf-row-dirty', floorEdits.has(prefix + row.dataset.productRow)));
+        if (state.campaign.status !== 'draft') { content.querySelectorAll('.exin-bf-row-select,#exin-bf-select-all,[data-featured],[data-priority]').forEach(node=>node.disabled=true); content.querySelectorAll('[data-product-row] [data-command]').forEach(node=>{node.disabled = !(node.dataset.command==='item-edit' && canEditFloors());}); }
         const save = content.querySelector('[data-command="save-floors"]');
         if (save) { save.textContent = `${floorSaving ? 'در حال ذخیره' : 'ذخیرهٔ تغییرات کف'} (${helpers.persianDigits(count)})`; save.disabled = count === 0 || floorSaving; }
         content.querySelectorAll('[data-inline-floor]').forEach(input => {
@@ -486,9 +490,9 @@
         return product.stock_status === 'instock' ? wp.i18n.__('موجود', 'exin-black-friday') : product.stock_status === 'onbackorder' ? wp.i18n.__('پیش‌سفارش؛ در نمایش جشنواره پنهان است', 'exin-black-friday') : wp.i18n.__('ناموجود', 'exin-black-friday');
     }
     function renderProducts() {
-        content.innerHTML = `${state.campaign.status === 'draft' ? steps(1) : ''}<div class="exin-bf-toolbar"><div><h2>${esc(labels.products)} <span class="exin-bf-status">${helpers.persianDigits(state.count)}</span></h2><p class="exin-bf-note">${esc(wp.i18n.__('تنوع‌ها مستقل‌اند. ردیف‌های ویژه را بکشید یا اولویت عددی بدهید؛ ترتیب عادی بر اساس تخفیف روز، فروش و تازگی است.', 'exin-black-friday'))}</p></div><div class="exin-bf-actions">${button(labels.add, 'add', 'exin-bf-primary')}${button('فاقد کف قیمت', 'missing-floors')}${button('دارای کف قیمت', 'set-floors')}${state.campaign.status === 'draft' ? button('ذخیره گروهی کف قیمت‌ها', 'save-floors', 'exin-bf-primary') : ''}${state.campaign.status === 'draft' ? button('تخفیف و زمان‌بندی ←', 'settings') : ''}${button(wp.i18n.__('حذف انتخاب‌شده‌ها', 'exin-black-friday'), 'bulk-remove', 'exin-bf-danger')}${button(labels.review, 'review')}</div></div>
-            ${['draft','active'].includes(state.campaign.status) ? `<section class="exin-bf-card exin-bf-scope"><h3>محدودهٔ محصولات</h3><p class="exin-bf-note">برای هزاران محصول، انتخاب و پردازش دسته‌ای روی سرور انجام می‌شود؛ همهٔ محصولات در مرورگر بارگذاری نمی‌شوند.</p><div class="exin-bf-actions">${button('تمام محصولات فروشگاه', 'scope-all')}${button('تمام محصولات موجود', 'scope-instock')}${button('انتخاب با فیلترها', 'add')}${state.count ? button('حذف تمام انتخاب‌های کمپین', 'selection-remove-all', 'exin-bf-danger') : ''}</div>${storageGet(sessionStorage, jobKey()) ? `<p class="exin-bf-warning">یک پردازش گروهی ناتمام دارید. ${button('ادامهٔ پردازش', 'selection-resume')}</p>` : ''}<div id="exin-bf-job-progress" role="status" aria-live="polite"></div></section>` : ''}
-            <div class="exin-bf-filter"><input id="exin-bf-filter-text" value="${esc(productSearch)}" class="exin-bf-search" type="search" placeholder="${esc(wp.i18n.__('جست‌وجوی نام، SKU یا شناسه', 'exin-black-friday'))}" aria-label="${esc(labels.search)}"><select id="exin-bf-filter-status" aria-label="${esc(wp.i18n.__('فیلتر وضعیت', 'exin-black-friday'))}"><option value="">${esc(labels.all)}</option>${Object.entries(statuses).map(([key, text]) => `<option value="${key}" ${key === productStatus ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select><select id="exin-bf-filter-stock" aria-label="فیلتر موجودی">${options([['all','همه'],['instock','فقط موجود'],['outofstock','فقط ناموجود']],productStock)}</select></div>
+        content.innerHTML = `${state.campaign.status === 'draft' ? steps(1) : ''}<div class="exin-bf-toolbar"><div><h2>${esc(labels.products)} <span class="exin-bf-status">${helpers.persianDigits(state.count)}</span></h2><p class="exin-bf-note">${esc(wp.i18n.__('تنوع‌ها مستقل‌اند. ردیف‌های ویژه را بکشید یا اولویت عددی بدهید؛ ترتیب عادی بر اساس تخفیف روز، فروش و تازگی است.', 'exin-black-friday'))}</p></div><div class="exin-bf-actions">${button(labels.add, 'add', 'exin-bf-primary', state.campaign.status === 'draft' ? '' : 'disabled')}${button('فاقد کف قیمت', 'missing-floors')}${button('دارای کف قیمت', 'set-floors')}${canEditFloors() ? button('ذخیره گروهی کف قیمت‌ها', 'save-floors', 'exin-bf-primary') : ''}${state.campaign.status === 'draft' ? button('تخفیف و زمان‌بندی ←', 'settings') : ''}${button(wp.i18n.__('حذف انتخاب‌شده‌ها', 'exin-black-friday'), 'bulk-remove', 'exin-bf-danger', state.campaign.status === 'draft' ? '' : 'disabled')}${button(labels.review, 'review')}</div></div>
+            ${state.campaign.status === 'draft' ? `<section class="exin-bf-card exin-bf-scope"><h3>محدودهٔ محصولات</h3><p class="exin-bf-note">برای هزاران محصول، انتخاب و پردازش دسته‌ای روی سرور انجام می‌شود؛ همهٔ محصولات در مرورگر بارگذاری نمی‌شوند.</p><div class="exin-bf-actions">${button('تمام محصولات فروشگاه', 'scope-all')}${button('تمام محصولات موجود', 'scope-instock')}${button('انتخاب با فیلترها', 'add')}${state.count ? button('حذف تمام انتخاب‌های کمپین', 'selection-remove-all', 'exin-bf-danger') : ''}</div>${storageGet(sessionStorage, jobKey()) ? `<p class="exin-bf-warning">یک پردازش گروهی ناتمام دارید. ${button('ادامهٔ پردازش', 'selection-resume')}</p>` : ''}<div id="exin-bf-job-progress" role="status" aria-live="polite"></div></section>` : ''}
+            <div class="exin-bf-filter"><select id="exin-bf-filter-floor" aria-label="فیلتر کف">${options([['all','همهٔ کف‌ها'],['missing','فاقد کف معتبر'],['set','دارای کف معتبر']],productFloor)}</select><input id="exin-bf-filter-text" value="${esc(productSearch)}" class="exin-bf-search" type="search" placeholder="${esc(wp.i18n.__('جست‌وجوی نام، SKU یا شناسه', 'exin-black-friday'))}" aria-label="${esc(labels.search)}"><select id="exin-bf-filter-status" aria-label="${esc(wp.i18n.__('فیلتر وضعیت', 'exin-black-friday'))}"><option value="">${esc(labels.all)}</option>${Object.entries(statuses).map(([key, text]) => `<option value="${key}" ${key === productStatus ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select><select id="exin-bf-filter-stock" aria-label="فیلتر موجودی">${options([['all','همه'],['instock','فقط موجود'],['outofstock','فقط ناموجود']],productStock)}</select></div>
             <section class="exin-bf-card"><div class="exin-bf-table-scroll"><table class="exin-bf-table"><thead><tr><th><input type="checkbox" id="exin-bf-select-all" aria-label="${esc(wp.i18n.__('انتخاب ردیف‌های صفحه', 'exin-black-friday'))}"></th><th>${esc(wp.i18n.__('محصول', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('قیمت مبنا', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('قیمت فعلی', 'exin-black-friday'))}</th><th>${esc(labels.floor)}</th><th>${esc(wp.i18n.__('تخفیف فعلی', 'exin-black-friday'))}</th><th>${esc(labels.stock)}</th><th>${esc(wp.i18n.__('وضعیت', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('ویژه و ترتیب', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('عملیات', 'exin-black-friday'))}</th></tr></thead><tbody>${(state.items || []).map(productRow).join('') || `<tr><td colspan="10">${esc(wp.i18n.__('محصولی اضافه نشده است.', 'exin-black-friday'))}</td></tr>`}</tbody></table></div></section>
             <div class="exin-bf-pagination">${button(labels.previous, 'previous', '', page <= 1 ? 'disabled' : '')}<label>صفحه <input type="number" data-page-jump min="1" max="${Math.max(1,Math.ceil(state.count/25))}" value="${page}" aria-label="شماره صفحه محصولات"> از ${helpers.persianDigits(Math.max(1,Math.ceil(state.count/25)))}</label>${button('رفتن','page-go')}${button(labels.next, 'next', '', page * 25 >= state.count ? 'disabled' : '')}</div><details class="exin-bf-advanced"><summary>${esc(wp.i18n.__('ابزار پیشرفته: ورود با شناسه', 'exin-black-friday'))}</summary><p>${esc(wp.i18n.__('روش اصلی، انتخاب‌گر ووکامرس است؛ این ابزار برای اپراتور باتجربه باقی مانده است.', 'exin-black-friday'))}</p>${button(wp.i18n.__('ورود گروهی با شناسه', 'exin-black-friday'), 'bulk-add')}</details>`;
     }
@@ -502,7 +506,7 @@
     function productRow(item) {
         const product = item.product || {};
         const conflict = item.status === 'conflict';
-        return `<tr data-product-row="${esc(item.product_id)}" data-name="${esc((product.name || '') + ' ' + (product.sku || '') + ' ' + item.product_id)}" data-status="${esc(item.status)}" draggable="${item.featured ? 'true' : 'false'}"><td><input type="checkbox" class="exin-bf-row-select" value="${esc(item.product_id)}" aria-label="${esc(wp.i18n.__('انتخاب محصول', 'exin-black-friday'))}"></td><td><div class="exin-bf-product">${product.image ? `<img src="${esc(product.image)}" alt="" loading="lazy">` : ''}<div>${esc(product.name || wp.i18n.__('محصول حذف‌شده', 'exin-black-friday'))}<small>#${esc(item.product_id)} · ${esc(product.sku || '—')} · ${esc(product.color || '—')}</small></div></div></td><td>${price(item.base_price)}</td><td>${price(product.price)}</td><td>${state.campaign.status === 'draft' ? `<input data-inline-floor="${item.product_id}" data-exin-money inputmode="decimal" aria-label="کف قیمت ${esc(product.name)}" value="${esc(floorEdits.get(`${state.campaign.id}:${item.product_id}`) ?? displayAmount(item.floor_price))}">` : price(item.floor_price)}</td><td>${esc(discountText(item))}</td><td>${esc(stockText(product))}</td><td>${status(item.status)}</td><td><div class="exin-bf-priority"><span class="exin-bf-drag" aria-hidden="true">${item.featured ? '⠿' : ''}</span><input class="exin-bf-sort" type="number" min="0" max="999999" value="${esc(item.priority || 0)}" data-priority="${esc(item.product_id)}" aria-label="${esc(wp.i18n.__('اولویت عددی', 'exin-black-friday'))}"><label><input type="checkbox" data-featured="${esc(item.product_id)}" ${item.featured ? 'checked' : ''}>${esc(labels.featured)}</label>${item.featured ? `${button('↑', 'move-up', '', `data-id="${item.product_id}" aria-label="${esc(wp.i18n.__('جابه‌جایی به بالا', 'exin-black-friday'))}"`)}${button('↓', 'move-down', '', `data-id="${item.product_id}" aria-label="${esc(wp.i18n.__('جابه‌جایی به پایین', 'exin-black-friday'))}"`)}` : ''}</div></td><td><div class="exin-bf-actions">${conflict ? `${button(wp.i18n.__('بررسی مجدد ایمن', 'exin-black-friday'), 'item-retry', '', `data-id="${item.product_id}"`)}${button(wp.i18n.__('حفظ قیمت بیرونی', 'exin-black-friday'), 'item-release', '', `data-id="${item.product_id}"`)}` : button(wp.i18n.__('ویرایش', 'exin-black-friday'), 'item-edit', '', `data-id="${item.product_id}"`)}${item.status === 'paused' ? button(wp.i18n.__('ادامه محصول', 'exin-black-friday'), 'item-resume', '', `data-id="${item.product_id}"`) : ['active', 'included', 'sold_out'].includes(item.status) ? button(wp.i18n.__('توقف محصول', 'exin-black-friday'), 'item-pause', '', `data-id="${item.product_id}"`) : ''}${button(wp.i18n.__('حذف', 'exin-black-friday'), 'item-remove', 'exin-bf-danger', `data-id="${item.product_id}"`)}</div></td></tr>`;
+        return `<tr data-product-row="${esc(item.product_id)}" data-name="${esc((product.name || '') + ' ' + (product.sku || '') + ' ' + item.product_id)}" data-status="${esc(item.status)}" draggable="${item.featured && state.campaign.status === 'draft' ? 'true' : 'false'}"><td><input type="checkbox" class="exin-bf-row-select" value="${esc(item.product_id)}" aria-label="${esc(wp.i18n.__('انتخاب محصول', 'exin-black-friday'))}"></td><td><div class="exin-bf-product">${product.image ? `<img src="${esc(product.image)}" alt="" loading="lazy">` : ''}<div>${esc(product.name || wp.i18n.__('محصول حذف‌شده', 'exin-black-friday'))}<small>#${esc(item.product_id)} · ${esc(product.sku || '—')} · ${esc(product.color || '—')}</small></div></div></td><td>${price(item.base_price)}</td><td>${price(product.price)}</td><td>${canEditFloors() ? `<input data-inline-floor="${item.product_id}" data-exin-money inputmode="decimal" aria-label="کف قیمت ${esc(product.name)}" value="${esc(floorEdits.get(`${state.campaign.id}:${item.product_id}`) ?? floorText(item.floor_price))}">` : (floorText(item.floor_price) ? price(item.floor_price) : '—')}</td><td>${esc(discountText(item))}</td><td>${esc(stockText(product))}</td><td>${status(item.status)}</td><td><div class="exin-bf-priority"><span class="exin-bf-drag" aria-hidden="true">${item.featured ? '⠿' : ''}</span><input class="exin-bf-sort" type="number" min="0" max="999999" value="${esc(item.priority || 0)}" data-priority="${esc(item.product_id)}" aria-label="${esc(wp.i18n.__('اولویت عددی', 'exin-black-friday'))}"><label><input type="checkbox" data-featured="${esc(item.product_id)}" ${item.featured ? 'checked' : ''}>${esc(labels.featured)}</label>${item.featured ? `${button('↑', 'move-up', '', `data-id="${item.product_id}" aria-label="${esc(wp.i18n.__('جابه‌جایی به بالا', 'exin-black-friday'))}"`)}${button('↓', 'move-down', '', `data-id="${item.product_id}" aria-label="${esc(wp.i18n.__('جابه‌جایی به پایین', 'exin-black-friday'))}"`)}` : ''}</div></td><td><div class="exin-bf-actions">${conflict ? `${button(wp.i18n.__('بررسی مجدد ایمن', 'exin-black-friday'), 'item-retry', '', `data-id="${item.product_id}"`)}${button(wp.i18n.__('حفظ قیمت بیرونی', 'exin-black-friday'), 'item-release', '', `data-id="${item.product_id}"`)}` : button(wp.i18n.__('ویرایش', 'exin-black-friday'), 'item-edit', '', `data-id="${item.product_id}"`)}${item.status === 'paused' ? button(wp.i18n.__('ادامه محصول', 'exin-black-friday'), 'item-resume', '', `data-id="${item.product_id}"`) : ['active', 'included', 'sold_out'].includes(item.status) ? button(wp.i18n.__('توقف محصول', 'exin-black-friday'), 'item-pause', '', `data-id="${item.product_id}"`) : ''}${button(wp.i18n.__('حذف', 'exin-black-friday'), 'item-remove', 'exin-bf-danger', `data-id="${item.product_id}"`)}</div></td></tr>`;
     }
 
     function salesRows(rows) {
@@ -565,7 +569,6 @@
         if (savePromise || savedRevision !== editRevision) await saveDraft();
     }
     async function requireSelection() {
-        if (state.campaign?.status === 'active' && !state.campaign.settings.restoring) return;
         await requireDraft();
     }
     async function openPicker() {
@@ -720,8 +723,8 @@
     function openEdit(id) {
         const item = state.items.find(row => Number(row.product_id) === Number(id));
         if (!item) return;
-        const locked = state.campaign.status !== 'draft';
-        openModal(wp.i18n.__('ویرایش محصول', 'exin-black-friday'), `<form id="exin-bf-edit-form" data-id="${id}"><p>${esc(item.product?.name || id)}</p><div class="exin-bf-form">${field(labels.floor, 'floor_price', displayAmount(item.floor_price), {money: true, required: true, extra: locked ? 'disabled' : '', help: cfg.currency})}${field(wp.i18n.__('اولویت عددی', 'exin-black-friday'), 'priority', item.priority || 0, {type: 'number', required: true, extra: 'min="0" max="999999"'})}<label><input type="checkbox" name="floor_override" ${item.floor_override ? 'checked' : ''} ${locked ? 'disabled' : ''}>حفظ این کف اختصاصی در تغییرات گروهی</label><label><input type="checkbox" name="featured" ${item.featured ? 'checked' : ''}>${esc(labels.featured)}</label></div><button type="submit" class="exin-bf-button exin-bf-primary">${esc(wp.i18n.__('ذخیره تغییرات', 'exin-black-friday'))}</button></form>`);
+        const locked = !canEditFloors(), structureLocked = state.campaign.status !== 'draft';
+        openModal(wp.i18n.__('ویرایش محصول', 'exin-black-friday'), `<form id="exin-bf-edit-form" data-id="${id}" data-expected-floor="${esc(JSON.stringify(item.floor_price ?? null))}"><p>${esc(item.product?.name || id)}</p><div class="exin-bf-form">${field(labels.floor, 'floor_price', floorText(item.floor_price), {money: true, required: true, extra: locked ? 'disabled' : '', help: cfg.currency})}${field(wp.i18n.__('اولویت عددی', 'exin-black-friday'), 'priority', item.priority || 0, {type: 'number', required: true, extra: `min="0" max="999999" ${structureLocked ? 'disabled' : ''}`})}<label><input type="checkbox" name="floor_override" ${item.floor_override ? 'checked' : ''} ${structureLocked ? 'disabled' : ''}>حفظ این کف اختصاصی در تغییرات گروهی</label><label><input type="checkbox" name="featured" ${item.featured ? 'checked' : ''} ${structureLocked ? 'disabled' : ''}>${esc(labels.featured)}</label></div><button type="submit" class="exin-bf-button exin-bf-primary">${esc(wp.i18n.__('ذخیره تغییرات', 'exin-black-friday'))}</button></form>`);
     }
     async function saveVisualOrder() {
         const rows = [...content.querySelectorAll('[data-product-row]')].filter(row => row.draggable);
@@ -735,7 +738,7 @@
     async function command(name, node) {
         if (jobBusy || floorSaving) throw new Error('پردازش گروهی در حال انجام است؛ نتیجه را همین‌جا دنبال کنید.');
         if (name === 'preview-desktop' || name === 'preview-mobile') { previewMobile = name === 'preview-mobile'; paintMarketingPreview(); return; }
-        if (name === 'missing-floors' || name === 'set-floors') { await openPicker(); picker.filters.missing_floor = name === 'set-floors' ? '2' : '1'; const select = modal.querySelector('[data-picker-filter="missing_floor"]'); if (select) select.value = picker.filters.missing_floor; await searchProducts(1); return; }
+        if (name === 'missing-floors' || name === 'set-floors') { productFloor = name === 'set-floors' ? 'set' : 'missing'; page = 1; await load(); return; }
         if (name === 'shipping-settings') { await navigate('settings'); const input = content.querySelector('[name="free_shipping"]'); const details = input?.closest('details'); if (details) details.open = true; input?.scrollIntoView({block:'center'}); return; }
         if (name === 'page-go') { const next = integer(content.querySelector('[data-page-jump]').value); if (!Number.isInteger(next) || next < 1 || next > Math.max(1,Math.ceil(state.count/25))) throw new Error('شمارهٔ صفحه در محدودهٔ نتایج نیست.'); await navigate('products',next); return; }
         if (name === 'simulate-prices') { captureSettings(); if (state.campaign.status === 'draft') { await saveDraft(true); if (savedRevision !== editRevision) throw new Error('ذخیره هنوز کامل نشده است؛ شبیه‌سازی را دوباره اجرا کنید.'); } const id = state.campaign.id, revision = editRevision; const simulation = await api(campaignPath('simulation'),{}); if (state.campaign.id !== id || editRevision !== revision) throw new Error('تنظیمات تغییر کرده‌اند؛ شبیه‌سازی را دوباره اجرا کنید.'); state.simulation = simulation; render(); return; }
@@ -798,19 +801,27 @@
             if (floorSaving) return;
             floorSaving = true; paintFloorEdits();
             const campaignId = state.campaign.id, prefix = `${campaignId}:`, edits = [...floorEdits].filter(([key]) => key.startsWith(prefix));
-            const errors = [];
+            const errors = []; let reload = productFloor !== 'all' || productStatus !== '', pending = false;
             try {
                 for (let offset = 0; offset < edits.length; offset += 25) {
                     const batch = edits.slice(offset, offset + 25);
-                    const result = await api(`campaign/${campaignId}/bulk`, {...unitPayload(), action:'floors', items:batch.map(([key,value]) => ({product_id:Number(key.slice(prefix.length)),floor_price:value}))});
+                    const result = await api(`campaign/${campaignId}/bulk`, {...unitPayload(), action:'floors', items:batch.map(([key,value]) => ({product_id:Number(key.slice(prefix.length)),floor_price:value, expected_floor_price:floorBases.get(key)}))});
                     batch.forEach(([key,value]) => {
                         const id = Number(key.slice(prefix.length)), row = result.results.find(item => item.product_id === id);
-                        if (row?.ok) { if (floorEdits.get(key) === value) { floorEdits.delete(key); floorErrors.delete(key); } }
-                        else { const error = row?.error || 'ذخیره تأیید نشد؛ کف معتبر وارد کنید.'; floorErrors.set(key,error); errors.push(`#${id}: ${error}`); }
+                        if (row?.ok) {
+                            pending ||= row.pricing === 'pending';
+                            if (Object.prototype.hasOwnProperty.call(row,'floor_price')) {
+                                const item = state.items.find(item=>Number(item.product_id)===id);
+                                if (item) { item.floor_price = row.floor_price; item.floor_override = row.floor_override; item.status = row.status; if (item.product) item.product.price = row.product_price; }
+                                floorBases.set(key,row.floor_price);
+                            } else reload = true;
+                            if (floorEdits.get(key) === value) { floorEdits.delete(key); floorBases.delete(key); floorErrors.delete(key); }
+                        }
+                        else { reload = true; const error = row?.error || 'ذخیره تأیید نشد؛ کف معتبر وارد کنید.'; floorErrors.set(key,error); errors.push(`#${id}: ${error}`); }
                     });
                 }
-            } catch (error) { errors.push(`ذخیره کامل نشد: ${error.message || labels.failed}؛ ورودی‌های ذخیره‌نشده حفظ شدند.`); }
-            await load(); floorSaving = false; paintFloorEdits(); notice(errors.length ? errors.join(' | ') : labels.requestSaved, !!errors.length); return;
+            } catch (error) { reload = true; errors.push(`ذخیره کامل نشد: ${error.message || labels.failed}؛ ورودی‌های ذخیره‌نشده حفظ شدند.`); }
+            if (reload) await load(); else render(); floorSaving = false; paintFloorEdits(); notice(errors.length ? errors.join(' | ') : pending ? 'کف ذخیره شد؛ اعمال قیمت همان محصول در صف بررسی است.' : state.campaign.status === 'active' ? 'کف ذخیره شد؛ محصولات فعال با مرحلهٔ جاری قیمت‌گذاری شدند.' : 'کف دستی ذخیره شد؛ قیمت فروشگاه تا شروع کمپین تغییر نکرد.', !!errors.length || pending); return;
         }
         if (name === 'item-edit') { openEdit(node.dataset.id); return; }
         if (name === 'bulk-add') { openBulkIds(); return; }
@@ -887,7 +898,7 @@
         if (node.dataset.inlineFloor) {
             const key = `${state.campaign.id}:${node.dataset.inlineFloor}`, item = state.items.find(row => String(row.product_id) === node.dataset.inlineFloor);
             const clean = value => { try { return helpers.toStore(String(value), cfg.display_unit || 'store', cfg.currency_code, cfg.precision); } catch (_) { return helpers.normalizeDigits(String(value)).replace(/[,٬\s]/g, ''); } };
-            if (item && clean(node.value) === clean(displayAmount(item.floor_price))) floorEdits.delete(key); else floorEdits.set(key, node.value);
+            if (item && clean(node.value) === clean(floorText(item.floor_price))) { floorEdits.delete(key); floorBases.delete(key); } else { if (!floorBases.has(key)) floorBases.set(key,item?.floor_price ?? null); floorEdits.set(key,node.value); }
             floorErrors.delete(key); paintFloorEdits();
         }
         if (node.closest('#exin-bf-operations')) { operationsDirty = true; paintMarketingPreview(); }
@@ -896,7 +907,7 @@
     root.addEventListener('keydown', event => {
         if (event.target.matches('[data-page-jump]') && event.key === 'Enter') { event.preventDefault(); content.querySelector('[data-command="page-go"]').click(); return; }
         if (!event.target.matches('[data-inline-floor]')) return;
-        if (event.key === 'Escape') { const input = event.target, item = state.items.find(row => String(row.product_id) === input.dataset.inlineFloor); if (item) { input.value = displayAmount(item.floor_price); input.dispatchEvent(new Event('input',{bubbles:true})); } event.preventDefault(); return; }
+        if (event.key === 'Escape') { const input = event.target, item = state.items.find(row => String(row.product_id) === input.dataset.inlineFloor); if (item) { input.value = floorText(item.floor_price); input.dispatchEvent(new Event('input',{bubbles:true})); } event.preventDefault(); return; }
         if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); content.querySelector('[data-command="save-floors"]')?.click(); return; }
         if (!['ArrowDown','ArrowUp','Enter'].includes(event.key)) return;
         const fields = [...content.querySelectorAll('[data-inline-floor]')], index = fields.indexOf(event.target), next = index + (event.key === 'ArrowUp' || event.shiftKey ? -1 : 1);
@@ -941,8 +952,8 @@
             }
             if (node.dataset.pickerSelect && picker) { invalidateSelectionPreview(); chooseProduct(picker.rows.find(product => product.id === Number(node.dataset.pickerSelect)), node.checked); renderPickerSelection(); }
             if (node.id === 'exin-bf-confirm-activate') document.getElementById('exin-bf-activate').disabled = !node.checked;
-            if (['exin-bf-filter-status','exin-bf-filter-stock'].includes(node.id)) {
-                productStatus = document.getElementById('exin-bf-filter-status').value; productStock = document.getElementById('exin-bf-filter-stock').value;
+            if (['exin-bf-filter-status','exin-bf-filter-stock','exin-bf-filter-floor'].includes(node.id)) {
+                productFloor = document.getElementById('exin-bf-filter-floor').value; productStatus = document.getElementById('exin-bf-filter-status').value; productStock = document.getElementById('exin-bf-filter-stock').value;
                 clearTimeout(productSearchTimer); page = 1; await load();
             }
             if (node.id === 'exin-bf-select-all') root.querySelectorAll('.exin-bf-row-select').forEach(input => { if (!input.closest('tr').hidden) input.checked = node.checked; });
@@ -986,7 +997,9 @@
                 await api(campaignPath('presentation'),payload); operationsDirty = false; await load(); notice('تنظیمات اجرایی ذخیره شد؛ برنامهٔ مالی تغییر نکرد.');
             }
             if (form.id === 'exin-bf-edit-form') {
-                const payload = {...unitPayload(), action: 'update', priority: integer(form.elements.priority.value), featured: form.elements.featured.checked};
+                const payload = {...unitPayload(), action: 'update'};
+                if (state.campaign.status === 'draft') { payload.priority = integer(form.elements.priority.value); payload.featured = form.elements.featured.checked; }
+                if (form.dataset.expectedFloor) payload.expected_floor_price = JSON.parse(form.dataset.expectedFloor);
                 if (form.elements.floor_override && !form.elements.floor_override.disabled) payload.floor_override = form.elements.floor_override.checked;
                 if (!form.elements.floor_price.disabled) payload.floor_price = form.elements.floor_price.value;
                 await api(campaignPath(`item/${form.dataset.id}`), payload); closeModal(); await load(); notice(labels.requestSaved);
