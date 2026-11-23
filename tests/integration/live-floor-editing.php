@@ -62,6 +62,9 @@ $current=$r->item($id,$pid)['floor_price'];$assert(in_array($current,['80.00','8
 $assert(PriceState::money(wc_get_product($pid)->get_price('edit'))===$current,'Winning current stage price consistent');
 $args=[$id,$pid,$r->get($id)['version'],'apply',0];$assert(count(as_get_scheduled_actions(['hook'=>'exin_bf_retry','args'=>$args,'status'=>'pending','per_page'=>10],'ids'))===1,'Retry coalesced to target, no campaign job fanout');
 $processor=new PriceProcessor($r,new Logger());$assert($processor->apply($id,$pid,$r->get($id)['version'],0)==='stage_changed','Old stage job skipped');
+$single=new WP_REST_Request('POST','/exin-bf/v1/admin/campaign/'.$id.'/item/'.$pid);$single->set_header('X-WP-Nonce',$nonce);$single->set_header('Content-Type','application/json');$single->set_body(wp_json_encode(['action'=>'update','amount_unit'=>'store','floor_price'=>'90','expected_floor_price'=>$current]));$singleReply=rest_do_request($single);
+$assert($singleReply->get_status()===200&&$singleReply->get_data()['item']['floor_price']==='90.00','Single-item floor-only REST route');$current='90.00';
+$assert(PriceState::money(wc_get_product($pid)->get_price('edit'))===$current,'Single-item immediate current price');
 $cart=new WC_Cart();$cart->cart_contents=['target'=>['product_id'=>$pid,'variation_id'=>0,'quantity'=>1,'data'=>wc_get_product($pid),'line_total'=>'1']];$guard=new Cart($r);$assert(count($guard->floor_errors($cart))===1,'Checkout enforces changed floor');$guard->refresh($cart);$assert((float)$cart->cart_contents['target']['data']->get_price()>=(float)$current,'Cart refresh current floor');
 $assert($others()===$beforeOthers,'No unrelated item or floor writes after concurrency');
 $parent=new WC_Product_Variable();$parent->set_name('Live floor variation parent');$parent->set_status('publish');$parent->save();
