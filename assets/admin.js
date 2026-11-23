@@ -49,7 +49,9 @@
         included: wp.i18n.__('انتخاب‌شده', 'exin-black-friday'), pending: wp.i18n.__('در صف', 'exin-black-friday'),
         sold_out: wp.i18n.__('ناموجود', 'exin-black-friday'), conflict: wp.i18n.__('تعارض', 'exin-black-friday'), removed: wp.i18n.__('حذف‌شده', 'exin-black-friday')
     };
-    const floorEdits = new Map();
+    const floorEdits = new Map(), floorErrors = new Map();
+    let floorSaving = false;
+    let operationsDirty = false, previewMobile = false;
     let productSearch = '', productStock = 'all', productStatus = '', productSearchTimer;
     let state = null, view = 'dashboard', page = 1, requestVersion = 0, serverOffset = 0, countdownTimer;
     let draft = null, editRevision = 0, savedRevision = 0, savePromise = null, autosaveTimer, previousFocus;
@@ -156,7 +158,9 @@
         renderCampaignNav();
     }
     async function newCampaign() {
-        if (jobBusy) throw new Error('ابتدا پردازش گروهی جاری را تمام کنید.');
+        if (operationsDirty && !window.confirm('تنظیمات بازاریابی ذخیره نشده است. کمپین جدید می‌سازید؟')) return;
+        operationsDirty = false;
+        if (jobBusy || floorSaving) throw new Error('ابتدا پردازش گروهی جاری را تمام کنید.');
         if (savePromise || savedRevision !== editRevision) await saveDraft();
         clearTimeout(autosaveTimer); content.innerHTML = ''; state.campaign = null; state.items = []; state.count = 0; state.simulation = null;
         rememberCampaign(0); draft = hydrateDraft(null); editRevision = 1; savedRevision = 0;
@@ -164,9 +168,9 @@
     }
     async function load() {
         const revision = ++requestVersion;
-        content.setAttribute('aria-busy', 'true');
+        content.setAttribute('aria-busy', 'true'); content.inert = true;
         try {
-            const result = await api(`state?stock=${encodeURIComponent(productStock)}&status=${encodeURIComponent(productStatus)}&search=${encodeURIComponent(productSearch)}&page=${page}&view=${encodeURIComponent(view)}${selectedCampaign ? `&campaign_id=${selectedCampaign}` : ''}`);
+            const result = await api(`state?stock=${encodeURIComponent(productStock)}&status=${encodeURIComponent(productStatus)}&search=${encodeURIComponent(productSearch)}&page=${page}&view=${encodeURIComponent(view === 'timeline' ? 'settings' : view)}${selectedCampaign ? `&campaign_id=${selectedCampaign}` : ''}`);
             if (revision !== requestVersion) return;
             state = result;
             if (result.campaigns) { campaigns = result.campaigns; campaignListMore = campaigns.length >= 50; }
@@ -178,7 +182,7 @@
             if (!draft || (savedRevision === editRevision && !savePromise)) draft = hydrateDraft(state.campaign);
             render();
         } catch (error) { notice(error.message, true); }
-        finally { if (revision === requestVersion) content.setAttribute('aria-busy', 'false'); }
+        finally { if (revision === requestVersion) { content.setAttribute('aria-busy', 'false'); content.inert = false; } }
     }
     function captureSettings() {
         const form = document.getElementById('exin-bf-settings');
@@ -200,7 +204,7 @@
         for (const key of ['auto_min','auto_max','auto_base_max','auto_curve','auto_bands','auto_wave_period','auto_selection_mode','auto_selection_value','auto_selector','auto_last_day','auto_descending_end','auto_seed']) { if (fields.has(key)) next[key] = fields.get(key); }
         const stageCount = form.querySelector('[name="auto_steps"]');
         if (stageCount) stageCount.value = automaticSteps(next);
-        if (JSON.stringify(next) !== JSON.stringify(draft)) { draft = next; editRevision++; draftNotice(labels.dirty, 'dirty'); }
+        if (JSON.stringify(next) !== JSON.stringify(draft)) { draft = next; editRevision++; if (state) state.simulation = null; const preview = content.querySelector('[data-simulation-result]'); if (preview) preview.textContent = 'تنظیمات تغییر کرده‌اند؛ برای قیمت دقیق دوباره شبیه‌سازی کنید.'; draftNotice(labels.dirty, 'dirty'); }
     }
     function draftPayload() {
         if (!draft || !draft.title.trim()) throw new Error(labels.incomplete);
@@ -239,7 +243,7 @@
         return payload;
     }
     async function saveDraft(force = false) {
-        if (jobBusy) throw new Error('تا پایان پردازش گروهی، تنظیمات کمپین را تغییر ندهید.');
+        if (jobBusy || floorSaving) throw new Error('تا پایان پردازش گروهی، تنظیمات کمپین را تغییر ندهید.');
         clearTimeout(autosaveTimer);
         captureSettings();
         if (state?.campaign && state.campaign.status !== 'draft') return state.campaign;
@@ -252,6 +256,7 @@
         try {
             const result = await savePromise;
             state.campaign = result.campaign;
+            content.querySelectorAll('[data-saved-end]').forEach(node => { node.textContent = localDate(result.campaign.end_utc,result.campaign.timezone); });
             rememberCampaign(result.campaign.id);
             draft.id = result.campaign.id;
             savedRevision = revision;
@@ -268,7 +273,9 @@
         }, 750);
     }
     async function navigate(next, nextPage = 1) {
-        if (jobBusy) throw new Error('پردازش گروهی در حال انجام است.');
+        if (jobBusy || floorSaving) throw new Error('پردازش گروهی در حال انجام است.');
+        if (operationsDirty && !window.confirm('تنظیمات بازاریابی ذخیره نشده است. از این بخش خارج می‌شوید؟')) return;
+        operationsDirty = false;
         captureSettings();
         if (savedRevision !== editRevision) {
             try {
@@ -280,24 +287,99 @@
     }
     function steps(active) {
         const currentStep = (draft?.discount_mode || state.campaign?.settings.discount_plan?.mode || '').startsWith('auto_') ? ({1:1,2:3,3:5}[active] || active) : active;
-        return `<nav class="exin-bf-steps" aria-label="${esc(wp.i18n.__('مراحل راه‌اندازی', 'exin-black-friday'))}">${((draft?.discount_mode || state.campaign?.settings.discount_plan?.mode || '').startsWith('auto_') ? [[1,'انتخاب محصولات','products'],[2,'کف قیمت‌ها','products'],[3,'روش خودکار','settings'],[4,'زمان‌بندی','settings'],[5,labels.review,'review']] : [[1, 'محدوده محصولات', 'products'], [2, labels.settings, 'settings'], [3, labels.review, 'review']]).map(([step, label, destination]) => `<button type="button" data-command="${destination}" data-step="${step}" ${step === currentStep ? 'aria-current="step"' : ''}><span>${helpers.persianDigits(step)}</span>${esc(label)}</button>`).join('')}</nav>`;
+        return `<nav class="exin-bf-steps" aria-label="${esc(wp.i18n.__('مراحل راه‌اندازی', 'exin-black-friday'))}">${((draft?.discount_mode || state.campaign?.settings.discount_plan?.mode || '').startsWith('auto_') ? [[1,'انتخاب محصولات','products'],[2,'کف قیمت‌ها','products'],[3,'روش خودکار','settings'],[4,'زمان‌بندی','timeline'],[5,labels.review,'review']] : [[1, 'محدوده محصولات', 'products'], [2, labels.settings, 'settings'], [3, labels.review, 'review']]).map(([step, label, destination]) => `<button type="button" data-command="${destination}" data-step="${step}" ${step === currentStep ? 'aria-current="step"' : ''}><span>${helpers.persianDigits(step)}</span>${esc(label)}</button>`).join('')}</nav>`;
     }
     function render() {
         clearInterval(countdownTimer);
         root.querySelectorAll('[data-view]').forEach(node => {
-            if (node.dataset.view === view || (view === 'review' && node.dataset.view === 'settings')) node.setAttribute('aria-current', 'page');
+            if (node.dataset.view === view || (view === 'review' && node.dataset.view === 'settings') || (view === 'history' && node.dataset.view === 'diagnostics')) node.setAttribute('aria-current', 'page');
             else node.removeAttribute('aria-current');
         });
         if (view === 'diagnostics') renderDiagnostics();
         else if (!state.campaign) renderEmpty();
         else if (view === 'operations') renderOperations();
         else if (view === 'history') renderHistory();
-        else if (view === 'settings') renderSettings();
+        else if (view === 'settings' || view === 'timeline') { renderSettings(); decorateSettings(); }
         else if (view === 'products') renderProducts();
         else if (view === 'review') renderReview();
         else renderDashboard();
         if (view === 'dashboard' && state.campaign && state.analytics?.complete) content.insertAdjacentHTML('beforeend', `<section class="exin-bf-card"><h3>کم‌فروش‌ترین اقلام جشنواره</h3>${salesRows(state.analytics.least_products || [])}</section>`);
+        if (view === 'operations') decorateMarketing();
+        if (view === 'diagnostics') content.insertAdjacentHTML('afterbegin', `<div class="exin-bf-actions">${button('گزارش فروش و سفارش‌ها','dashboard')}${button('تاریخچه و تعارض قیمت‌ها','history')}</div>`);
+        if (view === 'dashboard') content.insertAdjacentHTML('beforeend', campaignCards());
+        paintFloorEdits();
         helpers.attach(content);
+    }
+    function campaignCards() {
+        return `<section class="exin-bf-card"><h2>کمپین‌های شما</h2><div class="exin-bf-campaign-grid">${campaigns.slice(0, 8).map(row => `<button type="button" class="exin-bf-campaign-card" data-campaign-card="${Number(row.id)}" aria-pressed="${Number(row.id) === selectedCampaign}">${status(row.status)}<strong>${esc(row.title)}</strong><small>#${Number(row.id)} · ${esc(localDate(row.end_utc, row.timezone))}</small></button>`).join('')}</div></section>`;
+    }
+    function decorateSettings() {
+        const form = document.getElementById('exin-bf-settings'), value = draft || hydrateDraft(state.campaign);
+        if (!form) return;
+        const fieldset = form.querySelector('fieldset');
+        const timeline = document.createElement('section'); timeline.className = 'exin-bf-card exin-bf-timeline';
+        timeline.innerHTML = `<h2>زمان‌بندی قابل ویرایش</h2><ol><li data-time-start><h3>شروع</h3></li><li data-time-interval><h3>فاصله و مرحله‌ها</h3></li><li data-time-end><h3>پایان و روز آخر</h3><p>پایان از مدت/مرحله‌ها محاسبه می‌شود؛ تاریخ قطعی با ذخیره و شبیه‌سازی از سرور دریافت می‌شود.</p><strong>پایان ذخیره‌شده: <span data-saved-end>${esc(localDate(state.campaign.end_utc, state.campaign.timezone))}</span></strong></li></ol>`;
+        fieldset.prepend(timeline);
+        const move = (names, target) => names.forEach(name => {
+            const control = form.querySelector(`[name="${name}"]`), wrapper = control?.closest('.exin-bf-field');
+            if (wrapper) timeline.querySelector(target).append(wrapper);
+        });
+        move(['start_jalali','start_time','timezone'], '[data-time-start]');
+        move(['interval','interval_minutes','steps','auto_steps'], '[data-time-interval]');
+        move(['auto_duration_days','duration_minutes','auto_last_day'], '[data-time-end]');
+        if (value.discount_mode === 'legacy') move(['days'], '[data-time-end]');
+        else if (!value.discount_mode.startsWith('auto_') && value.discount_mode !== 'custom') move(['steps'], '[data-time-end]');
+        form.querySelectorAll('details').forEach(details => { details.open = true; });
+        if (view === 'settings') {
+            const select = document.getElementById('bf-discount_mode'), cards = document.createElement('section'); cards.className = 'exin-bf-card';
+            const descriptions = {auto_progressive:'افزایش شدت تا سقف هر محصول',auto_descending:'کاهش تدریجی شدت تخفیف',auto_rotation:'نوبت ویژهٔ متوازن بین محصولات',auto_random:'انتخاب قطعی با Seed ذخیره‌شده',auto_wave:'افزایش و کاهش دوره‌ای شدت',auto_hybrid:'تخفیف پایه با نوبت ویژه؛ بدون انباشت',fixed_percent:'درصد مشخص از قیمت مبنا',fixed_amount:'مبلغ مشخص از قیمت مبنا',linear:'کاهش قیمت در مسیر خطی تا کف',stepped:'درصد اولیه و نهایی با مرحله‌های مشخص',custom:'تعریف دستی زمان و مقدار هر مرحله',legacy:'حفظ برنامهٔ قبلی همین کمپین'};
+            cards.innerHTML = `<h2>روش تخفیف</h2><div class="exin-bf-strategies">${[...select.options].map(option => `<button type="button" class="exin-bf-strategy" data-strategy="${esc(option.value)}" aria-pressed="${option.value === value.discount_mode}"><strong>${esc(option.textContent)}</strong><small>${esc(descriptions[option.value] || '')}</small></button>`).join('')}</div>`;
+            fieldset.prepend(cards);
+        } else content.querySelector('h2').textContent = 'زمان‌بندی و مرحله‌های کمپین';
+        ['auto_min','auto_max','auto_base_max',...(['fixed_amount','custom','legacy'].includes(value.discount_mode) ? [] : ['initial_discount','final_discount'])].forEach(name => {
+            const control = form.querySelector(`[name="${name}"]`); if (!control || control.type === 'hidden') return;
+            const line = document.createElement('label'); line.className = 'exin-bf-range';
+            line.innerHTML = `<span>تنظیم درصد <output data-range-value></output></span><input type="range" min="0" max="100" step="0.01" data-visual-control="${name}" aria-label="${esc(control.closest('.exin-bf-field')?.querySelector('label')?.textContent || name)}">`;
+            control.after(line);
+        });
+        syncVisualControls();
+        const simulation = state.simulation;
+        form.insertAdjacentHTML('afterend', `<section class="exin-bf-card" id="exin-bf-price-simulation"><h2>شبیه‌سازی دقیق قیمت‌ها</h2><p>بر اساس تنظیمات ذخیره‌شده و کف‌های ثبت‌شده؛ بدون تغییر قیمت فروشگاه. پایان ذخیره‌شده: <span data-saved-end>${esc(localDate(state.campaign.end_utc,state.campaign.timezone))}</span></p>${button(state.campaign.status === 'draft' ? 'ذخیره و شبیه‌سازی قیمت‌ها' : 'شبیه‌سازی تنظیمات فعلی','simulate-prices','exin-bf-primary')}<div data-simulation-result>${simulationMarkup(simulation)}${simulation?.page ? `<div class="exin-bf-actions">${simulation.page > 1 ? button('محصولات قبلی','auto-preview-prev') : ''}${simulation.has_more ? button('محصولات بعدی','auto-preview-next') : ''}${simulation.next_stage != null ? button('مرحله‌های بعدی','auto-preview-stages') : ''}${simulation.stage_start ? button('از مرحلهٔ نخست','auto-preview-first') : ''}</div>` : ''}</div></section>`);
+    }
+    function syncVisualControls() {
+        content.querySelectorAll('[data-visual-control]').forEach(range => {
+            const control = document.getElementById('exin-bf-settings')?.elements.namedItem(range.dataset.visualControl);
+            if (!control) return;
+            const value = helpers.normalizeDigits(control.value).replace(/[,٬]/g,'');
+            if (Number.isFinite(Number(value))) range.value = value;
+            range.closest('label').querySelector('output').textContent = helpers.persianDigits(control.value) + '٪';
+        });
+    }
+    function paintFloorEdits() {
+        if (!state?.campaign) return;
+        const prefix = `${state.campaign.id}:`, count = [...floorEdits.keys()].filter(key => key.startsWith(prefix)).length;
+        content.querySelectorAll('[data-product-row]').forEach(row => row.classList.toggle('exin-bf-row-dirty', floorEdits.has(prefix + row.dataset.productRow)));
+        const save = content.querySelector('[data-command="save-floors"]');
+        if (save) { save.textContent = `${floorSaving ? 'در حال ذخیره' : 'ذخیرهٔ تغییرات کف'} (${helpers.persianDigits(count)})`; save.disabled = count === 0 || floorSaving; }
+        content.querySelectorAll('[data-inline-floor]').forEach(input => {
+            const error = floorErrors.get(prefix + input.dataset.inlineFloor);
+            input.setAttribute('aria-invalid', String(!!error));
+            let box = input.parentElement.querySelector('.exin-bf-cell-error');
+            if (error && !box) { box = document.createElement('small'); box.className = 'exin-bf-cell-error'; box.setAttribute('role','alert'); input.after(box); }
+            if (box) { box.textContent = error || ''; box.hidden = !error; }
+        });
+    }
+    function decorateMarketing() {
+        content.insertAdjacentHTML('afterbegin', `<section class="exin-bf-card"><h2>بازاریابی و پیش‌نمایش</h2><div class="exin-bf-actions">${button('تنظیمات ارسال جشنواره','shipping-settings')}${button('نمای دسکتاپ','preview-desktop')}${button('نمای موبایل','preview-mobile')}</div><p class="exin-bf-note">پیش‌نمایش خواندنی محصولات همین صفحه و تنظیمات فرم است؛ قالب و صفحهٔ Elementor موجود تغییر نمی‌کنند.</p><div id="exin-bf-marketing-preview" aria-label="پیش‌نمایش خواندنی فروشگاه"></div><details><summary>استفاده در صفحهٔ Elementor</summary><p>از ویجت‌های موجود اکسین یا شورت‌کد محصولات کمپین استفاده کنید:</p><code dir="ltr">[exin_bf_products campaign_id="${Number(state.campaign.id)}"]</code></details></section>`);
+        paintMarketingPreview();
+    }
+    function paintMarketingPreview() {
+        const host = document.getElementById('exin-bf-marketing-preview'), form = document.getElementById('exin-bf-operations');
+        if (!host || !form) return;
+        const data = new FormData(form), color = /^#[0-9a-f]{6}$/i.test(data.get('badge_color')) ? data.get('badge_color') : '#f47721';
+        host.className = `exin-bf-store-preview ${previewMobile ? 'is-mobile' : ''}`;
+        content.querySelectorAll('[data-command="preview-desktop"],[data-command="preview-mobile"]').forEach(node => node.setAttribute('aria-pressed', String((node.dataset.command === 'preview-mobile') === previewMobile)));
+        host.innerHTML = (state.items || []).slice(0, 4).map(item => `<article>${item.product?.image ? `<img src="${esc(item.product.image)}" alt="">` : ''}${data.has('badge_enabled') ? `<span class="exin-bf-preview-badge" style="background:${color}">${esc(data.get('badge_text'))}</span>` : ''}<h3>${esc(item.product?.name || '#' + item.product_id)}</h3>${price(item.product?.price)}${data.has('cashback_message_enabled') ? `<p>${esc(data.get('cashback_message'))}</p>` : ''}</article>`).join('') || '<p>برای پیش‌نمایش، ابتدا محصول انتخاب کنید.</p>';
     }
     function actions() {
         const campaign = state.campaign;
@@ -352,7 +434,7 @@
         ${field('کمترین شدت (% از سقف مجاز)','auto_min',value.auto_min,{money:true})}${field('بیشترین شدت (% از سقف مجاز)','auto_max',value.auto_max,{money:true})}
         ${value.discount_mode === 'auto_hybrid' ? field('بیشترین شدت تخفیف پایهٔ افزایشی','auto_base_max',value.auto_base_max,{money:true,help:'قیمت ویژه و پایه جمع نمی‌شوند؛ تصمیم نهایی یکی است.'}) : ''}
         <div class="exin-bf-field"><label>رفتار روز آخر جشنواره<select name="auto_last_day">${options([['disabled','غیرفعال؛ بدون سیاست اضافه'],['continue','ادامهٔ روش انتخاب‌شده'],['all_floor','همهٔ محصولات موجود تا کف'],['remaining_floor','تا کف برای محصولات بدون نوبت ویژه پیش از روز آخر']],value.auto_last_day)}</select></label><small>۲۴ ساعت پایانی؛ پایان کمپین همیشه بازیابی ایمن Snapshot دارد.</small></div>
-        <details class="exin-bf-picker-advanced"><summary>انتخاب نوبت و تنظیمات پیشرفتهٔ خودکار</summary><div class="exin-bf-form">
+        <details class="exin-bf-picker-advanced" open><summary>انتخاب نوبت و تنظیمات پیشرفتهٔ خودکار</summary><div class="exin-bf-form">
         <label>تعداد/درصد گروه ویژه<select name="auto_selection_mode">${options([['percent','درصد محصولات واجد شرایط'],['count','تعداد محصول']],value.auto_selection_mode)}</select></label>${field('اندازهٔ گروه ویژه','auto_selection_value',value.auto_selection_value,{extra:'inputmode="numeric"',help:'برای چرخشی، شانسی و ترکیبی؛ محصولات ناموجود در نوبت تازه انتخاب نمی‌شوند.'})}
         <label>انتخاب ویژه در ترکیبی<select name="auto_selector">${options([['priority','اولویت و نوبت متوازن'],['random','شانسی با Seed ثابت']],value.auto_selector)}</select></label>
         <label>افزایش شدت پایه<select name="auto_curve">${options([['linear','خطی'],['stepped','پله‌ای خودکار']],value.auto_curve)}</select></label>${field('تعداد پله‌های شدت','auto_bands',value.auto_bands,{extra:'inputmode="numeric"'})}${field('دورهٔ موج (مرحله)','auto_wave_period',value.auto_wave_period,{extra:'inputmode="numeric"'})}
@@ -404,11 +486,11 @@
         return product.stock_status === 'instock' ? wp.i18n.__('موجود', 'exin-black-friday') : product.stock_status === 'onbackorder' ? wp.i18n.__('پیش‌سفارش؛ در نمایش جشنواره پنهان است', 'exin-black-friday') : wp.i18n.__('ناموجود', 'exin-black-friday');
     }
     function renderProducts() {
-        content.innerHTML = `${state.campaign.status === 'draft' ? steps(1) : ''}<div class="exin-bf-toolbar"><div><h2>${esc(labels.products)} <span class="exin-bf-status">${helpers.persianDigits(state.count)}</span></h2><p class="exin-bf-note">${esc(wp.i18n.__('تنوع‌ها مستقل‌اند. ردیف‌های ویژه را بکشید یا اولویت عددی بدهید؛ ترتیب عادی بر اساس تخفیف روز، فروش و تازگی است.', 'exin-black-friday'))}</p></div><div class="exin-bf-actions">${button(labels.add, 'add', 'exin-bf-primary')}${state.campaign.status === 'draft' ? button('ذخیره گروهی کف قیمت‌ها', 'save-floors', 'exin-bf-primary') : ''}${state.campaign.status === 'draft' ? button('تخفیف و زمان‌بندی ←', 'settings') : ''}${button(wp.i18n.__('حذف انتخاب‌شده‌ها', 'exin-black-friday'), 'bulk-remove', 'exin-bf-danger')}${button(labels.review, 'review')}</div></div>
+        content.innerHTML = `${state.campaign.status === 'draft' ? steps(1) : ''}<div class="exin-bf-toolbar"><div><h2>${esc(labels.products)} <span class="exin-bf-status">${helpers.persianDigits(state.count)}</span></h2><p class="exin-bf-note">${esc(wp.i18n.__('تنوع‌ها مستقل‌اند. ردیف‌های ویژه را بکشید یا اولویت عددی بدهید؛ ترتیب عادی بر اساس تخفیف روز، فروش و تازگی است.', 'exin-black-friday'))}</p></div><div class="exin-bf-actions">${button(labels.add, 'add', 'exin-bf-primary')}${button('فاقد کف قیمت', 'missing-floors')}${button('دارای کف قیمت', 'set-floors')}${state.campaign.status === 'draft' ? button('ذخیره گروهی کف قیمت‌ها', 'save-floors', 'exin-bf-primary') : ''}${state.campaign.status === 'draft' ? button('تخفیف و زمان‌بندی ←', 'settings') : ''}${button(wp.i18n.__('حذف انتخاب‌شده‌ها', 'exin-black-friday'), 'bulk-remove', 'exin-bf-danger')}${button(labels.review, 'review')}</div></div>
             ${['draft','active'].includes(state.campaign.status) ? `<section class="exin-bf-card exin-bf-scope"><h3>محدودهٔ محصولات</h3><p class="exin-bf-note">برای هزاران محصول، انتخاب و پردازش دسته‌ای روی سرور انجام می‌شود؛ همهٔ محصولات در مرورگر بارگذاری نمی‌شوند.</p><div class="exin-bf-actions">${button('تمام محصولات فروشگاه', 'scope-all')}${button('تمام محصولات موجود', 'scope-instock')}${button('انتخاب با فیلترها', 'add')}${state.count ? button('حذف تمام انتخاب‌های کمپین', 'selection-remove-all', 'exin-bf-danger') : ''}</div>${storageGet(sessionStorage, jobKey()) ? `<p class="exin-bf-warning">یک پردازش گروهی ناتمام دارید. ${button('ادامهٔ پردازش', 'selection-resume')}</p>` : ''}<div id="exin-bf-job-progress" role="status" aria-live="polite"></div></section>` : ''}
             <div class="exin-bf-filter"><input id="exin-bf-filter-text" value="${esc(productSearch)}" class="exin-bf-search" type="search" placeholder="${esc(wp.i18n.__('جست‌وجوی نام، SKU یا شناسه', 'exin-black-friday'))}" aria-label="${esc(labels.search)}"><select id="exin-bf-filter-status" aria-label="${esc(wp.i18n.__('فیلتر وضعیت', 'exin-black-friday'))}"><option value="">${esc(labels.all)}</option>${Object.entries(statuses).map(([key, text]) => `<option value="${key}" ${key === productStatus ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select><select id="exin-bf-filter-stock" aria-label="فیلتر موجودی">${options([['all','همه'],['instock','فقط موجود'],['outofstock','فقط ناموجود']],productStock)}</select></div>
             <section class="exin-bf-card"><div class="exin-bf-table-scroll"><table class="exin-bf-table"><thead><tr><th><input type="checkbox" id="exin-bf-select-all" aria-label="${esc(wp.i18n.__('انتخاب ردیف‌های صفحه', 'exin-black-friday'))}"></th><th>${esc(wp.i18n.__('محصول', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('قیمت مبنا', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('قیمت فعلی', 'exin-black-friday'))}</th><th>${esc(labels.floor)}</th><th>${esc(wp.i18n.__('تخفیف فعلی', 'exin-black-friday'))}</th><th>${esc(labels.stock)}</th><th>${esc(wp.i18n.__('وضعیت', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('ویژه و ترتیب', 'exin-black-friday'))}</th><th>${esc(wp.i18n.__('عملیات', 'exin-black-friday'))}</th></tr></thead><tbody>${(state.items || []).map(productRow).join('') || `<tr><td colspan="10">${esc(wp.i18n.__('محصولی اضافه نشده است.', 'exin-black-friday'))}</td></tr>`}</tbody></table></div></section>
-            <div class="exin-bf-pagination">${button(labels.previous, 'previous', '', page <= 1 ? 'disabled' : '')}<span>${helpers.persianDigits(page)}</span>${button(labels.next, 'next', '', page * 25 >= state.count ? 'disabled' : '')}</div><details class="exin-bf-advanced"><summary>${esc(wp.i18n.__('ابزار پیشرفته: ورود با شناسه', 'exin-black-friday'))}</summary><p>${esc(wp.i18n.__('روش اصلی، انتخاب‌گر ووکامرس است؛ این ابزار برای اپراتور باتجربه باقی مانده است.', 'exin-black-friday'))}</p>${button(wp.i18n.__('ورود گروهی با شناسه', 'exin-black-friday'), 'bulk-add')}</details>`;
+            <div class="exin-bf-pagination">${button(labels.previous, 'previous', '', page <= 1 ? 'disabled' : '')}<label>صفحه <input type="number" data-page-jump min="1" max="${Math.max(1,Math.ceil(state.count/25))}" value="${page}" aria-label="شماره صفحه محصولات"> از ${helpers.persianDigits(Math.max(1,Math.ceil(state.count/25)))}</label>${button('رفتن','page-go')}${button(labels.next, 'next', '', page * 25 >= state.count ? 'disabled' : '')}</div><details class="exin-bf-advanced"><summary>${esc(wp.i18n.__('ابزار پیشرفته: ورود با شناسه', 'exin-black-friday'))}</summary><p>${esc(wp.i18n.__('روش اصلی، انتخاب‌گر ووکامرس است؛ این ابزار برای اپراتور باتجربه باقی مانده است.', 'exin-black-friday'))}</p>${button(wp.i18n.__('ورود گروهی با شناسه', 'exin-black-friday'), 'bulk-add')}</details>`;
     }
     function discountText(item) {
         try {
@@ -489,7 +571,7 @@
     async function openPicker() {
         await requireSelection();
         picker = {selected: new Map(), rows: [], page: 1, total: 0, hasMore: false, parent: 0, filters: {search: '', category: '', stock: 'instock', type: 'all', publication: 'publish', tax_filters: {}}, floorPolicy: {mode: state.campaign.settings.manual_floor_catalog ? 'independent' : (state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.startsWith('auto_')) ? 'shared' : state.campaign.settings.discount_plan ? 'none' : 'independent', value: ''}};
-        openModal(labels.add, `<div id="exin-bf-picker"><div class="exin-bf-picker-filters"><label>${esc(labels.search)}<input type="search" id="exin-bf-product-search" autocomplete="off"></label><label>دسته‌بندی<select data-picker-filter="category"><option value="">${esc(labels.all)}</option></select></label><label>وضعیت انتشار<select data-picker-filter="publication">${options([['publish','منتشرشده'],['draft','پیش‌نویس؛ ورود پس از انتشار'],['pending','در انتظار بررسی'],['private','خصوصی']],'publish')}</select></label><div id="exin-bf-brand-filters"></div><label>${esc(labels.stock)}<select data-picker-filter="stock">${options([['all', 'همه'], ['instock', 'موجود'], ['outofstock', 'ناموجود']], 'all')}</select></label><label>کف قیمت<select data-picker-filter="missing_floor"><option value="0">همه</option><option value="1">فاقد کف قیمت؛ شمارنده در تعداد نتایج</option></select></label><label>نوع محصول<select data-picker-filter="type">${options([['all', 'همه'], ['simple', 'ساده'], ['variable', 'متغیر'], ['variation', 'تنوع']], 'all')}</select></label></div><details class="exin-bf-picker-advanced"><summary>فیلترهای پیشرفته</summary><div class="exin-bf-picker-filters" id="exin-bf-taxonomy-filters"></div></details>
+        openModal(labels.add, `<div id="exin-bf-picker"><div class="exin-bf-picker-filters"><label>${esc(labels.search)}<input type="search" id="exin-bf-product-search" autocomplete="off"></label><label>دسته‌بندی<select data-picker-filter="category"><option value="">${esc(labels.all)}</option></select></label><label>وضعیت انتشار<select data-picker-filter="publication">${options([['publish','منتشرشده'],['draft','پیش‌نویس؛ ورود پس از انتشار'],['pending','در انتظار بررسی'],['private','خصوصی']],'publish')}</select></label><div id="exin-bf-brand-filters"></div><label>${esc(labels.stock)}<select data-picker-filter="stock">${options([['all', 'همه'], ['instock', 'موجود'], ['outofstock', 'ناموجود']], 'all')}</select></label><label>کف قیمت<select data-picker-filter="missing_floor"><option value="0">همه</option><option value="1">فاقد کف قیمت؛ شمارنده در تعداد نتایج</option><option value="2">دارای کف قیمت</option></select></label><label>نوع محصول<select data-picker-filter="type">${options([['all', 'همه'], ['simple', 'ساده'], ['variable', 'متغیر'], ['variation', 'تنوع']], 'all')}</select></label></div><details class="exin-bf-picker-advanced" open><summary>فیلترهای پیشرفته</summary><div class="exin-bf-picker-filters" id="exin-bf-taxonomy-filters"></div></details>
             <section class="exin-bf-floor-policy"><h3>روش تعیین کف قیمت</h3><div class="exin-bf-form"><label>روش<select id="exin-bf-floor-policy-mode">${options(state.campaign.settings.manual_floor_catalog ? [['independent','کف دستی هر محصول']] : [...((state.campaign.status === 'active' || state.campaign.settings.discount_plan?.mode.startsWith('auto_')) ? [] : [['none', 'بدون کف مستقل؛ محاسبه از مبنای معتبر']]), ['percent', 'درصد پایین‌تر از قیمت مبنا'], ['amount', 'مبلغ پایین‌تر از قیمت مبنا'], ['shared', 'کف مشترک'], ['previous', 'استفاده از کف قبلی'], ['independent', 'کف مستقل هر محصول']], picker.floorPolicy.mode)}</select></label><label>مقدار <span id="exin-bf-floor-policy-unit">${esc(cfg.currency)}</span><input id="exin-bf-floor-policy-value" data-exin-money inputmode="decimal" value="" ${['none','independent','previous'].includes(picker.floorPolicy.mode) ? 'disabled' : ''}></label></div><p class="exin-bf-note">${state.campaign.status === 'active' ? 'کف معتبر و مثبت برای هر محصول جدید الزامی است. ردیف‌ها و کف‌های قبلی تغییر نمی‌کنند؛ محصول جدید از مرحلهٔ فعلی تخفیف می‌گیرد. برای استثنا، محصول را انتخاب و کف اختصاصی آن را وارد کنید.' : 'در تخفیف عمومی درصدی، ورود کف مستقل اجباری نیست. کف قبلی فقط از دادهٔ ثبت‌شده خوانده می‌شود.'}</p></section>
             <div class="exin-bf-actions">${button('انتخاب صفحه جاری', 'picker-select-page')}${button('تمام نتایج فیلترشده', 'picker-select-filtered')}${button('تمام محصولات سایت', 'picker-select-all')}${button('تمام محصولات موجود', 'picker-select-instock')}${button('پاک‌کردن انتخاب‌های این پنجره', 'picker-clear')}${button('بازگشت به همه محصولات', 'picker-parent-back')}</div><div id="exin-bf-search-results" class="exin-bf-picker-results" aria-live="polite"></div><div id="exin-bf-picker-pagination" class="exin-bf-pagination"></div>
             <section class="exin-bf-picker-selection"><h3>انتخاب‌های فعلی <span id="exin-bf-selection-count" class="exin-bf-status">۰</span></h3><div id="exin-bf-picker-selected"></div><div class="exin-bf-actions">${button('پیش‌نمایش و ثبت انتخاب‌ها', 'picker-save', 'exin-bf-primary')}${button(labels.close, 'close-dialog')}</div></section><section id="exin-bf-selection-preview" aria-live="polite"></section><div id="exin-bf-picker-job-progress" role="status" aria-live="polite"></div></div>`);
@@ -651,7 +733,12 @@
         openModal(wp.i18n.__('ابزار پیشرفتهٔ ورود شناسه', 'exin-black-friday'), `<form id="exin-bf-bulk-form"><label>${esc(wp.i18n.__('هر خط: شناسه؛ کف قیمت', 'exin-black-friday'))}<textarea name="rows" rows="8" dir="ltr" placeholder="123;150,000" required></textarea></label><p class="exin-bf-note">${esc(wp.i18n.__('بین شناسه و مبلغ از نقطه‌ویرگول استفاده کنید؛ مبلغ می‌تواند جداکنندهٔ هزارگان داشته باشد.', 'exin-black-friday'))}</p><button type="submit" class="exin-bf-button">${esc(labels.save)}</button></form>`);
     }
     async function command(name, node) {
-        if (jobBusy) throw new Error('پردازش گروهی در حال انجام است؛ نتیجه را همین‌جا دنبال کنید.');
+        if (jobBusy || floorSaving) throw new Error('پردازش گروهی در حال انجام است؛ نتیجه را همین‌جا دنبال کنید.');
+        if (name === 'preview-desktop' || name === 'preview-mobile') { previewMobile = name === 'preview-mobile'; paintMarketingPreview(); return; }
+        if (name === 'missing-floors' || name === 'set-floors') { await openPicker(); picker.filters.missing_floor = name === 'set-floors' ? '2' : '1'; const select = modal.querySelector('[data-picker-filter="missing_floor"]'); if (select) select.value = picker.filters.missing_floor; await searchProducts(1); return; }
+        if (name === 'shipping-settings') { await navigate('settings'); const input = content.querySelector('[name="free_shipping"]'); const details = input?.closest('details'); if (details) details.open = true; input?.scrollIntoView({block:'center'}); return; }
+        if (name === 'page-go') { const next = integer(content.querySelector('[data-page-jump]').value); if (!Number.isInteger(next) || next < 1 || next > Math.max(1,Math.ceil(state.count/25))) throw new Error('شمارهٔ صفحه در محدودهٔ نتایج نیست.'); await navigate('products',next); return; }
+        if (name === 'simulate-prices') { captureSettings(); if (state.campaign.status === 'draft') { await saveDraft(true); if (savedRevision !== editRevision) throw new Error('ذخیره هنوز کامل نشده است؛ شبیه‌سازی را دوباره اجرا کنید.'); } const id = state.campaign.id, revision = editRevision; const simulation = await api(campaignPath('simulation'),{}); if (state.campaign.id !== id || editRevision !== revision) throw new Error('تنظیمات تغییر کرده‌اند؛ شبیه‌سازی را دوباره اجرا کنید.'); state.simulation = simulation; render(); return; }
         if (name === 'new-campaign') { await newCampaign(); return; }
         if (name === 'copy-campaign') {
             if (savePromise || savedRevision !== editRevision) await saveDraft();
@@ -694,11 +781,11 @@
             const result = await processJob(null, {filters: {campaign_only: true}, policy: {mode: 'none'}, action: 'remove'});
             await load(); notice(result.failed ? 'برخی ردیف‌ها حذف نشدند؛ خطاها را بررسی کنید.' : 'انتخاب‌های کمپین حذف شدند.', !!result.failed); return;
         }
-        if (['dashboard', 'settings', 'products', 'review', 'diagnostics'].includes(name)) { await navigate(name); return; }
+        if (['dashboard', 'settings', 'timeline', 'operations', 'history', 'products', 'review', 'diagnostics'].includes(name)) { await navigate(name); return; }
         if (name === 'step-products') { await saveDraft(true); await navigate('products'); return; }
         if (name === 'add') { await openPicker(); return; }
         if (name === 'close-dialog') { closeModal(); return; }
-        if (name === 'refresh') { await load(); return; }
+        if (name === 'refresh') { if (operationsDirty && !window.confirm('با بارگذاری مجدد، تغییرات ذخیره‌نشدهٔ بازاریابی کنار گذاشته می‌شوند. ادامه می‌دهید؟')) return; operationsDirty = false; await load(); return; }
         if (name === 'previous' || name === 'next') { await navigate('products', page + (name === 'next' ? 1 : -1)); return; }
         if (name === 'picker-previous' || name === 'picker-next') { await searchProducts(picker.page + (name === 'picker-next' ? 1 : -1)); return; }
         if (name === 'picker-parent-back') { picker.parent = 0; await searchProducts(1); return; }
@@ -708,20 +795,22 @@
         if (name === 'picker-apply-floor') { const amount = document.getElementById('bf-common_floor').value; picker.selected.forEach(row => { row.floor = amount; }); renderPickerSelection(); return; }
         if (name === 'picker-save') { await saveSelected(); return; }
         if (name === 'save-floors') {
-            const prefix = `${state.campaign.id}:`, edits = [...floorEdits].filter(([key]) => key.startsWith(prefix));
+            if (floorSaving) return;
+            floorSaving = true; paintFloorEdits();
+            const campaignId = state.campaign.id, prefix = `${campaignId}:`, edits = [...floorEdits].filter(([key]) => key.startsWith(prefix));
             const errors = [];
             try {
                 for (let offset = 0; offset < edits.length; offset += 25) {
                     const batch = edits.slice(offset, offset + 25);
-                    const result = await api(campaignPath('bulk'), {...unitPayload(), action:'floors', items:batch.map(([key,value]) => ({product_id:Number(key.slice(prefix.length)),floor_price:value}))});
+                    const result = await api(`campaign/${campaignId}/bulk`, {...unitPayload(), action:'floors', items:batch.map(([key,value]) => ({product_id:Number(key.slice(prefix.length)),floor_price:value}))});
                     batch.forEach(([key,value]) => {
                         const id = Number(key.slice(prefix.length)), row = result.results.find(item => item.product_id === id);
-                        if (row?.ok) { if (floorEdits.get(key) === value) floorEdits.delete(key); }
-                        else errors.push(`#${id}: ${row?.error || 'ذخیره تأیید نشد؛ کف معتبر وارد کنید.'}`);
+                        if (row?.ok) { if (floorEdits.get(key) === value) { floorEdits.delete(key); floorErrors.delete(key); } }
+                        else { const error = row?.error || 'ذخیره تأیید نشد؛ کف معتبر وارد کنید.'; floorErrors.set(key,error); errors.push(`#${id}: ${error}`); }
                     });
                 }
             } catch (error) { errors.push(`ذخیره کامل نشد: ${error.message || labels.failed}؛ ورودی‌های ذخیره‌نشده حفظ شدند.`); }
-            await load(); notice(errors.length ? errors.join(' | ') : labels.requestSaved, !!errors.length); return;
+            await load(); floorSaving = false; paintFloorEdits(); notice(errors.length ? errors.join(' | ') : labels.requestSaved, !!errors.length); return;
         }
         if (name === 'item-edit') { openEdit(node.dataset.id); return; }
         if (name === 'bulk-add') { openBulkIds(); return; }
@@ -751,6 +840,7 @@
             await load(); notice(labels.requestSaved); return;
         }
         if (name === 'activate') {
+            if ([...floorEdits.keys()].some(key => key.startsWith(`${state.campaign.id}:`))) throw new Error('کف‌های ویرایش‌شده را پیش از فعال‌سازی در بخش محصولات ذخیره کنید.');
             if (!document.getElementById('exin-bf-confirm-activate')?.checked) throw new Error(labels.activation);
             await saveDraft();
             const starts = new Date(state.campaign.start_utc.replace(' ', 'T') + 'Z').getTime();
@@ -768,6 +858,10 @@
         }
     }
     root.addEventListener('click', async event => {
+        const strategy = event.target.closest('[data-strategy]');
+        if (strategy && !strategy.disabled) { const select = document.getElementById('bf-discount_mode'); select.value = strategy.dataset.strategy; select.dispatchEvent(new Event('change', {bubbles:true})); return; }
+        const card = event.target.closest('[data-campaign-card]');
+        if (card) { const select = document.getElementById('exin-bf-campaign-select'); select.value = card.dataset.campaignCard; select.dispatchEvent(new Event('change', {bubbles:true})); return; }
         const nav = event.target.closest('[data-view]');
         if (nav) { try { await navigate(nav.dataset.view); } catch (error) { notice(error.message, true); } return; }
         const parent = event.target.closest('[data-picker-parent]');
@@ -783,30 +877,49 @@
     });
     root.addEventListener('input', event => {
         const node = event.target;
-        if (node.closest('#exin-bf-settings')) { captureSettings(); scheduleDraftSave(); }
+        if (node.dataset.visualControl) { const control = document.getElementById('exin-bf-settings').elements.namedItem(node.dataset.visualControl); control.value = node.value; control.dispatchEvent(new Event('input',{bubbles:true})); return; }
+        if (node.closest('#exin-bf-settings')) { captureSettings(); syncVisualControls(); scheduleDraftSave(); }
         if (node.id === 'exin-bf-product-search' && picker) {
             picker.filters.search = node.value; pickerRequest++; clearTimeout(pickerTimer); pickerTimer = setTimeout(() => searchProducts(1), 300);
         }
         if (node.dataset.pickerFloor && picker) { picker.selected.get(Number(node.dataset.pickerFloor)).floor = node.value; invalidateSelectionPreview(); }
         if (node.id === 'exin-bf-floor-policy-value' && picker) { picker.floorPolicy.value = node.value; invalidateSelectionPreview(); }
-        if (node.dataset.inlineFloor) floorEdits.set(`${state.campaign.id}:${node.dataset.inlineFloor}`, node.value);
+        if (node.dataset.inlineFloor) {
+            const key = `${state.campaign.id}:${node.dataset.inlineFloor}`, item = state.items.find(row => String(row.product_id) === node.dataset.inlineFloor);
+            const clean = value => { try { return helpers.toStore(String(value), cfg.display_unit || 'store', cfg.currency_code, cfg.precision); } catch (_) { return helpers.normalizeDigits(String(value)).replace(/[,٬\s]/g, ''); } };
+            if (item && clean(node.value) === clean(displayAmount(item.floor_price))) floorEdits.delete(key); else floorEdits.set(key, node.value);
+            floorErrors.delete(key); paintFloorEdits();
+        }
+        if (node.closest('#exin-bf-operations')) { operationsDirty = true; paintMarketingPreview(); }
         if (node.id === 'exin-bf-filter-text') { productSearch = helpers.normalizeDigits(node.value); page = 1; clearTimeout(productSearchTimer); productSearchTimer = setTimeout(load, 400); }
+    });
+    root.addEventListener('keydown', event => {
+        if (event.target.matches('[data-page-jump]') && event.key === 'Enter') { event.preventDefault(); content.querySelector('[data-command="page-go"]').click(); return; }
+        if (!event.target.matches('[data-inline-floor]')) return;
+        if (event.key === 'Escape') { const input = event.target, item = state.items.find(row => String(row.product_id) === input.dataset.inlineFloor); if (item) { input.value = displayAmount(item.floor_price); input.dispatchEvent(new Event('input',{bubbles:true})); } event.preventDefault(); return; }
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); content.querySelector('[data-command="save-floors"]')?.click(); return; }
+        if (!['ArrowDown','ArrowUp','Enter'].includes(event.key)) return;
+        const fields = [...content.querySelectorAll('[data-inline-floor]')], index = fields.indexOf(event.target), next = index + (event.key === 'ArrowUp' || event.shiftKey ? -1 : 1);
+        if (fields[next]) { event.preventDefault(); fields[next].focus(); fields[next].select(); }
     });
     root.addEventListener('focusout', event => {
         const node = event.target;
         if (!node.matches('[data-exin-money]')) return;
-        if (node.closest('#exin-bf-settings')) { captureSettings(); scheduleDraftSave(); }
+        if (node.closest('#exin-bf-settings')) { captureSettings(); syncVisualControls(); scheduleDraftSave(); }
         if (node.dataset.pickerFloor && picker?.selected.has(Number(node.dataset.pickerFloor))) picker.selected.get(Number(node.dataset.pickerFloor)).floor = node.value;
     });
     root.addEventListener('change', async event => {
         const node = event.target;
         try {
             if (node.id === 'exin-bf-campaign-select') {
-                if (jobBusy) { node.value = selectedCampaign; throw new Error('ابتدا پردازش گروهی را کامل کنید.'); }
+                if (operationsDirty && !window.confirm('تنظیمات بازاریابی ذخیره نشده است. کمپین را عوض می‌کنید؟')) { node.value = selectedCampaign; return; }
+                operationsDirty = false;
+                if (jobBusy || floorSaving) { node.value = selectedCampaign; throw new Error('ابتدا پردازش گروهی را کامل کنید.'); }
                 const next = Number(node.value);
                 if (savePromise || savedRevision !== editRevision) await saveDraft();
                 rememberCampaign(next); draft = null; editRevision = 0; savedRevision = 0; page = 1; view = 'dashboard'; await load(); return;
             }
+            if (node.closest('#exin-bf-operations')) { operationsDirty = true; paintMarketingPreview(); }
             if (node.closest('#exin-bf-settings')) {
                 captureSettings();
                 if (node.id === 'bf-interval' && draft.discount_mode.startsWith('auto_')) draft.interval_minutes = draft.interval === 'flash' ? '5' : draft.interval === 'hourly' ? '60' : '1440';
@@ -870,7 +983,7 @@
                 for (const key of ['badge_text','badge_color','badge_position','public_scope','countdown_target','coupon_floor_policy','new_products','cashback_message']) payload[key] = data.get(key);
                 payload.notifications = Object.fromEntries(['enabled','start','stage','error','admin_email'].map(key => [key,data.has('notify_'+key)]));
                 if (data.get('new_scope') !== 'saved') payload.new_product_rules = {filters:{scope:data.get('new_scope')},policy:{mode:data.get('new_floor_mode'),value:data.get('new_floor_value') || '0'}};
-                await api(campaignPath('presentation'),payload); await load(); notice('تنظیمات اجرایی ذخیره شد؛ برنامهٔ مالی تغییر نکرد.');
+                await api(campaignPath('presentation'),payload); operationsDirty = false; await load(); notice('تنظیمات اجرایی ذخیره شد؛ برنامهٔ مالی تغییر نکرد.');
             }
             if (form.id === 'exin-bf-edit-form') {
                 const payload = {...unitPayload(), action: 'update', priority: integer(form.elements.priority.value), featured: form.elements.featured.checked};
@@ -893,6 +1006,6 @@
         finally { if (submit.isConnected) submit.disabled = false; }
     });
     dialog.addEventListener('cancel', event => { if (picker?.busy) { event.preventDefault(); return; } pickerRequest++; picker = null; modal.innerHTML = ''; });
-    window.addEventListener('beforeunload', event => { if (savedRevision !== editRevision || savePromise || jobBusy) { event.preventDefault(); event.returnValue = ''; } });
+    window.addEventListener('beforeunload', event => { if (savedRevision !== editRevision || savePromise || jobBusy || floorEdits.size || operationsDirty) { event.preventDefault(); event.returnValue = ''; } });
     load();
 })();

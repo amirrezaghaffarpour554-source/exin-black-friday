@@ -283,7 +283,7 @@ final class CatalogProductQuery {
 		// Identifiers are trusted wpdb table names and explicit columns; all request values use placeholders.
 		$sql = $wpdb->prepare( ' AND (%i.post_type<>%s OR EXISTS (SELECT 1 FROM %i exin_parent WHERE exin_parent.ID=%i.post_parent AND exin_parent.post_type=%s AND exin_parent.post_status=%s))', $posts, 'product_variation', $posts, $posts, 'product', 'publish' );
 		if ( ! empty( $filters['missing_floor_campaign'] ) ) {
-			$sql .= $wpdb->prepare( " AND NOT EXISTS (SELECT 1 FROM %i exin_floor WHERE exin_floor.campaign_id=%d AND exin_floor.product_id=%i.ID AND exin_floor.status<>'removed' AND CAST(exin_floor.floor_price AS DECIMAL(30,8))>0)", $wpdb->prefix . 'exin_bf_items', absint( $filters['missing_floor_campaign'] ), $posts );
+			$sql .= $wpdb->prepare( " AND %d = EXISTS (SELECT 1 FROM %i exin_floor WHERE exin_floor.campaign_id=%d AND exin_floor.product_id=%i.ID AND exin_floor.status<>'removed' AND CAST(exin_floor.floor_price AS DECIMAL(30,8))>0)", empty( $filters['floor_is_set'] ) ? 0 : 1, $wpdb->prefix . 'exin_bf_items', absint( $filters['missing_floor_campaign'] ), $posts );
 		}
 
 		if ( $parent_id || 'variation' === $type ) {

@@ -41,6 +41,7 @@ const item = id => ({product_id:id, product:{...row(id),stock_status:id===998?'o
  try {
   await page.goto('http://exin.test/wp-admin/');
   await page.locator('[data-view="products"]').click();
+  await page.locator('#exin-bf-filter-stock').waitFor();
   check(await page.locator('#exin-bf-filter-stock option').count()===3,'Independent three-way stock control');
   await page.locator('#exin-bf-filter-stock').selectOption('outofstock');
   await page.waitForFunction(()=>document.querySelector('#exin-bf-filter-stock')?.value==='outofstock'&&!document.querySelector('#exin-bf-filter-stock').disabled);

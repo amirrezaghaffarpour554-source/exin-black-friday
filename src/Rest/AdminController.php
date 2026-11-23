@@ -556,10 +556,11 @@ final class AdminController {
 			'parent_id'   => $this->integer( $request->get_param( 'parent_id' ) ?? 0, 0, PHP_INT_MAX ),
 			'tax_filters' => $this->catalog_tax_filters( $request->get_param( 'tax_filters' ) ?? array() ),
 		);
-		if ( '1' === (string) $request->get_param( 'missing_floor' ) ) {
+		if ( in_array( (string) $request->get_param( 'missing_floor' ), array( '1', '2' ), true ) ) {
 			$missing_id = $this->integer( $request->get_param( 'campaign_id' ), 1, PHP_INT_MAX );
 			$this->required_campaign( $missing_id );
 			$filters['missing_floor_campaign'] = $missing_id;
+			$filters['floor_is_set']           = '2' === (string) $request->get_param( 'missing_floor' );
 		}
 		$result      = $this->selection->search( $term, $this->integer( $request->get_param( 'page' ) ?? 1, 1, 10000 ), $filters );
 		$campaign_id = $this->integer( $request->get_param( 'campaign_id' ) ?? 0, 0, PHP_INT_MAX );

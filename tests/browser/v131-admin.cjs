@@ -20,13 +20,13 @@ const item = id => ({product_id:id, product:{...row(id),stock_status:id===998?'o
   const request=route.request(), url=new URL(request.url());
   if(url.pathname.startsWith('/assets/')){const file=path.join(root,url.pathname.slice(1));return route.fulfill({contentType:file.endsWith('.css')?'text/css':'application/javascript',body:fs.readFileSync(file,'utf8')});}
   if(!url.searchParams.has('rest_route'))return route.fulfill({contentType:'text/html',body:shell});
-  const endpoint=url.searchParams.get('rest_route').replace('/exin-bf/v1/admin/',''), body=request.method()==='POST'?request.postDataJSON():null;calls.push({endpoint,body});let result;
-  if(endpoint==='state')result={campaign, campaigns:campaign?[campaign]:[],items:[item(Number(url.searchParams.get("page"))===2?998:999)],count,server_time:Date.now()/1000,health,logs:[],analytics:{}};
+  const endpoint=url.searchParams.get('rest_route').replace('/exin-bf/v1/admin/',''), body=request.method()==='POST'?request.postDataJSON():null;calls.push({endpoint,body});if(endpoint.endsWith('/bulk'))await new Promise(resolve=>setTimeout(resolve,200));let result;
+  if(endpoint==='state')result={campaign, campaigns:campaign?[campaign,{...campaign,id:4,title:"کمپین چهار"}]:[],items:[item(Number(url.searchParams.get("page"))===2?998:999)],count,server_time:Date.now()/1000,health,logs:[],analytics:{}};
   else if(endpoint.endsWith('/bulk')) result={results:body.items.map(row=>({product_id:row.product_id,ok:row.product_id!==998,error:'کف معتبر بزرگ‌تر از صفر وارد کنید.'}))};
   else if(endpoint.endsWith('/new-products'))result={products:[{id:42,name:'محصول تازه',price:'1000000'}],page:1,has_more:false};
   else if(endpoint.endsWith('/presentation')){campaign.settings={...campaign.settings,...body};result={campaign};}
   else if(endpoint.endsWith('/history'))result={rows:[{created_at:'2026-11-21 12:00:00',action:'price_apply',product_id:42,before_price:'1000000',after_price:'950000',currency:'IRR',result:'changed',error_code:''}],has_more:false};
-  else if(endpoint==='campaigns')result={campaigns:campaign?[campaign]:[],total:campaign?1:0,has_more:false};
+  else if(endpoint==='campaigns')result={campaigns:campaign?[campaign,{...campaign,id:4,title:"کمپین چهار"}]:[],total:campaign?1:0,has_more:false};
   else if(endpoint==='campaign') {campaign={...body,id:body.id||++campaignCounter,status:'draft',version:(campaign?.version||0)+1,start_utc:'2026-11-27 00:00:00',end_utc:'2026-12-04 00:00:00',settings:{...body.settings,shipping_threshold:(BigInt(String(body.settings.shipping_threshold||0).replace(/,/g,''))*10n).toString(),shipping_subsidy_cap:(BigInt(String(body.settings.shipping_subsidy_cap||0).replace(/,/g,''))*10n).toString(),precision:0,currency:'IRR'}};result={campaign};}
   else if(endpoint==='product-filters')result={categories:[{id:1,name:'گوشی'}],taxonomies:[{name:'product_brand',label:'برند',terms:[{slug:'exin',name:'اکسین'}]},{name:'pa_color',label:'رنگ',terms:[{slug:'blue',name:'آبی'}]}]};
   else if(endpoint==='products')result={products:Array.from({length:12},(_,i)=>row(i+1)),total:12,has_more:true};
@@ -47,6 +47,7 @@ const item = id => ({product_id:id, product:{...row(id),stock_status:id===998?'o
   await page.locator('[data-command="previous"]').click();
   check((await page.locator('[data-inline-floor="999"]').inputValue()).replace(/[^0-9]/g,'')==='123456','Unsaved edit survives paging');
   await page.locator('[data-command="save-floors"]').click();
+  await page.locator('#exin-bf-campaign-select').selectOption('4');check(await page.locator('#exin-bf-campaign-select').inputValue()==='130','Campaign cannot change during floor batch');
   const bulk=calls.find(c=>c.endpoint.endsWith('/bulk'));
   check(bulk.body.action==='floors'&&bulk.body.items.length===2,'One bulk saves edits from both pages');
   check(bulk.body.items[0].product_id===999&&bulk.body.items[1].product_id===998,'Separate product IDs preserved');
@@ -55,6 +56,7 @@ const item = id => ({product_id:id, product:{...row(id),stock_status:id===998?'o
   check((await page.locator('#exin-bf-message').innerText()).includes('بزرگ‌تر از صفر'),'Server validation error is shown');
   await page.locator('[data-command="next"]').click();
   check((await page.locator('[data-inline-floor="998"]').inputValue()).replace(/[^0-9]/g,'')==='234567','Failed floor remains editable after paging');
+  check(await page.locator('[data-inline-floor="998"]').getAttribute('aria-invalid')==='true','Failed cell has an inline validation state');
   check((await page.locator('[data-product-row="998"]').innerText()).includes('ناموجود'),'Selected unavailable member remains labelled');
   await page.locator('[data-command="save-floors"]').click();
   const retry=calls.filter(c=>c.endpoint.endsWith('/bulk')).at(-1);
