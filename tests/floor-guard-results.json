@@ -1,6 +1,6 @@
 {
   "guard": {
-    "passed": 62,
+    "passed": 63,
     "failed": 0,
     "wordpress": "7.1.4",
     "woocommerce": "11.3.0",
@@ -50,9 +50,10 @@
     "Campaigns 2/4, prices, floors, schedules and shipping fields compared in synthetic fixtures",
     "Valid positive floors and normal schedules remain immutable during active campaigns; only invalid-floor repairs are permitted",
     "Positive floor is a strict checkout minimum regardless of optional coupon protection; ordinary coupons remain available on no-floor products",
-    "No migration, automatic campaign activation, bulk price reset, UI changes or scheduled jobs added"
+    "No migration, automatic campaign activation, bulk price reset, UI changes or scheduled jobs added",
+    "Custom stage boundaries are rechecked immediately before writes; boundary-crossing test uses the real clock"
   ],
-  "total_assertions": 84,
+  "total_assertions": 85,
   "base_branch": "feature/admin-rtl-workspace",
   "runtime_storage": "Private RAM-backed local fixture; Production not accessed"
 }

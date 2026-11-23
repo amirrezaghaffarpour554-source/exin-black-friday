@@ -167,7 +167,7 @@ final class PriceProcessor {
 					$this->conflict( $campaign_id, $product_id, 'schedule_financial_bounds_failed' );
 					return 'error';
 				}
-				if ( $automatic && DiscountPlan::index( $campaign, time() ) !== $day ) {
+				if ( DiscountPlan::index( $campaign, time() ) !== $day ) {
 					return 'stage_changed'; }
 				$target          = $current;
 				$target['price'] = $price;
