@@ -870,14 +870,17 @@ final class AdminController {
 		$id = $this->integer( $request['id'], 1, PHP_INT_MAX );
 		$this->required_campaign( $id );
 		$data   = $this->body( $request );
-		$action = $this->choice( $data['action'] ?? '', array( 'add', 'remove', 'floors' ) );
+		$action = $this->choice( $data['action'] ?? '', array( 'add', 'remove', 'floors', 'recovery_preview', 'recovery_approve' ) );
 		$rows   = $data['items'] ?? null;
 		if ( ! is_array( $rows ) || count( $rows ) < 1 || count( $rows ) > 25 ) {
 			throw new InvalidArgumentException( esc_html__( 'هر نوبت بین ۱ تا ۲۵ محصول مجاز است.', 'exin-black-friday' ) );
 		}
+		if ( 'recovery_approve' === $action && true !== ( $data['confirm_recovery'] ?? false ) ) {
+			throw new InvalidArgumentException( esc_html__( 'پذیرش قیمت فعلی به‌عنوان مبنای جدید و اعمال مرحلهٔ جاری را تأیید کنید.', 'exin-black-friday' ) );
+		}
 		if ( in_array( $action, array( 'add', 'floors' ), true ) ) {
 			$this->editable_campaign( $id, 'floors' === $action );
-		} elseif ( true !== ( $data['confirm_remove'] ?? false ) ) {
+		} elseif ( 'remove' === $action && true !== ( $data['confirm_remove'] ?? false ) ) {
 			throw new InvalidArgumentException( esc_html__( 'حذف گروهی و بازیابی قیمت را تأیید کنید.', 'exin-black-friday' ) );
 		}
 		$results = array();
@@ -888,7 +891,12 @@ final class AdminController {
 					throw new InvalidArgumentException( esc_html__( 'ساختار محصول معتبر نیست.', 'exin-black-friday' ) );
 				}
 				$product = $this->integer( $row['product_id'] ?? 0, 1, PHP_INT_MAX );
-				if ( 'floors' === $action ) {
+				if ( in_array( $action, array( 'recovery_preview', 'recovery_approve' ), true ) ) {
+					$recovery = new \Exin\BlackFriday\Application\ConflictRecovery( $this->repository );
+					$value = 'recovery_preview' === $action ? $recovery->preview( $id, $product ) : $recovery->approve( $id, $product, $this->text( $row['token'] ?? '' ) );
+					$results[] = array( 'product_id' => $product, 'ok' => true ) + $value;
+					continue;
+				} elseif ( 'floors' === $action ) {
 					$options = array_key_exists( 'expected_floor_price', $row ) ? array( 'expected_floor_price' => $row['expected_floor_price'] ) : array();
 					$pricing = $this->selection->update_floor( $id, $product, $this->validated_floor( $this->required_campaign( $id ), $product, $row['floor_price'] ?? '', $this->amount_unit( $data ) ), $options );
 				} elseif ( 'add' === $action ) {
@@ -1275,6 +1283,13 @@ final class AdminController {
 	 */
 	private function domain_message( string $code ): string {
 		$messages = array(
+			'recovery_preview_changed' => __( 'قیمت، کف، مرحله یا پیش‌نمایش تغییر کرده یا منقضی شده است؛ پیش‌نمایش تازه بگیرید. چیزی بازنویسی نشد.', 'exin-black-friday' ),
+			'recovery_campaign_not_live' => __( 'بازیابی فقط در کمپین فعال و منقضی‌نشده مجاز است.', 'exin-black-friday' ),
+			'recovery_unsupported_conflict' => __( 'فقط تعارض تغییر قیمت بیرونی، بدون مالکیت یا عملیات ناتمام قابل پذیرش است.', 'exin-black-friday' ),
+			'recovery_unsafe_product' => __( 'وضعیت، موجودی، قیمت‌گذاری پویا یا مالکیت محصول برای بازیابی امن نیست.', 'exin-black-friday' ),
+			'recovery_invalid_base_floor' => __( 'مبنای ووکامرس و کف باید مثبت و معتبر باشند؛ کف نمی‌تواند بیشتر از مبنای جدید باشد.', 'exin-black-friday' ),
+			'recovery_cohort_not_ready' => __( 'گروه مرحلهٔ خودکار هنوز آماده نیست؛ اجرای زمان‌بند موجود را بررسی و سپس پیش‌نمایش را تکرار کنید.', 'exin-black-friday' ),
+			'recovery_queue_failed' => __( 'ثبت صف بازیابی انجام نشد؛ اطلاعات قبلی حفظ شد.', 'exin-black-friday' ),
 			'floor_price_changed'                         => __( 'کف توسط کاربر دیگری تغییر کرده است؛ جدول را تازه کنید و با Esc مقدار ثبت‌شده را برگردانید، سپس دوباره ویرایش کنید.', 'exin-black-friday' ),
 			'floor_edit_conflict'                         => __( 'ویرایش کف به دلیل وضعیت محصول، مالکیت قیمت یا عملیات ناتمام ممکن نیست؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),
 			'product_floor_required' => __( 'کف این محصول باید عددی بزرگ‌تر از صفر باشد؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),

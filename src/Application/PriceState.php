@@ -74,6 +74,14 @@ final class PriceState {
 			--FloorGuard::$reading; }
 	}
 
+	/** Keep recovered sale metadata, but derive the restored payable price at restore time. */
+	public static function restore_target( array $snapshot ): array {
+		if ( ! empty( $snapshot['recovery_receipt'] ) ) {
+			$snapshot['price'] = FloorGuard::ordinary( array( 'snapshot' => $snapshot ) );
+		}
+		return $snapshot;
+	}
+
 	/**
 	 * Write a canonical financial fingerprint through WooCommerce CRUD.
 	 *
