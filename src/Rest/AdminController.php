@@ -157,7 +157,7 @@ final class AdminController {
 		$requested = $this->integer( $request->get_param( 'campaign_id' ) ?? 0, 0, PHP_INT_MAX );
 		$campaign  = $requested ? $this->required_campaign( $requested ) : $this->repository->current();
 		$page      = $this->integer( $request->get_param( 'page' ) ?? 1, 1, 100000 );
-		$manager   = $campaign && 'products' === $request->get_param( 'view' ) ? $this->repository->manager_items( (int) $campaign['id'], $page, sanitize_text_field( (string) ( $request->get_param( 'search' ) ?? '' ) ), $this->choice( $request->get_param( 'stock' ) ?? 'all', array( 'all', 'instock', 'outofstock' ) ), sanitize_key( $this->text( $request->get_param( 'status' ) ?? '' ) ) ) : null;
+		$manager   = $campaign && 'products' === $request->get_param( 'view' ) ? $this->repository->manager_items( (int) $campaign['id'], $page, sanitize_text_field( (string) ( $request->get_param( 'search' ) ?? '' ) ), $this->choice( $request->get_param( 'stock' ) ?? 'all', array( 'all', 'instock', 'outofstock' ) ), sanitize_key( $this->text( $request->get_param( 'status' ) ?? '' ) ), $this->choice( $request->get_param( 'floor' ) ?? 'all', array( 'all', 'set', 'missing' ) ) ) : null;
 		$items     = null !== $manager ? $manager['items'] : ( $campaign ? $this->repository->items( (int) $campaign['id'], 25, ( $page - 1 ) * 25 ) : array() );
 		foreach ( $items as &$item ) {
 			$product         = wc_get_product( (int) $item['product_id'] );
@@ -838,7 +838,12 @@ final class AdminController {
 			if ( ! $changes ) {
 				throw new InvalidArgumentException( esc_html__( 'تغییری انتخاب نشده است.', 'exin-black-friday' ) );
 			}
-			$this->selection->update( $id, $product, $changes );
+			if ( isset( $changes['floor_price'] ) && ! array_diff( array_keys( $changes ), array( 'floor_price', 'floor_override' ) ) ) {
+				$options = array_key_exists( 'expected_floor_price', $data ) ? array( 'expected_floor_price' => $data['expected_floor_price'] ) : array();
+				$this->selection->update_floor( $id, $product, $changes['floor_price'], $options );
+			} else {
+				$this->selection->update( $id, $product, $changes );
+			}
 		}
 		return array( 'item' => $this->repository->item( $id, $product ) );
 	}
@@ -884,14 +889,8 @@ final class AdminController {
 				}
 				$product = $this->integer( $row['product_id'] ?? 0, 1, PHP_INT_MAX );
 				if ( 'floors' === $action ) {
-					$this->selection->update(
-						$id,
-						$product,
-						array(
-							'floor_price'    => $this->validated_floor( $this->required_campaign( $id ), $product, $row['floor_price'] ?? '', $this->amount_unit( $data ) ),
-							'floor_override' => 1,
-						)
-					);
+					$options = array_key_exists( 'expected_floor_price', $row ) ? array( 'expected_floor_price' => $row['expected_floor_price'] ) : array();
+					$pricing = $this->selection->update_floor( $id, $product, $this->validated_floor( $this->required_campaign( $id ), $product, $row['floor_price'] ?? '', $this->amount_unit( $data ) ), $options );
 				} elseif ( 'add' === $action ) {
 					$this->selection->add( $id, $product, $this->decimal( $row['floor_price'] ?? '', $this->amount_unit( $data ) ) );
 				} else {
@@ -900,10 +899,21 @@ final class AdminController {
 					}
 					$this->selection->remove( $id, $product );
 				}
-				$results[] = array(
+				$result = array(
 					'product_id' => $product,
 					'ok'         => true,
 				);
+				if ( 'floors' === $action ) {
+					$saved   = $this->repository->item( $id, $product );
+					$result += array(
+						'floor_price'    => $saved['floor_price'],
+						'floor_override' => $saved['floor_override'],
+						'status'         => $saved['status'],
+						'product_price'  => wc_get_product( $product )->get_price(),
+						'pricing'        => $pricing,
+					);
+				}
+				$results[] = $result;
 			} catch ( \Throwable $error ) {
 				$results[] = array(
 					'product_id' => $product,
@@ -1244,14 +1254,14 @@ final class AdminController {
 	 * Require draft status, except floor-only requests validated under item locks.
 	 *
 	 * @param int  $id Campaign ID.
-	 * @param bool $floor_only Permit active floor requests; the service restricts repairs.
+	 * @param bool $floor_only Permit scheduled/active floor requests under item locks.
 	 * @return array Editable campaign.
 	 * @throws InvalidArgumentException When the campaign has left draft status.
 	 */
 	private function editable_campaign( int $id, bool $floor_only = false ): array {
 		$campaign = $this->required_campaign( $id );
-		if ( 'draft' !== $campaign['status'] && ! ( $floor_only && 'active' === $campaign['status'] ) ) {
-			throw new InvalidArgumentException( esc_html__( 'تغییر قیمت مبنا و کف پس از شروع کمپین مجاز نیست.', 'exin-black-friday' ) );
+		if ( ! empty( $campaign['settings']['restoring'] ) || ( 'draft' !== $campaign['status'] && ! ( $floor_only && in_array( $campaign['status'], array( 'scheduled', 'active' ), true ) ) ) ) {
+			throw new InvalidArgumentException( esc_html__( 'ویرایش ساختار فقط در پیش‌نویس و ویرایش کف فقط در پیش‌نویس، زمان‌بندی‌شده یا فعال مجاز است.', 'exin-black-friday' ) );
 		}
 		return $campaign;
 	}
@@ -1265,6 +1275,8 @@ final class AdminController {
 	 */
 	private function domain_message( string $code ): string {
 		$messages = array(
+			'floor_price_changed'                         => __( 'کف توسط کاربر دیگری تغییر کرده است؛ جدول را تازه کنید و با Esc مقدار ثبت‌شده را برگردانید، سپس دوباره ویرایش کنید.', 'exin-black-friday' ),
+			'floor_edit_conflict'                         => __( 'ویرایش کف به دلیل وضعیت محصول، مالکیت قیمت یا عملیات ناتمام ممکن نیست؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),
 			'product_floor_required' => __( 'کف این محصول باید عددی بزرگ‌تر از صفر باشد؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),
 			'floor_exceeds_base' => __( 'کف قیمت نباید از قیمت مبنا بیشتر باشد؛ مقدار قبلی حفظ شد.', 'exin-black-friday' ),			'invalid_automatic_base_floor_or_stage'       => __( 'روش خودکار برای هر محصول به قیمت اصلی معتبر و کف مثبت و کمتر یا مساوی قیمت اصلی نیاز دارد؛ ابتدا کف‌ها را تعیین کنید.', 'exin-black-friday' ),
 			'automatic_flash_capacity_exceeded'           => __( 'فاصلهٔ Flash برای تعداد محصولات و بودجهٔ پردازش فعلی کوتاه است؛ فاصله را بیشتر کنید.', 'exin-black-friday' ),
@@ -1351,8 +1363,7 @@ final class AdminController {
 	 */
 	private function validated_floor( array $campaign, int $product, mixed $value, string $unit ): string {
 		$floor = $this->decimal( $value, $unit );
-		$positive = DiscountPlan::automatic( $campaign ) || ! isset( $campaign['settings']['discount_plan'] ) || \Exin\BlackFriday\Application\FloorGuard::positive( $this->repository->item( (int) $campaign['id'], $product )['floor_price'] ?? null, wc_get_price_decimals() );
-		if ( $positive && \Exin\BlackFriday\Domain\Money::parse( $floor, wc_get_price_decimals() ) <= 0 ) {
+		if ( ! \Exin\BlackFriday\Application\FloorGuard::positive( $floor, wc_get_price_decimals() ) ) {
 			throw new InvalidArgumentException( 'product_floor_required' );
 		}
 		return $floor;

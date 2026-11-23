@@ -42,7 +42,7 @@ final class FloorGuard {
 		$s   = $item['snapshot'];
 		return '' !== ( $s['sale'] ?? '' ) && ( null === ( $s['from'] ?? null ) || $s['from'] <= $now ) && ( null === ( $s['to'] ?? null ) || $s['to'] > $now ) ? $s['sale'] : $s['regular'];
 	}
-	/** Recompute custom stages from the saved plan, never from stale stage prices.
+	/** Read the saved plan at the current floor, never stale cached stage prices.
 	 *
 	 * @param array $item Item.
 	 * @param array $campaign Campaign.
@@ -52,7 +52,7 @@ final class FloorGuard {
 		$p = (int) $campaign['settings']['precision'];
 		if ( ! self::positive( $item['floor_price'] ?? null, $p, $item['base_price'] ) ) {
 			return self::ordinary( $item ); }
-		$schedule = ( $campaign['settings']['discount_plan']['mode'] ?? '' ) === 'custom' ? DiscountPlan::schedule( $item['base_price'], (string) $item['floor_price'], $campaign ) : $item['schedule'];
+		$schedule = DiscountPlan::schedule( $item['base_price'], (string) $item['floor_price'], $campaign );
 		$price    = Money::parse( $schedule[ $stage ] ?? '', $p );
 		return Money::format( max( Money::parse( (string) $item['floor_price'], $p ), min( Money::parse( $item['base_price'], $p ), $price ) ), $p );
 	}

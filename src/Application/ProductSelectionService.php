@@ -119,7 +119,7 @@ final class ProductSelectionService {
 					'product:' . $product_id,
 					function () use ( $campaign_id, $product_id, $floor, $options ) {
 						$campaign = $this->require_campaign( $campaign_id );
-						if ( ! in_array( $campaign['status'], array( 'draft', 'scheduled', 'active', 'paused' ), true ) ) {
+						if ( 'draft' !== $campaign['status'] || ! empty( $campaign['settings']['restoring'] ) ) {
 							throw new \DomainException( 'campaign_not_editable' );
 						}
 						if ( 'active' === $campaign['status'] && ( ! CampaignContext::is_live( $campaign ) || ! empty( $campaign['settings']['restoring'] ) ) ) {
@@ -254,6 +254,82 @@ final class ProductSelectionService {
 		);
 	}
 
+
+	/** Update only a selected product's manual floor under the existing locks.
+	 *
+	 * @param int    $campaign_id Campaign.
+	 * @param int    $product_id Selected product.
+	 * @param string $floor Canonical store currency amount.
+	 * @param array  $options Optional original stored floor for optimistic concurrency.
+	 * @return string Pricing outcome; pending means the durable retry owns recovery.
+	 * @throws \DomainException On invalid, stale or unsafe updates.
+	 * @throws \RuntimeException On persistence or queue failure.
+	 */
+	public function update_floor( int $campaign_id, int $product_id, string $floor, array $options = array() ): string {
+		return ( new LockManager() )->run(
+			'campaign:' . $campaign_id,
+			function () use ( $campaign_id, $product_id, $floor, $options ): string {
+				return ( new LockManager() )->run(
+					'product:' . $product_id,
+					function () use ( $campaign_id, $product_id, $floor, $options ): string {
+						$c = $this->require_campaign( $campaign_id );
+						$i = $this->repo->item( $campaign_id, $product_id );
+						if ( ! in_array( $c['status'], array( 'draft', 'scheduled', 'active' ), true ) || ! empty( $c['settings']['restoring'] ) || ( 'draft' !== $c['status'] && strtotime( $c['end_utc'] . ' UTC' ) <= time() ) || ( 'active' === $c['status'] && ! CampaignContext::is_live( $c ) ) ) {
+							throw new \DomainException( 'campaign_not_editable' ); }
+						if ( ! CampaignContext::eligible_item( $i ) || ! empty( $i['intent'] ) || $this->repo->owned_elsewhere( $campaign_id, $product_id ) ) {
+							throw new \DomainException( 'floor_edit_conflict' ); }
+						$winner = 'active' === $c['status'] && ! $i['expected'] ? $this->repo->winner_for_product( $product_id, time() ) : null;
+						if ( $winner && (int) $winner['id'] !== $campaign_id ) {
+							throw new \DomainException( 'floor_edit_conflict' ); }
+						if ( ( $c['settings']['currency'] ?? '' ) !== get_woocommerce_currency() || (int) ( $c['settings']['precision'] ?? -1 ) !== wc_get_price_decimals() ) {
+							throw new \DomainException( 'store_currency_or_precision_changed' ); }
+						if ( ! FloorGuard::positive( $floor, wc_get_price_decimals(), $i['base_price'] ) ) {
+							throw new \DomainException( 'product_floor_required' ); }
+						if ( array_key_exists( 'expected_floor_price', $options ) ) {
+							if ( $options['expected_floor_price'] !== $i['floor_price'] ) {
+								throw new \DomainException( 'floor_price_changed' ); }
+						} elseif ( 'draft' !== $c['status'] && FloorGuard::positive( $i['floor_price'] ?? null, wc_get_price_decimals(), $i['base_price'] ) ) {
+							throw new \DomainException( 'floor_price_changed' ); }
+						$p = $this->require_product( $product_id );
+						if ( ! PriceState::same( PriceState::capture( $p ), $i['expected'] ? $i['expected'] : $i['snapshot'] ) || PriceState::dynamic( $p ) ) {
+							throw new \DomainException( 'floor_edit_conflict' ); }
+						$this->preview( $campaign_id, $product_id, $floor );
+						$floor = PriceState::money( $floor );
+						$apply = 'active' === $c['status'] && 'paused' !== $i['status'];
+						$this->repo->transaction(
+							function () use ( $campaign_id, $product_id, $floor, $c, $apply ) {
+								$this->repo->put_item(
+									$campaign_id,
+									$product_id,
+									array(
+										'floor_price'    => $floor,
+										'floor_override' => 1,
+									)
+								);
+								if ( $apply ) {
+									$args = array( $campaign_id, $product_id, $c['version'], 'apply', 0 );
+									if ( ! as_has_scheduled_action( 'exin_bf_retry', $args, Scheduler::GROUP ) && ! as_enqueue_async_action( 'exin_bf_retry', $args, Scheduler::GROUP, true ) ) {
+										throw new \RuntimeException( 'floor_price_queue_failed' ); }
+								}
+							}
+						);
+						$result = $c['status'];
+						if ( $apply ) {
+							try {
+								$result = ( new PriceProcessor( $this->repo, new Logger() ) )->apply( $campaign_id, $product_id, $c['version'] );
+							} catch ( \Throwable $error ) {
+											$result = 'pending'; }
+							if ( ! in_array( $result, array( 'changed', 'unchanged' ), true ) ) {
+								$result = 'pending'; }
+						}
+						\Exin\BlackFriday\Infrastructure\Cache::invalidate( $product_id );
+						return $result;
+					}
+				);
+			}
+		);
+	}
+
 	/**
 	 * Update allowed product controls and editable draft financial settings.
 	 *
@@ -275,8 +351,15 @@ final class ProductSelectionService {
 						if ( ! $item || 'removed' === $item['status'] ) {
 							throw new \DomainException( 'item_not_found' );
 						}
-						$repair_floor = 'active' === $campaign['status'] && CampaignContext::is_live( $campaign ) && empty( $campaign['settings']['restoring'] ) && isset( $data['floor_price'] ) && ! isset( $data['floor_policy'] ) && ! FloorGuard::positive( $item['floor_price'] ?? null, wc_get_price_decimals(), $item['base_price'] ) && FloorGuard::positive( $data['floor_price'], wc_get_price_decimals(), $item['base_price'] ) && ! $item['intent'] && ! $this->repo->owned_elsewhere( $campaign_id, $product_id ) && ( new \Exin\BlackFriday\Integration\Eligibility( $this->repo ) )->owns( $campaign, $product_id );
-						$changes      = array_intersect_key( $data, array_flip( array( 'priority', 'featured', 'status', 'floor_override' ) ) );
+						if ( ! empty( $campaign['settings']['restoring'] ) ) {
+							throw new \DomainException( 'campaign_not_editable' ); }
+						if ( 'draft' !== $campaign['status'] ) {
+							if ( isset( $data['floor_price'] ) && ! array_diff( array_keys( $data ), array( 'floor_price', 'floor_override', 'expected_floor_price' ) ) ) {
+								$this->update_floor( $campaign_id, $product_id, (string) $data['floor_price'], $data );
+								return; }
+							throw new \DomainException( 'financial_settings_frozen' );
+						}
+						$changes = array_intersect_key( $data, array_flip( array( 'priority', 'featured', 'status', 'floor_override' ) ) );
 						if ( isset( $changes['status'] ) ) {
 							if ( ! in_array( $changes['status'], array( 'paused', 'included' ), true ) || in_array( $item['status'], array( 'conflict', 'completed' ), true ) ) {
 								throw new \DomainException( 'invalid_item_transition' );
@@ -291,16 +374,15 @@ final class ProductSelectionService {
 								$changes['status'] = 'active';
 							}
 						}
-						if ( ! $repair_floor && isset( $data['floor_override'] ) && ( $item['expected'] || $item['intent'] ) ) {
+						if ( isset( $data['floor_override'] ) && ( $item['expected'] || $item['intent'] ) ) {
 							throw new \DomainException( 'financial_settings_frozen' ); }
 						if ( isset( $data['floor_price'] ) || isset( $data['floor_policy'] ) ) {
-							if ( ! $repair_floor && ( 'draft' !== $campaign['status'] || $item['expected'] || $item['intent'] ) ) {
+							if ( ( 'draft' !== $campaign['status'] || $item['expected'] || $item['intent'] ) ) {
 								throw new \DomainException( 'financial_settings_frozen' );
 							}
-							$preview                = $this->preview( $campaign_id, $product_id, (string) ( $data['floor_price'] ?? $item['floor_price'] ), $data );
-							$changes['floor_price'] = $preview['floor_price'];
-							if ( ! $repair_floor ) {
-								$changes['schedule'] = DiscountPlan::automatic( $campaign ) ? array() : $preview['schedule']; }
+							$preview                   = $this->preview( $campaign_id, $product_id, (string) ( $data['floor_price'] ?? $item['floor_price'] ), $data );
+							$changes['floor_price']    = $preview['floor_price'];
+							$changes['schedule']       = DiscountPlan::automatic( $campaign ) ? array() : $preview['schedule'];
 							$changes['floor_override'] = isset( $data['floor_override'] ) ? (int) (bool) $data['floor_override'] : ( isset( $data['floor_price'] ) || array_key_exists( $product_id, $data['floor_policy']['floors'] ?? array() ) ? 1 : (int) ( $item['floor_override'] ?? 0 ) );
 						}
 						if ( isset( $changes['priority'] ) ) {
@@ -310,8 +392,6 @@ final class ProductSelectionService {
 							$changes['featured'] = (int) (bool) $changes['featured'];
 						}
 						$this->repo->put_item( $campaign_id, $product_id, $changes );
-						if ( $repair_floor ) {
-							\Exin\BlackFriday\Infrastructure\Cache::invalidate( $product_id ); }
 						( new Logger() )->log(
 							'info',
 							'item_updated',
@@ -342,6 +422,9 @@ final class ProductSelectionService {
 				( new LockManager() )->run(
 					'product:' . $product_id,
 					function () use ( $campaign_id, $product_id ) {
+						$c = $this->require_campaign( $campaign_id );
+						if ( 'draft' !== $c['status'] || ! empty( $c['settings']['restoring'] ) ) {
+							throw new \DomainException( 'campaign_not_editable' ); }
 						$item = $this->repo->item( $campaign_id, $product_id );
 						if ( ! $item ) {
 							throw new \DomainException( 'item_not_found' );

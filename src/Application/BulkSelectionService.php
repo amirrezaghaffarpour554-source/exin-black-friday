@@ -382,7 +382,7 @@ final class BulkSelectionService {
 	}
 
 	/**
-	 * Load an unowned draft or a still-live active campaign.
+	 * Load an unowned draft for membership changes.
 	 *
 	 * @param int $campaign_id Campaign identifier.
 	 * @return array Durable editable campaign record.
@@ -390,7 +390,7 @@ final class BulkSelectionService {
 	 */
 	private function editable( int $campaign_id ): array {
 		$campaign = $this->repo->get( $campaign_id );
-		if ( ! $campaign || ! in_array( $campaign['status'], array( 'draft', 'active' ), true ) || ! empty( $campaign['settings']['restoring'] ) || ( 'active' === $campaign['status'] ? ! \Exin\BlackFriday\Integration\CampaignContext::is_live( $campaign ) : ( ! empty( $campaign['settings']['started_at'] ) || $this->repo->has_ownership( $campaign_id ) ) ) ) {
+		if ( ! $campaign || 'draft' !== $campaign['status'] || ! empty( $campaign['settings']['restoring'] ) || ! empty( $campaign['settings']['started_at'] ) || $this->repo->has_ownership( $campaign_id ) ) {
 			throw new \DomainException( 'selection_requires_editable_campaign' );
 		}
 		if ( isset( $campaign['settings']['currency'] ) && ( get_woocommerce_currency() !== $campaign['settings']['currency'] || wc_get_price_decimals() !== (int) $campaign['settings']['precision'] ) ) {
