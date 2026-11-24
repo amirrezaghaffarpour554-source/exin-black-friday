@@ -52,7 +52,15 @@ final class FloorGuard {
 		$p = (int) $campaign['settings']['precision'];
 		if ( ! self::positive( $item['floor_price'] ?? null, $p, $item['base_price'] ) ) {
 			return self::ordinary( $item ); }
-		$schedule = DiscountPlan::schedule( $item['base_price'], (string) $item['floor_price'], $campaign );
+		static $schedules = array();
+                $key = serialize( array( $item['base_price'], (string) $item['floor_price'], $campaign ) );
+                if ( ! array_key_exists( $key, $schedules ) ) {
+                        if ( count( $schedules ) >= 2048 ) {
+                                $schedules = array();
+                        }
+                        $schedules[$key] = DiscountPlan::schedule( $item['base_price'], (string) $item['floor_price'], $campaign );
+                }
+                $schedule = $schedules[$key];
 		$price    = Money::parse( $schedule[ $stage ] ?? '', $p );
 		return Money::format( max( Money::parse( (string) $item['floor_price'], $p ), min( Money::parse( $item['base_price'], $p ), $price ) ), $p );
 	}
@@ -69,11 +77,44 @@ final class FloorGuard {
 		++self::$reading;
 		$owned = false;
 		try {
-			$r = new CampaignRepository();
-			$c = $r->campaign_for_product( $product->get_id() );
+			static $campaigns = array(), $items = array();
+                        $pid = $product->get_id();
+                        $cacheable = did_action( 'wp' )
+                                && 'GET' === ( $_SERVER['REQUEST_METHOD'] ?? '' )
+                                && empty( $_GET )
+                                && ! is_admin()
+                                && ! wp_doing_ajax()
+                                && ! wp_doing_cron()
+                                && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST )
+                                && ! ( defined( 'WP_CLI' ) && WP_CLI )
+                                && ! is_user_logged_in()
+                                && ! is_cart()
+                                && ! is_checkout()
+                                && ! is_account_page()
+                                && ( is_front_page() || is_shop() || is_product_category() || is_product_tag() || is_product() )
+                                && WC()->cart
+                                && WC()->cart->is_empty();
+                        $key = $pid . ':' . time();
+                        $r = new CampaignRepository();
+			if ( $cacheable ) {
+                                if ( ! array_key_exists( $key, $campaigns ) ) {
+                                        $campaigns[$key] = $r->campaign_for_product( $pid );
+                                }
+                                $c = $campaigns[$key];
+                        } else {
+                                $c = $r->campaign_for_product( $pid );
+                        }
 			if ( ! $c || ! CampaignContext::is_live( $c ) || ! empty( $c['settings']['restoring'] ) ) {
 				return $price; }
-			$i = $r->item( $c['id'], $product->get_id() );
+			if ( $cacheable ) {
+                                $item_key = $c['id'] . ':' . $key;
+                                if ( ! array_key_exists( $item_key, $items ) ) {
+                                        $items[$item_key] = $r->item( $c['id'], $pid );
+                                }
+                                $i = $items[$item_key];
+                        } else {
+                                $i = $r->item( $c['id'], $pid );
+                        }
 			if ( ! CampaignContext::eligible_item( $i ) || ( $i['snapshot']['currency'] ?? '' ) !== get_woocommerce_currency() || (int) ( $i['snapshot']['precision'] ?? -1 ) !== wc_get_price_decimals() || ! ( PriceState::same( PriceState::capture( $product ), $i['expected'] ? $i['expected'] : $i['snapshot'] ) || ( ! empty( $i['intent']['target'] ) && PriceState::same( PriceState::capture( $product ), $i['intent']['target'] ) ) ) || PriceState::dynamic( $product ) ) {
 				return $price; }
 			$owned   = true;
