@@ -112,7 +112,11 @@ final class Timeline {
 	 * @throws InvalidArgumentException When the timezone identifier is unsupported.
 	 */
 	private static function timezone( string $name ): DateTimeZone {
-		if ( ! in_array( $name, DateTimeZone::listIdentifiers( DateTimeZone::ALL_WITH_BC ), true ) ) {
+		static $identifiers = null;
+                if ( null === $identifiers ) {
+                        $identifiers = DateTimeZone::listIdentifiers( DateTimeZone::ALL_WITH_BC );
+                }
+                if ( ! in_array( $name, $identifiers, true ) ) {
 			throw new InvalidArgumentException( 'Timezone must be a supported IANA identifier.' );
 		}
 		return new DateTimeZone( $name );
