@@ -182,5 +182,96 @@
     "scope": "WP CLI microbenchmarks, 20 healthy checks / 5 samples per scale; p95 nearest rank; no HTTP/Production"
   },
   "base": "64d7458fa7b863d49e0821fddf671515bc3f0a48",
-  "release_gate": "BLOCKED: baseline retry test failure, missing full HTTP/Redis matrix"
+  "release_gate": "BLOCKED: critical Redis/compatibility/browser checkout scenarios remain unverified; baseline Retry failure resolved by focused audit",
+  "release_audit_microbenchmark": {
+    "recovery": {
+      "median_ms": 0.0068,
+      "p95_ms": 0.019739,
+      "queries": 0,
+      "writes": 0,
+      "locks": 0
+    },
+    "cold_option_cache": [
+      {
+        "ms": 0.998853,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.524974,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 2.88887,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.581727,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.50167,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.645251,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.508189,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.516982,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.627395,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.57635,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      }
+    ],
+    "schedule": {
+      "100": {
+        "median_ms": 0.440299,
+        "p95_ms": 4.217439
+      },
+      "1000": {
+        "median_ms": 42.790121,
+        "p95_ms": 47.320911
+      },
+      "2000": {
+        "median_ms": 83.161405,
+        "p95_ms": 84.825969
+      },
+      "10000": {
+        "median_ms": 417.695233,
+        "p95_ms": 468.687578
+      }
+    },
+    "peak_bytes": 134021120,
+    "scope": "WP CLI microbenchmarks, 20 healthy checks / 5 samples per scale; p95 nearest rank; no HTTP/Production"
+  }
 }

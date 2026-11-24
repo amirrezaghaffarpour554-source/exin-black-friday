@@ -2,6 +2,11 @@
 
 ## 1.4.0 — performance release candidate
 
+- Release-blocking audit: recover due reservations after completed cursors without resetting retry budgets or overwriting counters.
+- Require timely 60-second watchdogs; cancel duplicates only under recovery-owned AS claims and acknowledge flags atomically.
+- Bind automatic helper memo entries to campaign timing; add real HTTP/10,000-product, concurrent recovery and cross-process upgrade/rollback tests.
+- Redis-enabled/failure and full interactive browser checkout validation remain unverified; see the release audit report.
+
 - Health-gated request recovery; bounded recurring-watchdog reconciliation through supported AS APIs.
 - Pricing memo keys exclude operational progress and retain only 128 schedules.
 - No schema or financial-record migration; existing retention and notification semantics preserved.
