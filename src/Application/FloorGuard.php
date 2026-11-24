@@ -53,9 +53,9 @@ final class FloorGuard {
 		if ( ! self::positive( $item['floor_price'] ?? null, $p, $item['base_price'] ) ) {
 			return self::ordinary( $item ); }
 		static $schedules = array();
-                $key = serialize( array( $item['base_price'], (string) $item['floor_price'], $campaign ) );
+                $key = serialize( array( $item['base_price'], (string) $item['floor_price'], $p, $campaign['days'], $campaign['strategy'], $campaign['power'], $campaign['rounding'], $campaign['settings']['discount_plan'] ?? null ) );
                 if ( ! array_key_exists( $key, $schedules ) ) {
-                        if ( count( $schedules ) >= 2048 ) {
+                        if ( count( $schedules ) >= 128 ) {
                                 $schedules = array();
                         }
                         $schedules[$key] = DiscountPlan::schedule( $item['base_price'], (string) $item['floor_price'], $campaign );
