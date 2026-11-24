@@ -73,35 +73,65 @@ final class Scheduler {
 	 *
 	 * @return void Operation result.
 	 */
-	public function recover(): void {
-		if ( ! function_exists( 'as_schedule_recurring_action' ) || ! function_exists( 'as_has_scheduled_action' ) ) {
+	public function maybe_recover(): void {
+		$now = time();
+		$health = get_option( 'exin_bf_recovery_health', array() );
+		$last_tick = get_option( 'exin_bf_last_tick', '' );
+		$heartbeat = $last_tick ? strtotime( $last_tick . ' UTC' ) : false;
+		$urgent = get_option( 'exin_bf_needs_recovery' ) || get_option( 'exin_bf_boot_error' );
+		if ( ! $urgent && ( $health['release'] ?? '' ) === EXIN_BF_VERSION && $heartbeat && $heartbeat > $now - 180 && $heartbeat <= $now + 60 && ( $health['verified'] ?? 0 ) > $now - 60 ) {
 			return;
 		}
-		if ( class_exists( \ActionScheduler::class ) && method_exists( \ActionScheduler::class, 'is_initialized' ) && ! \ActionScheduler::is_initialized() ) {
+		if ( (int) get_option( 'exin_bf_recovery_attempt', 0 ) > $now - 30 ) {
+			return;
+		}
+		update_option( 'exin_bf_recovery_attempt', $now, false );
+		$this->recover();
+	}
+
+	/** Explicit recovery also serves activation, manual calls and delayed AS init. */
+	public function recover(): void {
+		if ( ! function_exists( 'as_schedule_recurring_action' ) || ! function_exists( 'as_has_scheduled_action' ) ) {
+			update_option( 'exin_bf_needs_recovery', 1, false );
+			return;
+		}
+		if ( class_exists( \ActionScheduler::class ) && ! \ActionScheduler::is_initialized() ) {
+			update_option( 'exin_bf_needs_recovery', 1, false );
 			add_action( 'action_scheduler_init', array( $this, 'recover' ), 20 );
 			return;
 		}
 		try {
-			( new LockManager() )->run(
-				'scheduler-recover',
-				function () {
-					if ( ! as_has_scheduled_action( 'exin_bf_tick', array(), self::GROUP ) ) {
-						if ( ! as_schedule_recurring_action( time() + 5, 60, 'exin_bf_tick', array(), self::GROUP, true ) ) {
-							throw new \RuntimeException( 'action_scheduler_watchdog_schedule_failed' );
-						}
+			( new LockManager() )->run( 'scheduler-recover', function (): void {
+				$flag = get_option( 'exin_bf_needs_recovery' );
+				$store = \ActionScheduler::store();
+				// Only recurring watchdogs with the exact group/empty arguments qualify.
+				// Claimed and running actions are left alone; the next verification
+				// reconciles any successor they create after completing.
+				$actions = as_get_scheduled_actions( array( 'hook' => 'exin_bf_tick', 'group' => self::GROUP, 'args' => array(), 'status' => 'pending', 'per_page' => 100, 'orderby' => 'date', 'order' => 'ASC' ), 'ids' );
+				$keeper = false;
+				foreach ( $actions as $id ) {
+					$action = $store->fetch_action( $id );
+					if ( $action->get_args() || ! $action->get_schedule()->is_recurring() ) { continue; }
+					if ( ! $keeper ) { $keeper = true; continue; }
+					if ( ! $store->get_claim_id( $id ) && 'pending' === $store->get_status( $id ) ) {
+						$store->cancel_action( $id );
 					}
 				}
-			);
+				if ( ! $keeper && ! as_schedule_recurring_action( time() + 5, 60, 'exin_bf_tick', array(), self::GROUP, false ) ) {
+					throw new \RuntimeException( 'action_scheduler_watchdog_schedule_failed' );
+				}
+				if ( ! as_has_scheduled_action( 'exin_bf_tick', array(), self::GROUP ) ) {
+					throw new \RuntimeException( 'action_scheduler_watchdog_verify_failed' );
+				}
+				update_option( 'exin_bf_recovery_health', array( 'verified' => time(), 'release' => EXIN_BF_VERSION ), false );
+				if ( count( $actions ) >= 100 ) { update_option( 'exin_bf_needs_recovery', 1, false ); }
+				elseif ( get_option( 'exin_bf_needs_recovery' ) === $flag ) { delete_option( 'exin_bf_needs_recovery' ); }
+				delete_option( 'exin_bf_boot_error' );
+			} );
 		} catch ( \Throwable $error ) {
+			update_option( 'exin_bf_needs_recovery', 1, false );
 			if ( 'lock_busy' !== $error->getMessage() ) {
-				$this->logger->log(
-					'error',
-					'scheduler_recovery',
-					array(
-						'error_code' => $this->code( $error ),
-						'result'     => 'retry_next_request',
-					)
-				);
+				$this->logger->log( 'error', 'scheduler_recovery', array( 'error_code' => $this->code( $error ), 'result' => 'retry_next_request' ) );
 			}
 		}
 	}
@@ -243,7 +273,10 @@ final class Scheduler {
 						$this->stage( $campaign['id'], $campaign['version'] );
 					}
 					$current = $this->repo->current();
-					$this->logger->prune( (int) ( $current['settings']['retention_days'] ?? 90 ) );
+					if ( (int) get_option( 'exin_bf_retention_checked', 0 ) < time() - DAY_IN_SECONDS ) {
+						$this->logger->prune( (int) ( $current['settings']['retention_days'] ?? 90 ) );
+						update_option( 'exin_bf_retention_checked', time(), false );
+					}
 					update_option( 'exin_bf_last_tick', gmdate( 'Y-m-d H:i:s' ), false );
 				}
 			);
