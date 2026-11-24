@@ -1,5 +1,12 @@
 # تغییرات EXIN Black Friday
 
+## 1.4.0 — performance release candidate
+
+- Health-gated request recovery; bounded recurring-watchdog reconciliation through supported AS APIs.
+- Pricing memo keys exclude operational progress and retain only 128 schedules.
+- No schema or financial-record migration; existing retention and notification semantics preserved.
+- See docs/v140-performance.md for measured results, compatibility, release blockers and Persian upgrade/rollback instructions.
+
 ## 1.3.1 — 2026-11-22
 
 - ویرایش مستقیم کف در جدول و ذخیرهٔ گروهی دسته‌های ۲۵تایی؛ حفظ ویرایش‌ها بین صفحات، جست‌وجوی نام/SKU/شناسه و نمایش رنگ و موجودی واقعی Variation.

@@ -1,0 +1,186 @@
+{
+  "before": {
+    "recovery": {
+      "median_ms": 0.69099,
+      "p95_ms": 1.0437,
+      "queries": 5,
+      "writes": 2,
+      "locks": 1
+    },
+    "cold_option_cache": [
+      {
+        "ms": 0.414501,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      },
+      {
+        "ms": 0.386521,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      },
+      {
+        "ms": 0.443685,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      },
+      {
+        "ms": 0.380912,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      },
+      {
+        "ms": 0.690598,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      },
+      {
+        "ms": 0.42023,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      },
+      {
+        "ms": 0.459958,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      },
+      {
+        "ms": 0.61704,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      },
+      {
+        "ms": 0.607115,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      },
+      {
+        "ms": 0.415043,
+        "queries": 5,
+        "writes": 2,
+        "locks": 1
+      }
+    ],
+    "schedule": {
+      "100": {
+        "median_ms": 6.029385,
+        "p95_ms": 20.428375
+      },
+      "1000": {
+        "median_ms": 67.672497,
+        "p95_ms": 209.148829
+      },
+      "2000": {
+        "median_ms": 135.318464,
+        "p95_ms": 147.263539
+      },
+      "10000": {
+        "median_ms": 663.445088,
+        "p95_ms": 724.976927
+      }
+    },
+    "peak_bytes": 173867008,
+    "scope": "WP CLI microbenchmarks, 20 healthy checks / 5 samples per scale; p95 nearest rank; no HTTP/Production"
+  },
+  "after": {
+    "recovery": {
+      "median_ms": 0.00702,
+      "p95_ms": 0.029874,
+      "queries": 0,
+      "writes": 0,
+      "locks": 0
+    },
+    "cold_option_cache": [
+      {
+        "ms": 0.913518,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.764468,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.599634,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.543332,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.537833,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.512236,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.533548,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.487049,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.692171,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      },
+      {
+        "ms": 0.566946,
+        "queries": 5,
+        "writes": 0,
+        "locks": 0
+      }
+    ],
+    "schedule": {
+      "100": {
+        "median_ms": 0.428852,
+        "p95_ms": 4.516302
+      },
+      "1000": {
+        "median_ms": 43.682138,
+        "p95_ms": 44.802381
+      },
+      "2000": {
+        "median_ms": 84.875215,
+        "p95_ms": 99.194279
+      },
+      "10000": {
+        "median_ms": 446.236268,
+        "p95_ms": 463.60837
+      }
+    },
+    "peak_bytes": 131923968,
+    "scope": "WP CLI microbenchmarks, 20 healthy checks / 5 samples per scale; p95 nearest rank; no HTTP/Production"
+  },
+  "base": "64d7458fa7b863d49e0821fddf671515bc3f0a48",
+  "release_gate": "BLOCKED: baseline retry test failure, missing full HTTP/Redis matrix"
+}

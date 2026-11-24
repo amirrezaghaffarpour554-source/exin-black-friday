@@ -85,6 +85,17 @@ final class Scheduler {
 		if ( (int) get_option( 'exin_bf_recovery_attempt', 0 ) > $now - 30 ) {
 			return;
 		}
+		// A healthy periodic check is read-only with respect to scheduler records.
+		if ( ! $urgent && ( $health['release'] ?? '' ) === EXIN_BF_VERSION && $heartbeat && $heartbeat > $now - 180 && $heartbeat <= $now + 60 && class_exists( \ActionScheduler::class ) && \ActionScheduler::is_initialized() ) {
+			$ids = as_get_scheduled_actions( array( 'hook' => 'exin_bf_tick', 'group' => self::GROUP, 'args' => array(), 'status' => 'pending', 'per_page' => 2 ), 'ids' );
+			if ( count( $ids ) === 1 ) {
+				$action = \ActionScheduler::store()->fetch_action( $ids[0] );
+				if ( ! $action->get_args() && $action->get_schedule()->is_recurring() ) {
+					update_option( 'exin_bf_recovery_health', array( 'verified' => $now, 'release' => EXIN_BF_VERSION ), false );
+					return;
+				}
+			}
+		}
 		update_option( 'exin_bf_recovery_attempt', $now, false );
 		$this->recover();
 	}
@@ -273,10 +284,7 @@ final class Scheduler {
 						$this->stage( $campaign['id'], $campaign['version'] );
 					}
 					$current = $this->repo->current();
-					if ( (int) get_option( 'exin_bf_retention_checked', 0 ) < time() - DAY_IN_SECONDS ) {
-						$this->logger->prune( (int) ( $current['settings']['retention_days'] ?? 90 ) );
-						update_option( 'exin_bf_retention_checked', time(), false );
-					}
+					$this->logger->prune( (int) ( $current['settings']['retention_days'] ?? 90 ) );
 					update_option( 'exin_bf_last_tick', gmdate( 'Y-m-d H:i:s' ), false );
 				}
 			);
