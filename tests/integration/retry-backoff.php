@@ -26,7 +26,7 @@ $assert = static function ( $condition, string $message ) use ( &$checks ) {
 	}
 	echo 'PASS ' . $message . "\n";
 };
-$fixture = static function () use ( $repository, $selection ) {
+$fixture = static function ( bool $activate = true ) use ( $repository, $selection ) {
 	$id = $repository->create( array( 'title' => 'EXIN TEST durable retries', 'start_utc' => gmdate( 'Y-m-d H:i:s', time() - 3 * DAY_IN_SECONDS ), 'end_utc' => gmdate( 'Y-m-d H:i:s', time() + 4 * DAY_IN_SECONDS ), 'status' => 'draft' ) );
 	$product = new WC_Product_Simple();
 	$product->set_name( 'EXIN TEST retry reservation' );
@@ -34,7 +34,9 @@ $fixture = static function () use ( $repository, $selection ) {
 	$product->set_regular_price( '100.00' );
 	$product->save();
 	$selection->add( $id, $product->get_id(), '40.00' );
-	$repository->save( $id, array( 'status' => 'active' ) );
+	if ( $activate ) {
+		$repository->save( $id, array( 'status' => 'active' ) );
+	}
 	return array( $id, $product->get_id(), $repository->get( $id )['version'] );
 };
 $due = static function ( int $id, int $product_id ) use ( $repository ) {
@@ -158,7 +160,40 @@ $due( $audit_id, $audit_product );
 $scheduler->retry( $audit_id, $audit_product, $audit_version, 'apply', 1 );
 $assert( null === $repository->item( $audit_id, $audit_product )['retry_state'] && null === $repository->item( $audit_id, $audit_product )['intent'], 'Repairing diagnostic storage lets the original durable retry recover safely' );
 
-list( $pagination_id, $pagination_first ) = $fixture();
+// A completed main cursor must not abandon due failures, or sweep the entire
+// campaign. Recovery rotates through at most the normal twenty-five-row batch.
+list( $bounded_id, $bounded_first, $bounded_version ) = $fixture( false );
+$bounded_products = array( $bounded_first );
+for ( $number = 1; $number < 26; ++$number ) {
+	$product = new WC_Product_Simple();
+	$product->set_name( 'EXIN TEST bounded retry ' . $number );
+	$product->set_status( 'publish' );
+	$product->set_regular_price( '100.00' );
+	$product->save();
+	$selection->add( $bounded_id, $product->get_id(), '40.00' );
+	$bounded_products[] = $product->get_id();
+}
+$repository->save( $bounded_id, array( 'status' => 'active' ) );
+$bounded_campaign = $repository->get( $bounded_id );
+$bounded_stage = \Exin\BlackFriday\Domain\DiscountPlan::index( $bounded_campaign, time() );
+foreach ( $bounded_products as $bounded_product ) {
+	$repository->put_item( $bounded_id, $bounded_product, array( 'retry_state' => array( 'version' => $bounded_version, 'mode' => 'apply', 'attempt' => 0, 'next_at' => time() - 1, 'running' => false, 'exhausted' => false ) ) );
+}
+$bounded_settings = $bounded_campaign['settings'];
+$bounded_settings['last_run'] = array( 'version' => $bounded_version, 'stage' => $bounded_stage, 'mode' => 'apply', 'changed' => 0, 'unchanged' => 0, 'errors' => 26, 'skipped' => 0, 'after' => max( $bounded_products ), 'complete' => true, 'pending_results' => array_fill_keys( $bounded_products, 'errors' ) );
+$repository->save( $bounded_id, array( 'settings' => $bounded_settings ) );
+$scheduler->batch( $bounded_id, $bounded_version, 0, 'apply' );
+$bounded_run = $repository->get( $bounded_id )['settings']['last_run'];
+$assert( 25 === $bounded_run['changed'] && 1 === $bounded_run['errors'] && $bounded_run['complete'] && $bounded_run['after'] === max( $bounded_products ), 'Completed traversal recovers only twenty-five due retries without resetting execution progress' );
+$assert( null !== $repository->item( $bounded_id, end( $bounded_products ) )['retry_state'], 'The twenty-sixth retry remains durably pending for the next bounded pass' );
+$scheduler->batch( $bounded_id, $bounded_version, 0, 'apply' );
+$bounded_run = $repository->get( $bounded_id )['settings']['last_run'];
+$assert( 26 === $bounded_run['changed'] && 0 === $bounded_run['errors'], 'Wake cursor rotation reaches remaining failures and retains fresh result counters' );
+$assert( null === $repository->item( $bounded_id, end( $bounded_products ) )['retry_state'] && '40.00' === $repository->item( $bounded_id, end( $bounded_products ) )['floor_price'], 'Bounded retry completion preserves manual floors and clears only its own reservation' );
+
+// Membership edits are draft-only since PR #13; the pagination assertions
+// remain unchanged and exercise the permitted draft selection workflow.
+list( $pagination_id, $pagination_first ) = $fixture( false );
 $other_products = array();
 foreach ( array( 1, 2 ) as $number ) {
 	$product = new WC_Product_Simple();
@@ -178,7 +213,7 @@ $assert( 'removed' === $repository->item( $pagination_id, $pagination_first )['s
 $snapshot_before_upgrade = $repository->item( $pagination_id, $pagination_first )['snapshot'];
 update_option( 'exin_bf_schema_version', '1', false );
 Migration::run();
-$assert( '3' === get_option( 'exin_bf_schema_version' ) && $snapshot_before_upgrade === $repository->item( $pagination_id, $pagination_first )['snapshot'], 'Schema one upgrades through durable retries to schema three without changing historical snapshots' );
+$assert( '6' === get_option( 'exin_bf_schema_version' ) && $snapshot_before_upgrade === $repository->item( $pagination_id, $pagination_first )['snapshot'], 'Schema one upgrades through durable retries to current schema six without changing historical snapshots' );
 
 $retention_campaign = $repository->current();
 $retention_settings = $retention_campaign['settings'];

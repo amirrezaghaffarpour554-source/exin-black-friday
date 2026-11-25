@@ -30,7 +30,7 @@ final class Plugin {
 	 */
 	public static function activate(): void {
 		Migration::run();
-		update_option( 'exin_bf_needs_recovery', 1, false );
+		update_option( 'exin_bf_needs_recovery', wp_generate_uuid4(), false );
 	}
 
 	/**
@@ -41,7 +41,7 @@ final class Plugin {
 	public static function deactivate(): void {
 		Scheduler::deactivate();
 		wp_clear_scheduled_hook( 'exin_bf_watchdog' );
-		update_option( 'exin_bf_needs_recovery', 1, false );
+		update_option( 'exin_bf_needs_recovery', wp_generate_uuid4(), false );
 	}
 
 	/**
@@ -93,8 +93,7 @@ final class Plugin {
 			'init',
 			static function () use ( $scheduler, $logger ) {
 				try {
-					$scheduler->recover();
-					delete_option( 'exin_bf_boot_error' );
+					$scheduler->maybe_recover();
 				} catch ( \Throwable $error ) {
 					try {
 						$logger->log( 'error', 'recovery', array( 'error_code' => 'recovery_failed' ) );

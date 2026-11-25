@@ -1,0 +1,55 @@
+[
+  {
+    "phase": "prepare",
+    "passed": 5,
+    "failed": 0,
+    "version": "1.3.2",
+    "schema": "6"
+  },
+  {
+    "phase": "verify_new",
+    "passed": 19,
+    "failed": 0,
+    "version": "1.4.0",
+    "schema": "6",
+    "selected_products": 72,
+    "positive_floors": 54,
+    "missing_floors": 18,
+    "raw_hashes": {
+      "campaigns": "b546ef1f177d8f95696b21b5593176dce12b5d4e2f0e8e86bd78cefff67fea1d",
+      "items": "0a3834a599c8dcbdedc1e6d483d6eacb07f2b868f76512717a2d5c0ea2cc4ea3",
+      "product_posts": "c082abe23cbf17230c0e3b4f584fbfdd35a44225ba2a5bdd218b990e921b51ee",
+      "product_metadata": "d7dc45131ed182bd3e4b4cf118dd60070d56bbd2e07f4d8860ccf660f22504f3",
+      "wc_orders": "252833fb2dda8d698d6dc6dab62ab01ad1a5e1d3fd8eb7ed68a6af00957c21f2",
+      "wc_order_addresses": "35786c7117b4e38d0f169239752ce71158266ae2f6e4aa230fbbb87bd699c0e3",
+      "wc_order_operational_data": "204e2e36310a72e0d2bd57294e7d92f3b0c422b1d2c64046f75dac12f1fa9391",
+      "wc_orders_meta": "4417062a3845085f7b765789673a0b1f4c4986de1aeba96ceafad62591b5ca1d",
+      "order_items": "bfca61add69c02dd101e630b03ac821df0ee1a2b91379611a28cf4228ba7b77a",
+      "order_item_metadata": "addede2b452988ed9518519767ba87c5d9e127a512744567915e20b28bf512c3",
+      "store_settings": "c96fca0e0ca492d2c97af4ba7caad77993e590ea72c3d923a2563cac9b95dbdb"
+    }
+  },
+  {
+    "phase": "verify_old",
+    "passed": 19,
+    "failed": 0,
+    "version": "1.3.2",
+    "schema": "6",
+    "selected_products": 72,
+    "positive_floors": 54,
+    "missing_floors": 18,
+    "raw_hashes": {
+      "campaigns": "b546ef1f177d8f95696b21b5593176dce12b5d4e2f0e8e86bd78cefff67fea1d",
+      "items": "0a3834a599c8dcbdedc1e6d483d6eacb07f2b868f76512717a2d5c0ea2cc4ea3",
+      "product_posts": "c082abe23cbf17230c0e3b4f584fbfdd35a44225ba2a5bdd218b990e921b51ee",
+      "product_metadata": "d7dc45131ed182bd3e4b4cf118dd60070d56bbd2e07f4d8860ccf660f22504f3",
+      "wc_orders": "252833fb2dda8d698d6dc6dab62ab01ad1a5e1d3fd8eb7ed68a6af00957c21f2",
+      "wc_order_addresses": "35786c7117b4e38d0f169239752ce71158266ae2f6e4aa230fbbb87bd699c0e3",
+      "wc_order_operational_data": "204e2e36310a72e0d2bd57294e7d92f3b0c422b1d2c64046f75dac12f1fa9391",
+      "wc_orders_meta": "4417062a3845085f7b765789673a0b1f4c4986de1aeba96ceafad62591b5ca1d",
+      "order_items": "bfca61add69c02dd101e630b03ac821df0ee1a2b91379611a28cf4228ba7b77a",
+      "order_item_metadata": "addede2b452988ed9518519767ba87c5d9e127a512744567915e20b28bf512c3",
+      "store_settings": "c96fca0e0ca492d2c97af4ba7caad77993e590ea72c3d923a2563cac9b95dbdb"
+    }
+  }
+]

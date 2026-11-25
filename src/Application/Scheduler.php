@@ -73,35 +73,124 @@ final class Scheduler {
 	 *
 	 * @return void Operation result.
 	 */
-	public function recover(): void {
-		if ( ! function_exists( 'as_schedule_recurring_action' ) || ! function_exists( 'as_has_scheduled_action' ) ) {
+	public function maybe_recover(): void {
+		$now = time();
+		$health = get_option( 'exin_bf_recovery_health', array() );
+		$last_tick = get_option( 'exin_bf_last_tick', '' );
+		$heartbeat = $last_tick ? strtotime( $last_tick . ' UTC' ) : false;
+		$urgent = get_option( 'exin_bf_needs_recovery' ) || get_option( 'exin_bf_boot_error' );
+		if ( ! $urgent && ( $health['release'] ?? '' ) === EXIN_BF_VERSION && $heartbeat && $heartbeat > $now - 180 && $heartbeat <= $now + 60 && ( $health['verified'] ?? 0 ) > $now - 60 ) {
 			return;
 		}
-		if ( class_exists( \ActionScheduler::class ) && method_exists( \ActionScheduler::class, 'is_initialized' ) && ! \ActionScheduler::is_initialized() ) {
+		if ( (int) get_option( 'exin_bf_recovery_attempt', 0 ) > $now - 30 ) {
+			return;
+		}
+		// A healthy periodic check is read-only with respect to scheduler records.
+		if ( ! $urgent && ( $health['release'] ?? '' ) === EXIN_BF_VERSION && $heartbeat && $heartbeat > $now - 180 && $heartbeat <= $now + 60 && class_exists( \ActionScheduler::class ) && \ActionScheduler::is_initialized() ) {
+			$ids = as_get_scheduled_actions( array( 'hook' => 'exin_bf_tick', 'group' => self::GROUP, 'args' => array(), 'status' => 'pending', 'per_page' => 2 ), 'ids' );
+			if ( count( $ids ) === 1 ) {
+				$action = \ActionScheduler::store()->fetch_action( $ids[0] );
+				if ( $this->timely_watchdog( $action ) ) {
+					update_option( 'exin_bf_recovery_health', array( 'verified' => $now, 'release' => EXIN_BF_VERSION ), false );
+					return;
+				}
+			}
+		}
+		update_option( 'exin_bf_recovery_attempt', $now, false );
+		$this->recover();
+	}
+
+	/** Exact cadence and a runnable/near-term successor, never just any AS match. */
+	private function timely_watchdog( $action ): bool {
+		$schedule = $action->get_schedule();
+		return ! $action->get_args() && $schedule->is_recurring()
+			&& 60 === (int) $schedule->get_recurrence()
+			&& $schedule->get_date()->getTimestamp() <= time() + 60;
+	}
+
+	/** Read recovery acknowledgements from the DB, bypassing request/Redis caches. */
+	private function recovery_value( string $name ): ?string {
+		global $wpdb;
+		return $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name=%s', $wpdb->options, $name ) );
+	}
+
+	/** Drop only this plugin's option cache entries after atomic recovery operations. */
+	private function recovery_cache( string $name ): void {
+		wp_cache_delete( $name, 'options' );
+		wp_cache_delete( 'notoptions', 'options' );
+		wp_cache_delete( 'alloptions', 'options' );
+	}
+
+	/** Acknowledge exactly the observed flag; a concurrently replaced token survives. */
+	private function acknowledge_recovery( string $name, ?string $value ): void {
+		if ( null === $value ) { return; }
+		global $wpdb;
+		if ( false === $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE option_name=%s AND BINARY option_value=%s', $wpdb->options, $name, $value ) ) ) {
+			throw new \RuntimeException( 'recovery_acknowledgement_failed' );
+		}
+		$this->recovery_cache( $name );
+	}
+
+	/** Insert a failure flag without replacing a newer activation/recovery token. */
+	private function request_recovery(): void {
+		global $wpdb;
+		$wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO %i (option_name,option_value,autoload) VALUES (%s,%s,'off')", $wpdb->options, 'exin_bf_needs_recovery', wp_generate_uuid4() ) );
+		$this->recovery_cache( 'exin_bf_needs_recovery' );
+	}
+
+	/** Explicit recovery also serves activation, manual calls and delayed AS init. */
+	public function recover(): void {
+		if ( ! function_exists( 'as_schedule_recurring_action' ) || ! function_exists( 'as_has_scheduled_action' ) ) {
+			$this->request_recovery();
+			return;
+		}
+		if ( class_exists( \ActionScheduler::class ) && ! \ActionScheduler::is_initialized() ) {
+			$this->request_recovery();
 			add_action( 'action_scheduler_init', array( $this, 'recover' ), 20 );
 			return;
 		}
 		try {
-			( new LockManager() )->run(
-				'scheduler-recover',
-				function () {
-					if ( ! as_has_scheduled_action( 'exin_bf_tick', array(), self::GROUP ) ) {
-						if ( ! as_schedule_recurring_action( time() + 5, 60, 'exin_bf_tick', array(), self::GROUP, true ) ) {
-							throw new \RuntimeException( 'action_scheduler_watchdog_schedule_failed' );
+			( new LockManager() )->run( 'scheduler-recover', function (): void {
+				$flag = $this->recovery_value( 'exin_bf_needs_recovery' );
+				$error = $this->recovery_value( 'exin_bf_boot_error' );
+				$store = \ActionScheduler::store();
+				// Owned AS claims exclude the runner. Advisory locks alone do not.
+				$claim = $store->stake_claim( 100, as_get_datetime_object( '9999-12-31 00:00:00' ), array( 'exin_bf_tick' ), self::GROUP );
+				try {
+					$owned = $claim->get_actions();
+					$keeper = 0;
+					foreach ( $owned as $id ) {
+						if ( $this->timely_watchdog( $store->fetch_action( $id ) ) ) { $keeper = $id; break; }
+					}
+					if ( ! $keeper ) {
+						$keeper = as_schedule_recurring_action( time() + 5, 60, 'exin_bf_tick', array(), self::GROUP, false );
+						if ( ! $keeper ) { throw new \RuntimeException( 'action_scheduler_watchdog_schedule_failed' ); }
+					}
+					foreach ( $owned as $id ) {
+						$action = $store->fetch_action( $id );
+						if ( $id !== $keeper && ! $action->get_args() && $action->get_schedule()->is_recurring()
+							&& (int) $store->get_claim_id( $id ) === (int) $claim->get_id() && 'pending' === $store->get_status( $id ) ) {
+							$store->cancel_action( $id );
 						}
 					}
+				} finally {
+					$store->release_claim( $claim );
 				}
-			);
+				$actions = as_get_scheduled_actions( array( 'hook' => 'exin_bf_tick', 'group' => self::GROUP, 'args' => array(), 'status' => 'pending', 'per_page' => 100, 'orderby' => 'date', 'order' => 'ASC' ), 'ids' );
+				$verified = false;
+				foreach ( $actions as $id ) {
+					if ( $this->timely_watchdog( $store->fetch_action( $id ) ) ) { $verified = true; break; }
+				}
+				if ( ! $verified ) { throw new \RuntimeException( 'action_scheduler_watchdog_verify_failed' ); }
+				update_option( 'exin_bf_recovery_health', array( 'verified' => time(), 'release' => EXIN_BF_VERSION ), false );
+				if ( count( $actions ) >= 100 || count( $owned ) >= 100 ) { $this->request_recovery(); }
+				else { $this->acknowledge_recovery( 'exin_bf_needs_recovery', $flag ); }
+				$this->acknowledge_recovery( 'exin_bf_boot_error', $error );
+			} );
 		} catch ( \Throwable $error ) {
+			$this->request_recovery();
 			if ( 'lock_busy' !== $error->getMessage() ) {
-				$this->logger->log(
-					'error',
-					'scheduler_recovery',
-					array(
-						'error_code' => $this->code( $error ),
-						'result'     => 'retry_next_request',
-					)
-				);
+				$this->logger->log( 'error', 'scheduler_recovery', array( 'error_code' => $this->code( $error ), 'result' => 'retry_next_request' ) );
 			}
 		}
 	}
@@ -386,11 +475,12 @@ final class Scheduler {
 	 * Recreate a missing retry after a worker died with a reserved attempt.
 	 *
 	 * @param array $campaign Current durable campaign state.
+	 * @param bool  $execute_due Execute only due reservations through the existing budget guard.
 	 * @return void
 	 */
-	private function recover_pending( array $campaign ): void {
+	private function recover_pending( array $campaign, bool $execute_due = false ): void {
 		$run = $campaign['settings']['last_run'] ?? array();
-		if ( ( $run['version'] ?? null ) !== $campaign['version'] ) {
+		if ( ( $run['version'] ?? null ) !== $campaign['version'] || ! isset( $run['stage'], $run['mode'] ) ) {
 			return;
 		}
 		$pending = (array) ( $run['pending_results'] ?? array() );
@@ -416,6 +506,10 @@ final class Scheduler {
 			if ( ! is_array( $retry ) || ! empty( $retry['exhausted'] ) || ( $retry['version'] ?? null ) !== $campaign['version'] ) {
 				continue;
 			}
+			if ( $execute_due && (int) $retry['next_at'] <= time() ) {
+				$this->perform( (int) $campaign['id'], $product_id, (int) $campaign['version'], $retry['mode'], 0, null, false );
+				continue;
+			}
 			$attempt = (int) $retry['attempt'] < self::RETRIES ? (int) $retry['attempt'] + 1 : 0;
 			$args    = array( (int) $campaign['id'], $product_id, (int) $campaign['version'], $retry['mode'], $attempt );
 			if ( ! as_has_scheduled_action( 'exin_bf_retry', $args, self::GROUP ) ) {
@@ -423,8 +517,16 @@ final class Scheduler {
 			}
 		}
 		if ( $ids ) {
-			$settings             = $campaign['settings'];
-			$settings['last_run'] = $run;
+			// A due retry may update counters and pending results. Persist only the
+			// wake cursor on the latest report, never the pre-retry settings copy.
+			$current = $this->repo->get( $campaign['id'] );
+			if ( ! $current ) { return; }
+			$settings = $current['settings'];
+			if ( ! $this->same_run( $settings['last_run'] ?? array(), $run['version'], $run['stage'], $run['mode'] ) ) {
+				return;
+			}
+			if ( ( $settings['last_run']['wake_after'] ?? 0 ) === $run['wake_after'] ) { return; }
+			$settings['last_run']['wake_after'] = $run['wake_after'];
 			$this->repo->save( $campaign['id'], array( 'settings' => $settings ) );
 		}
 	}
@@ -495,6 +597,22 @@ final class Scheduler {
 					}
 					$run     = $campaign['settings']['last_run'] ?? array();
 					$matches = $this->same_run( $run, $version, $stage, $mode );
+					if ( $matches && ! empty( $run['pending_results'] ) ) {
+						( new LockManager() )->run( 'campaign:' . $campaign_id, function () use ( $campaign_id, $version, $stage, $mode ): void {
+							$current = $this->repo->get( $campaign_id );
+							if ( $this->valid( $current, $version, $mode ) && $this->same_run( $current['settings']['last_run'] ?? array(), $version, $stage, $mode ) ) {
+								$this->recover_pending( $current, true );
+							}
+						} );
+						$campaign = $this->repo->get( $campaign_id );
+						if ( ! $this->valid( $campaign, $version, $mode ) ) { return; }
+						if ( 'apply' === $mode && DiscountPlan::index( $campaign, time() ) !== $stage ) {
+							$this->enqueue_batch( $campaign_id, $version, 0, $mode );
+							return;
+						}
+						$run = $campaign['settings']['last_run'] ?? array();
+						$matches = $this->same_run( $run, $version, $stage, $mode );
+					}
 					if ( $matches && ! empty( $run['complete'] ) ) {
 						return;
 					}
