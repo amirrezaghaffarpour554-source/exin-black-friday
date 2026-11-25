@@ -1,5 +1,7 @@
 # v1.4.1 initial infrastructure gate
 
+Historical inspection at 933ba1e. Superseded by [development audit](v141-development-audit.md): the worker was restored, development and tests proceeded, and a draft change is available. Release certification remains blocked.
+
 RELEASE BLOCKED. Base ac7e206bd4135ec646f7d3b12144f82408b4accd; branch feature/v1.4.1-root-cause-performance.
 
 This is infrastructure inspection only, not a completed audit or implementation.

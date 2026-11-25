@@ -163,8 +163,9 @@ final class AdminController {
 			$product         = wc_get_product( (int) $item['product_id'] );
 			$image           = $product ? wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' ) : false;
 			$stock_product = $product;
-			if ( $product && $product->get_stock_managed_by_id() !== $product->get_id() ) {
-				$stock_product = wc_get_product( $product->get_stock_managed_by_id() ) ?: $product;
+			$stock_id = $product ? $product->get_stock_managed_by_id() : 0;
+			if ( $product && $stock_id !== $product->get_id() ) {
+				$stock_product = wc_get_product( $stock_id ) ?: $product;
 			}
 			$item['product'] = $product ? array(
 				'name'          => $product->get_name(),
