@@ -3,7 +3,7 @@ Contributors: exin
 Tags: woocommerce, campaign, black-friday, pricing
 Requires at least: 6.5
 Requires PHP: 8.2
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: exin-black-friday

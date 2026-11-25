@@ -503,12 +503,42 @@ final class CampaignRepository {
 	 */
 	public function campaign_for_product( int $product_id ): ?array {
 		global $wpdb;
-		$id = $wpdb->get_var( $wpdb->prepare( "SELECT campaign_id FROM %i WHERE product_id=%d AND ((expected IS NOT NULL AND expected<>'null') OR (intent IS NOT NULL AND intent<>'null')) ORDER BY campaign_id ASC LIMIT 1", $this->table( 'items' ), $product_id ) );
-		if ( $id ) {
-			$campaign = $this->get( (int) $id );
-			return \Exin\BlackFriday\Integration\CampaignContext::is_live( $campaign ) ? $campaign : null;
+		// One coherent read preserves lowest-owner precedence, including orphaned
+		// ownership rows. Never cache this authoritative financial resolution.
+		$now = gmdate( 'Y-m-d H:i:s' );
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT c.*,i.status AS membership_status,i.expected AS owned_expected,i.intent AS owned_intent FROM %i i LEFT JOIN %i c ON c.id=i.campaign_id WHERE i.product_id=%d AND (((i.expected IS NOT NULL AND i.expected<>'null') OR (i.intent IS NOT NULL AND i.intent<>'null')) OR (i.status IN ('included','pending','active','sold_out') AND c.status IN ('active','scheduled') AND c.start_utc<=%s AND c.end_utc>%s)) ORDER BY i.campaign_id ASC", $this->table( 'items' ), $this->table( 'campaigns' ), $product_id, $now, $now ), ARRAY_A );
+		if ( ! is_array( $rows ) ) { return null; }
+		foreach ( $rows as $row ) {
+			$owned = ( null !== $row['owned_expected'] && 'null' !== $row['owned_expected'] ) || ( null !== $row['owned_intent'] && 'null' !== $row['owned_intent'] );
+			if ( $owned ) {
+				unset( $row['membership_status'], $row['owned_expected'], $row['owned_intent'] );
+				$c = $row['id'] ? $this->decode_campaign( $row ) : null;
+				return \Exin\BlackFriday\Integration\CampaignContext::is_live( $c ) ? $c : null;
+			}
 		}
-		return $this->winner_for_product( $product_id, time() );
+		$winner = null;
+		foreach ( $rows as $row ) {
+			$status = $row['membership_status'];
+			unset( $row['membership_status'], $row['owned_expected'], $row['owned_intent'] );
+			$c = $row['id'] ? $this->decode_campaign( $row ) : null;
+			if ( ! $c || ! in_array( $status, array( 'included','pending','active','sold_out' ), true ) || ! in_array( $c['status'], array( 'active','scheduled' ), true ) || $c['start_utc'] > $now || $c['end_utc'] <= $now || ! empty( $c['settings']['restoring'] ) ) { continue; }
+			if ( ! $winner || (int) ( $c['settings']['priority'] ?? 0 ) > (int) ( $winner['settings']['priority'] ?? 0 ) ) { $winner = $c; }
+		}
+		return $winner;
+	}
+
+	/** Superset of potentially guarded variations; null retains the original path on SQL failure. */
+	public function recorded_products( array $ids ): ?array {
+		if ( count( $ids ) > 500 ) { return null; }
+		global $wpdb;
+		$found = array();
+		foreach ( array_chunk( array_values( array_unique( array_map( 'absint', $ids ) ) ), 500 ) as $chunk ) {
+			$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+			$rows = $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT product_id FROM %i WHERE product_id IN ($placeholders)", array_merge( array( $this->table( 'items' ) ), $chunk ) ) );
+			if ( ! is_array( $rows ) || $wpdb->last_error ) { return null; }
+			foreach ( $rows as $id ) { $found[ (int) $id ] = true; }
+		}
+		return $found;
 	}
 
 	/**

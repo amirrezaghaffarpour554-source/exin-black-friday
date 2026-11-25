@@ -9,7 +9,7 @@ spec = importlib.util.spec_from_file_location("build", root / "scripts/build.py"
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 target = module.build()
-assert target.name == "exin-black-friday-v1.4.0.zip", "Release filename must match the requested version"
+assert target.name == "exin-black-friday-v1.4.1.zip", "Release filename must match the requested version"
 first = target.read_bytes()
 module.build()
 assert target.read_bytes() == first, "Release build must be deterministic"

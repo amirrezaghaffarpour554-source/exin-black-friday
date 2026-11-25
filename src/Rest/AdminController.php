@@ -162,12 +162,17 @@ final class AdminController {
 		foreach ( $items as &$item ) {
 			$product         = wc_get_product( (int) $item['product_id'] );
 			$image           = $product ? wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' ) : false;
+			$stock_product = $product;
+			$stock_id = $product ? $product->get_stock_managed_by_id() : 0;
+			if ( $product && $stock_id !== $product->get_id() ) {
+				$stock_product = wc_get_product( $stock_id ) ?: $product;
+			}
 			$item['product'] = $product ? array(
 				'name'          => $product->get_name(),
 				'sku'           => $product->get_sku(),
 				'price'         => $product->get_price(),
 				'regular_price' => $product->get_regular_price(),
-				'stock'         => ( wc_get_product( $product->get_stock_managed_by_id() ) ?: $product )->get_stock_quantity(),
+				'stock'         => $stock_product->get_stock_quantity(),
 				'color'         => $product->get_attribute( 'pa_color' ) ?: $product->get_attribute( 'color' ),
 				'stock_status'  => $product->get_stock_status(),
 				'image'         => false !== $image ? $image : '',

@@ -138,7 +138,12 @@ final class FloorGuard {
 	 * @param bool        $display Tax display values.
 	 */
 	public static function variations( array $prices, $product, bool $display ): array {
+		// The existence prefilter cannot exclude any recorded ownership/status.
+		// Actual financial decisions remain fresh in filter(); no price is cached.
+		$recorded = count( $prices['price'] ?? array() ) >= 4 && count( $prices['price'] ?? array() ) <= 500 ? ( new CampaignRepository() )->recorded_products( array_keys( $prices['price'] ) ) : null;
 		foreach ( $prices['price'] ?? array() as $id => $price ) {
+			if ( null !== $recorded && ! isset( $recorded[ (int) $id ] ) ) { continue; }
+
 			$v = wc_get_product( $id );
 			if ( ! $v ) {
 				continue; }

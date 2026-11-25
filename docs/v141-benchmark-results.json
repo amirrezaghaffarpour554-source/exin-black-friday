@@ -1,0 +1,320 @@
+{
+  "status": "RELEASE BLOCKED",
+  "measurements": [
+    {
+      "file": "http-verified-source.json",
+      "boundary": "Isolated development run before version-only bump and admin local-variable reuse; candidate reported 1.4.0; not release certification",
+      "results": [
+        {
+          "variant": "baseline",
+          "path": "/",
+          "samples": 30,
+          "median_ms": 729.3775065045338,
+          "p95_ms": 810.7535500021186,
+          "variance_ms2": 1813.8536596969877,
+          "non_200": 0,
+          "median_queries": 445.0,
+          "median_plugin_queries": 330.0,
+          "median_cpu_ms": 653.7465,
+          "median_peak_bytes": 89653248.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "candidate",
+          "path": "/",
+          "samples": 30,
+          "median_ms": 707.542320000357,
+          "p95_ms": 787.2786179941613,
+          "variance_ms2": 2350.816385868544,
+          "non_200": 0,
+          "median_queries": 318.0,
+          "median_plugin_queries": 203.0,
+          "median_cpu_ms": 645.288,
+          "median_peak_bytes": 89653248.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "disabled",
+          "path": "/",
+          "samples": 30,
+          "median_ms": 486.3364140037447,
+          "p95_ms": 550.4247290009516,
+          "variance_ms2": 1055.2126839551013,
+          "non_200": 0,
+          "median_queries": 113.0,
+          "median_plugin_queries": 0.0,
+          "median_cpu_ms": 460.926,
+          "median_peak_bytes": 87556096.0,
+          "versions": [
+            null
+          ]
+        },
+        {
+          "variant": "baseline",
+          "path": "/?utm_source=audit",
+          "samples": 30,
+          "median_ms": 1572.381652000331,
+          "p95_ms": 1880.053267996118,
+          "variance_ms2": 22641.382943765202,
+          "non_200": 0,
+          "median_queries": 5216.0,
+          "median_plugin_queries": 5101.0,
+          "median_cpu_ms": 963.684,
+          "median_peak_bytes": 100139008.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "candidate",
+          "path": "/?utm_source=audit",
+          "samples": 30,
+          "median_ms": 1405.6536885036621,
+          "p95_ms": 1635.0928109968663,
+          "variance_ms2": 14747.727584021019,
+          "non_200": 0,
+          "median_queries": 3229.0,
+          "median_plugin_queries": 3114.0,
+          "median_cpu_ms": 937.713,
+          "median_peak_bytes": 95944704.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "disabled",
+          "path": "/?utm_source=audit",
+          "samples": 30,
+          "median_ms": 498.193410498061,
+          "p95_ms": 605.4862830060301,
+          "variance_ms2": 2690.235383660836,
+          "non_200": 0,
+          "median_queries": 113.0,
+          "median_plugin_queries": 0.0,
+          "median_cpu_ms": 473.0005,
+          "median_peak_bytes": 87556096.0,
+          "versions": [
+            null
+          ]
+        },
+        {
+          "variant": "baseline",
+          "path": "/shop/",
+          "samples": 30,
+          "median_ms": 374.6447630037437,
+          "p95_ms": 393.1538479955634,
+          "variance_ms2": 152.11473542430483,
+          "non_200": 0,
+          "median_queries": 91.0,
+          "median_plugin_queries": 5.0,
+          "median_cpu_ms": 350.834,
+          "median_peak_bytes": 85458944.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "candidate",
+          "path": "/shop/",
+          "samples": 30,
+          "median_ms": 371.29232399820467,
+          "p95_ms": 413.5085390007589,
+          "variance_ms2": 365.1985789760388,
+          "non_200": 0,
+          "median_queries": 91.0,
+          "median_plugin_queries": 5.0,
+          "median_cpu_ms": 347.384,
+          "median_peak_bytes": 85458944.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "disabled",
+          "path": "/shop/",
+          "samples": 30,
+          "median_ms": 367.82066349405795,
+          "p95_ms": 413.770270999521,
+          "variance_ms2": 488.48435650019127,
+          "non_200": 0,
+          "median_queries": 84.0,
+          "median_plugin_queries": 0.0,
+          "median_cpu_ms": 346.16549999999995,
+          "median_peak_bytes": 83361792.0,
+          "versions": [
+            null
+          ]
+        },
+        {
+          "variant": "baseline",
+          "path": "/product/release-product-1/",
+          "samples": 30,
+          "median_ms": 404.02103749875096,
+          "p95_ms": 542.472920002183,
+          "variance_ms2": 2811.5807512861934,
+          "non_200": 0,
+          "median_queries": 84.0,
+          "median_plugin_queries": 5.0,
+          "median_cpu_ms": 385.7285,
+          "median_peak_bytes": 85458944.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "candidate",
+          "path": "/product/release-product-1/",
+          "samples": 30,
+          "median_ms": 407.5133879996429,
+          "p95_ms": 479.34655399876647,
+          "variance_ms2": 1404.357821262528,
+          "non_200": 0,
+          "median_queries": 84.0,
+          "median_plugin_queries": 5.0,
+          "median_cpu_ms": 388.276,
+          "median_peak_bytes": 85458944.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "disabled",
+          "path": "/product/release-product-1/",
+          "samples": 30,
+          "median_ms": 386.03079349923064,
+          "p95_ms": 434.83372499758843,
+          "variance_ms2": 614.0340106844519,
+          "non_200": 0,
+          "median_queries": 77.0,
+          "median_plugin_queries": 0.0,
+          "median_cpu_ms": 370.6995,
+          "median_peak_bytes": 83361792.0,
+          "versions": [
+            null
+          ]
+        }
+      ]
+    },
+    {
+      "file": "http-v141-final.json",
+      "boundary": "Versioned run overlaps regression subprocesses; diagnostic only",
+      "results": [
+        {
+          "variant": "baseline",
+          "path": "/",
+          "samples": 30,
+          "median_ms": 723.8449505020981,
+          "p95_ms": 832.835638000688,
+          "variance_ms2": 1835.8812643467966,
+          "non_200": 0,
+          "median_queries": 445.0,
+          "median_plugin_queries": 330.0,
+          "median_cpu_ms": 656.7384999999999,
+          "median_peak_bytes": 89653248.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "candidate",
+          "path": "/",
+          "samples": 30,
+          "median_ms": 717.6146609963325,
+          "p95_ms": 791.0446189998765,
+          "variance_ms2": 1805.6166773488492,
+          "non_200": 0,
+          "median_queries": 318.0,
+          "median_plugin_queries": 203.0,
+          "median_cpu_ms": 658.79,
+          "median_peak_bytes": 89653248.0,
+          "versions": [
+            "1.4.1"
+          ]
+        },
+        {
+          "variant": "disabled",
+          "path": "/",
+          "samples": 30,
+          "median_ms": 497.6894924984663,
+          "p95_ms": 590.4194300019299,
+          "variance_ms2": 1353.0572234353592,
+          "non_200": 0,
+          "median_queries": 113.0,
+          "median_plugin_queries": 0.0,
+          "median_cpu_ms": 474.87,
+          "median_peak_bytes": 87556096.0,
+          "versions": [
+            null
+          ]
+        },
+        {
+          "variant": "baseline",
+          "path": "/?utm_source=audit",
+          "samples": 30,
+          "median_ms": 1607.82698550247,
+          "p95_ms": 3447.854135003581,
+          "variance_ms2": 274920.01165537466,
+          "non_200": 0,
+          "median_queries": 5216.0,
+          "median_plugin_queries": 5101.0,
+          "median_cpu_ms": 983.5695000000001,
+          "median_peak_bytes": 100139008.0,
+          "versions": [
+            "1.4.0"
+          ]
+        },
+        {
+          "variant": "candidate",
+          "path": "/?utm_source=audit",
+          "samples": 30,
+          "median_ms": 1355.0284105003811,
+          "p95_ms": 2007.4459440002101,
+          "variance_ms2": 116087.92478528075,
+          "non_200": 0,
+          "median_queries": 3229.0,
+          "median_plugin_queries": 3114.0,
+          "median_cpu_ms": 900.7135000000001,
+          "median_peak_bytes": 95944704.0,
+          "versions": [
+            "1.4.1"
+          ]
+        },
+        {
+          "variant": "disabled",
+          "path": "/?utm_source=audit",
+          "samples": 30,
+          "median_ms": 492.56295850136667,
+          "p95_ms": 1123.567467002431,
+          "variance_ms2": 35711.95788384082,
+          "non_200": 0,
+          "median_queries": 113.0,
+          "median_plugin_queries": 0.0,
+          "median_cpu_ms": 469.76800000000003,
+          "median_peak_bytes": 87556096.0,
+          "versions": [
+            null
+          ]
+        }
+      ]
+    }
+  ],
+  "fixture": {
+    "catalog_products": 10001,
+    "variation_children": 2,
+    "selected_products": 1752,
+    "positive_floors": 1576,
+    "missing_floors": 176,
+    "homepage_cards": 125,
+    "widgets": 8,
+    "theme": "Twenty Twenty-One",
+    "redis": false,
+    "hpos": true,
+    "opcache": false,
+    "savequeries": true,
+    "shop_html_cards": 0
+  }
+}

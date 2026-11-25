@@ -1,5 +1,11 @@
 # تغییرات EXIN Black Friday
 
+## 1.4.1 — development candidate; RELEASE BLOCKED
+
+- Resolve ownership/priority in one authoritative query, bound variation existence reads and reuse simple-product stock objects.
+- No financial formula, schema, floor, scheduler or Restore changes.
+- Add reproducible server benchmarks and strict upgrade/rollback parity evidence; performance and compatibility gates remain unmet/unverified (docs/v141-development-audit.md).
+
 ## 1.4.0 — performance release candidate
 
 - Release-blocking audit: recover due reservations after completed cursors without resetting retry budgets or overwriting counters.
